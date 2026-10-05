@@ -6,11 +6,13 @@ import type { PermissionKey } from '@/lib/permissions';
 import { getCurrentUserFresh, hasPermission, type CurrentUser } from './current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
+import { assertMaintenanceAccess, MaintenanceError } from '@/server/services/system-maintenance';
 
 /** Autenticación pura para los flujos previos al acceso: contraseña y términos. */
 export async function requireAuthenticatedUser(): Promise<CurrentUser> {
   const user = await getCurrentUserFresh();
   if (!user) throw new AuthError();
+  await assertMaintenanceAccess(user);
   return user;
 }
 
@@ -93,8 +95,10 @@ export async function requirePermissionOrOwner(
 export async function requirePageUser(
   options: { allowIncompleteAccess?: boolean; allowAreaOperation?: boolean } = {},
 ): Promise<CurrentUser> {
-  const user = await requireAuthenticatedUser().catch(() => null);
+  const user = await getCurrentUserFresh();
   if (!user) redirect('/login');
+  try { await assertMaintenanceAccess(user); }
+  catch (error) { if (error instanceof MaintenanceError) redirect('/mantenimiento'); throw error; }
 
   if (!options.allowIncompleteAccess) {
     if (user.mustChangePassword) redirect('/cambiar-contrasena');

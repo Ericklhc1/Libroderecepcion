@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import type {CurrentUser} from '@/server/auth/current-user';
 import type { NextRequest } from 'next/server';
 import { isHkFocused } from '@/domain/housekeeping-work';
@@ -46,7 +47,7 @@ async function collect(filters: BookFilters,user:CurrentUser): Promise<BookItem[
   return rows;
 }
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   const user = await requireUser();
   if (isHkFocused(user)) return Response.json({error:'Tu cuenta no tiene acceso al informe general de Recepción.'},{status:403});
   const url = new URL(request.url);
@@ -99,3 +100,5 @@ export async function GET(request: NextRequest) {
     },
   });
 }
+
+export const GET = withMaintenance(GETHandler);

@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
@@ -28,7 +29,7 @@ function businessDateFrom(
   return new Date(`${resolved}T00:00:00.000Z`);
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requirePermission('supervision.audit.create');
     const formData = await request.formData();
@@ -106,3 +107,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

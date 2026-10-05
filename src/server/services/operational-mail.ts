@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 
 import { OperationalMailStatus, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -41,6 +42,7 @@ function retryAt(attempts: number): Date {
 }
 
 async function deliverRow(id: string): Promise<boolean> {
+  if (await maintenanceBlocksBackground()) return false;
   const row = await prisma.operationalMailOutbox.findUnique({ where: { id } });
   if (!row || row.status === OperationalMailStatus.ENVIADO) return true;
   if (row.status === OperationalMailStatus.ENVIANDO) return false;
@@ -96,6 +98,7 @@ async function deliverRow(id: string): Promise<boolean> {
  * esperar al siguiente intervalo y el cron queda como red de seguridad.
  */
 export async function tryDeliverOperationalMail(eventKey: string): Promise<void> {
+  if (await maintenanceBlocksBackground()) return;
   try {
     const row = await prisma.operationalMailOutbox.findUnique({
       where: { eventKey },
@@ -115,6 +118,7 @@ export async function flushOperationalMailOutbox(limit = 30): Promise<{
   attempted: number;
   sent: number;
 }> {
+  if (await maintenanceBlocksBackground()) return { attempted: 0, sent: 0 };
   const now = new Date();
   await prisma.operationalMailOutbox.updateMany({
     where: {
@@ -139,10 +143,13 @@ export async function flushOperationalMailOutbox(limit = 30): Promise<{
   });
 
   let sent = 0;
+  let attempted = 0;
   for (const row of rows) {
+    if (await maintenanceBlocksBackground()) break;
+    attempted += 1;
     if (await deliverRow(row.id)) sent += 1;
   }
-  return { attempted: rows.length, sent };
+  return { attempted, sent };
 }
 
 export function operationalMailTimestamp(date: Date): string {

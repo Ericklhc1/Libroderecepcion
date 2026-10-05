@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 
 import { after } from 'next/server';
 import { dispatchWebPushForUsers } from '@/server/services/web-push';
@@ -10,6 +11,7 @@ export function scheduleWebPushForUsers(userIds: string[]): void {
   try {
     after(async () => {
       try {
+        if (await maintenanceBlocksBackground()) return;
         await dispatchWebPushForUsers(users);
       } catch (error) {
         console.error('[web-push] despacho diferido falló', error);

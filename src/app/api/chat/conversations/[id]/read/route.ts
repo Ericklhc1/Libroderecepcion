@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { requireUser } from '@/server/auth/guard';
 import { markChatConversationRead } from '@/server/services/chat';
 import { chatApiError, chatJson } from '@/server/api/chat';
@@ -5,7 +6,7 @@ import { chatApiError, chatJson } from '@/server/api/chat';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(
+async function POSTHandler(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -18,3 +19,5 @@ export async function POST(
     return chatApiError(error);
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

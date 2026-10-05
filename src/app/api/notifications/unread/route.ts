@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 const headers = { 'Cache-Control': 'no-store' };
 
-export async function GET() {
+async function GETHandler() {
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) {
     return NextResponse.json(
@@ -35,3 +36,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withMaintenance(GETHandler);

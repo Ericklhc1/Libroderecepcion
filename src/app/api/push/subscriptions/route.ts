@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentUser } from '@/server/auth/current-user';
@@ -23,7 +24,7 @@ async function authorizedUser() {
   return user;
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   if (!isSameOriginMutation(request)) {
     return NextResponse.json({ error: 'Origen no autorizado.' }, { status: 403 });
   }
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+async function DELETEHandler(request: Request) {
   if (!isSameOriginMutation(request)) {
     return NextResponse.json({ error: 'Origen no autorizado.' }, { status: 403 });
   }
@@ -68,3 +69,6 @@ export async function DELETE(request: Request) {
     );
   }
 }
+
+export const POST = withMaintenance(POSTHandler);
+export const DELETE = withMaintenance(DELETEHandler);

@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { executeFrontiCommand } from '@/server/ai/execution/commands';
 import { cancelExecution } from '@/server/ai/execution/service';
 import { isSameOriginMutation } from '@/server/security/same-origin';
@@ -100,7 +101,7 @@ function publicConfig(
   };
 }
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   const user = await getCurrentUser();
   if (!user) return expiredResponse();
   if (user.mustChangePassword || !(await hasAcceptedCurrentTerms(user.id))) {
@@ -146,7 +147,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   if (!isSameOriginMutation(request)) return NextResponse.json({ error: "Origen no autorizado." }, { status: 403 });
   const user = await authenticatedUser();
   if (!user) return expiredResponse();
@@ -346,3 +347,6 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const GET = withMaintenance(GETHandler);
+export const POST = withMaintenance(POSTHandler);

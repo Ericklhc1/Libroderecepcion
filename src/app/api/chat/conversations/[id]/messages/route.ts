@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import {
@@ -26,7 +27,7 @@ const messageSchema = z.object({
   replyToId: z.unknown().optional(),
 });
 
-export async function GET(
+async function GETHandler(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -39,7 +40,7 @@ export async function GET(
   }
 }
 
-export async function POST(
+async function POSTHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -74,3 +75,6 @@ export async function POST(
     return chatApiError(error);
   }
 }
+
+export const GET = withMaintenance(GETHandler);
+export const POST = withMaintenance(POSTHandler);

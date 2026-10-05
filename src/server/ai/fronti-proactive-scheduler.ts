@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 
 import { after } from 'next/server';
 
@@ -20,6 +21,7 @@ export function scheduleFrontiProactiveSweep(reason: string): void {
   try {
     after(async () => {
       try {
+        if (await maintenanceBlocksBackground()) return;
         const { runFrontiProactiveSweep } = await import('./fronti-proactive');
         await runFrontiProactiveSweep({
           trigger: `event:${reason}`,

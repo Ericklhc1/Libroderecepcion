@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError, chatJson } from '@/server/api/chat';
@@ -15,7 +16,7 @@ const favoriteSchema = z.object({
   payload: z.unknown().optional(),
 });
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     const user = await requireUser();
     const url = new URL(request.url);
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requireUser();
     const payload = favoriteSchema.parse(await request.json());
@@ -45,3 +46,6 @@ export async function POST(request: Request) {
     return chatApiError(error);
   }
 }
+
+export const GET = withMaintenance(GETHandler);
+export const POST = withMaintenance(POSTHandler);

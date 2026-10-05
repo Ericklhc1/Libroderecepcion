@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError, chatJson } from '@/server/api/chat';
@@ -16,7 +17,7 @@ const schema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('leave') }),
 ]);
 
-export async function PATCH(
+async function PATCHHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -35,3 +36,5 @@ export async function PATCH(
     return chatApiError(error);
   }
 }
+
+export const PATCH = withMaintenance(PATCHHandler);

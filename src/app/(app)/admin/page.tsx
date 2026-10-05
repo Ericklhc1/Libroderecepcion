@@ -183,6 +183,12 @@ export default async function AdminPage() {
       </div>
 
       {user.isSystemAdmin ? (
+        <Link href="/admin/mantenimiento" className="block rounded-lg border border-amber-200 bg-white p-4">
+          <span className="block font-semibold text-petrol-900">Modo mantenimiento</span>
+          <span className="text-sm text-slate-600">Pausar temporalmente la operación del personal y reabrir al terminar.</span>
+        </Link>
+      ) : null}
+      {user.isSystemAdmin ? (
         <DisclosureCard
           title="Operación especializada"
           description="Módulos administrativos que no necesitan permanecer abiertos mientras configuras el sistema."

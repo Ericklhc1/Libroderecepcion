@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import {
@@ -21,7 +22,7 @@ const payloadSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requireUser();
     const payload = payloadSchema.parse(await request.json());
@@ -40,3 +41,5 @@ export async function POST(request: Request) {
     return chatApiError(error);
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

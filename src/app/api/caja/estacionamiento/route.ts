@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import type { NextRequest } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { calendarDateKey } from '@/domain/time';
@@ -10,7 +11,7 @@ function csvCell(value: string | number | null | undefined): string {
   return '"' + text.replaceAll('"', '""') + '"';
 }
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   await requirePermission('cash.view');
 
   const url = new URL(request.url);
@@ -66,3 +67,5 @@ export async function GET(request: NextRequest) {
     },
   });
 }
+
+export const GET = withMaintenance(GETHandler);

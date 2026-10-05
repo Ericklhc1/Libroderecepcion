@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import { UX_ACTIONS } from '@/domain/ux-telemetry';
 
 import { randomUUID } from 'node:crypto';
@@ -184,6 +185,7 @@ function schedule(callback: () => Promise<void>): void {
   try {
     after(async () => {
       try {
+        if (await maintenanceBlocksBackground()) return;
         await callback();
       } catch (error) {
         console.error('[observabilidad] tarea diferida falló', {

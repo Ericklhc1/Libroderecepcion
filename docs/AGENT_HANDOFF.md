@@ -1,3 +1,11 @@
+## 2026-10-05 · Hotfix de mantenimiento temporal sobre 1.57
+
+Base aislada 928f57b. Control formal `/admin/mantenimiento` respaldado por `SystemSetting system.maintenance`, exclusivo de la identidad SYSTEM_ADMIN verificada. Cambio/auditoría atómicos con revisión y recuperación de estado inválido; mensaje solicitado fijo. Guardas de páginas y Server Actions, wrapper en todos los métodos API salvo versión/disponibilidad pública, cuatro cron y callbacks/servicios automáticos. No migración ni cambios en roles, usuarios, contraseñas, turnos o registros hoteleros.
+
+Validación local: 243 pruebas PostgreSQL sintético aprobadas en 16 archivos, incluidas 121 del control/cobertura; lint focal sin errores y análisis sintáctico sin errores. Tipos integral y focal excedieron la memoria del ejecutor; no se repiten ni se atribuye aprobación. Build y recorrido de mantenimiento desktop/móvil pendientes de CI del SHA final. La rama dispone de CI exclusiva sin caché, artefactos ni publicación; verificar resultado terminal antes de cualquier despliegue.
+
+La fila compartida sólo protege artefactos compatibles. Clientes/URLs antiguos y Skew pueden seguir atendidos por código sin control; no afirmar congelación global. Solicitudes ya iniciadas pueden terminar. Procedimiento de activación, drenaje, continuación en 1.58 y reversión compatible en `docs/MODO_MANTENIMIENTO.md`. El commit funcional debe portarse a 1.58 sin importar el bump 1.57.1 ni el workflow de esta rama. No se activó mantenimiento ni se publicó producción durante la implementación.
+
 ## Revisión 39d35f8 · resultado del asunto y diagnóstico UI
 
 Se limita el retorno vigente a tareas de atención canónica; una tarea ordinaria más reciente no reemplaza ni oculta ese resultado. Los pilotos HK no son atención activa ni resultado operativo, incluso para Administración. La Compuerta 37189799724 aprobó 1535 pruebas + una omisión y build; navegador encontró selector de primaria antiguo, lecturas de respuesta tras navegación y transición HK sin confirmación visible. Los dos primeros se corrigieron; HK registra revisión del formulario/DB y estado visible ante fallo para determinar la causa sin ampliar tiempos ni simular acciones.

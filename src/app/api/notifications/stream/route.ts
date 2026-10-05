@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
@@ -19,7 +20,7 @@ const headers = { 'Cache-Control': 'no-store' };
  * cuando no hay nada nuevo. Esto reemplaza /api/alarms/pulse con la misma
  * Function y reduce almacenamiento de artefactos.
  */
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) {
     return NextResponse.json(
@@ -58,3 +59,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withMaintenance(GETHandler);

@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import {visibleHandover} from './handover-snapshot';
 import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 import {
@@ -49,6 +50,7 @@ export function refreshAlertsInBackground(): void {
   try {
     after(async () => {
       try {
+        if (await maintenanceBlocksBackground()) return;
         await runAlertEngine();
       } catch (error) {
         console.error('[alertas] el motor falló', error);

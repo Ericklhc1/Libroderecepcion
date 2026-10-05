@@ -1,10 +1,11 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { persistOperationalEvent } from '@/server/observability/operational';
 import { uxEventSchema } from '@/domain/ux-telemetry-schema';
 import packageJson from '../../../../package.json';
 
-export async function POST(request:Request) {
+async function POSTHandler(request:Request) {
   if(request.headers.get('origin')!==new URL(request.url).origin)return new NextResponse(null,{status:403});
   const user=await getCurrentUser();
   if(!user || user.mustChangePassword)return new NextResponse(null,{status:401});
@@ -21,3 +22,5 @@ export async function POST(request:Request) {
   const ok=await persistOperationalEvent({eventType:`UX_${value.event}`,userId:user.id,entityType:value.entityType,entityId:value.entityId,correlationId:value.intentId,durationMs:value.duration,status:value.result==='FAILED'?'FAILED':value.result==='SUCCESS'?'SUCCESS':'STARTED',source:'CLIENT_UI',metadata:{route:value.route,role:user.roleKey,area:user.departmentId??'SIN_AREA',selectedAction:value.selectedAction,visibleActions:value.visibleActions,result:value.result,backNavigation:value.backNavigation,version:packageJson.version}});
   return new NextResponse(null,{status:ok?204:503});
 }
+
+export const POST = withMaintenance(POSTHandler);

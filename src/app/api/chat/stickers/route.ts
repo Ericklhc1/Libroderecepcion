@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError, chatJson } from '@/server/api/chat';
@@ -18,7 +19,7 @@ const finalizeSchema = z.object({
   label: z.string().max(80).optional().nullable(),
 });
 
-export async function GET() {
+async function GETHandler() {
   try {
     const user = await requireUser();
     return chatJson({ items: await listChatStickers(user) });
@@ -27,7 +28,7 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requireUser();
     const payload = finalizeSchema.parse(await request.json());
@@ -39,3 +40,6 @@ export async function POST(request: Request) {
     return chatApiError(error);
   }
 }
+
+export const GET = withMaintenance(GETHandler);
+export const POST = withMaintenance(POSTHandler);

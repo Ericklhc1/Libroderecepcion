@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 
 import { createHash } from 'node:crypto';
 import type {Prisma} from '@prisma/client';
@@ -571,7 +572,7 @@ export async function runFrontiProactiveSweep(input: {
     getSettingBool('fronti.enabled', true),
     getSettingBool('fronti.proactiveEnabled', true),
   ]);
-  const enabled = frontiEnabled && proactiveEnabled;
+  const enabled = frontiEnabled && proactiveEnabled && !(await maintenanceBlocksBackground());
   if (!enabled) {
     return {
       enabled: false,
@@ -613,6 +614,7 @@ export async function runFrontiProactiveSweep(input: {
   let fallbackExplanations = 0;
 
   for (const candidate of candidates) {
+    if (await maintenanceBlocksBackground()) break;
     if (analysed >= maxFindings) break;
 
     const remainingMs = deadlineAt - Date.now();

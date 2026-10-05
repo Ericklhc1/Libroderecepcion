@@ -83,6 +83,9 @@ export async function saveScheduleCoverage(user: CurrentUser, raw: z.input<typeo
 export async function saveScheduleGrant(user: CurrentUser, userId: string, departmentId: string, enabled: boolean) {
   assertSchedulePermission(user, 'schedule.configure'); scheduleId.parse(userId); scheduleId.parse(departmentId);
   return prisma.$transaction(async (tx) => {
+    // Shares the handoff reader's User boundary, including a grant not yet present.
+    // NO KEY UPDATE still permits actor/recipient FK KEY SHARE in reciprocal changes.
+    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${userId} FOR NO KEY UPDATE`;
     if (enabled) await tx.scheduleAreaGrant.upsert({ where: { userId_departmentId: { userId, departmentId } }, create: { userId, departmentId }, update: {} });
     else await tx.scheduleAreaGrant.deleteMany({ where: { userId, departmentId } });
     await scheduleCatalogAudit(tx, user, departmentId, 'Alcance de horarios actualizado', { userId, departmentId, enabled });

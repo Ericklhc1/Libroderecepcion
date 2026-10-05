@@ -17,6 +17,7 @@ type Configuration = {
   mode: 'PROPOSE' | 'APPLY';
   candidateIds: string[];
   requirePublishedSchedule: boolean;
+  waitForPublishedSchedule?: boolean;
   receiptMinutes: number;
   nextAction: string;
 };
@@ -106,6 +107,8 @@ export function SubstitutionForm({ areas, people, existing }: {
     </fieldset>
 
     <label>Horario<select name="requirePublishedSchedule" aria-label="Horario" className="input-base" defaultValue={String(config?.requirePublishedSchedule ?? true)}><option value="true">Exigir planificación publicada vigente</option><option value="false">No exigir horario publicado</option></select></label>
+    <label>Si no hay horario actual<select name="waitForPublishedSchedule" aria-label="Si no hay horario actual" className="input-base" defaultValue={String(config?.waitForPublishedSchedule ?? false)}><option value="false">Pausar para intervención (comportamiento actual)</option><option value="true">Conservar pendiente y reevaluar franja publicada</option></select></label>
+    <p className="text-sm sm:col-span-2">La espera futura está desactivada por defecto y exige horario publicado. Busca hasta el inicio civil de hoy + 14 días en Santiago; gana la franja más cercana y el orden desempata. No reserva persona, garantiza hora exacta ni confirma recepción. Guardar sigue dejando la versión en pausa.</p>
     {field('receiptMinutes', 'Plazo de recepción, minutos', config?.receiptMinutes ?? 30, 'number')}
     {field('nextAction', 'Motivo y siguiente acción', config?.nextAction)}
     {field('expiresAt', 'Autorización válida hasta', existing?.expiresAt, 'date')}

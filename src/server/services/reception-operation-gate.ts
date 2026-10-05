@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { HandoverStatus, ShiftStatus } from '@prisma/client';
+import { HandoverStatus, ShiftStatus, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { isReceptionDeskRole } from '@/lib/permissions';
 import { RuleError } from '@/server/errors';
@@ -48,12 +48,13 @@ const CLOSING_PERMISSIONS = new Set([
  */
 export async function getReceptionOperationGate(
   user: Pick<CurrentUser, 'id' | 'roleKey'>,
+  client: Prisma.TransactionClient = prisma,
 ): Promise<ReceptionOperationGate> {
   if (!isReceptionDeskRole(user.roleKey)) {
     return { mode: 'ACTIVE', shiftId: null, shiftStatus: null, handoverId: null };
   }
 
-  const assignment = await prisma.shiftAssignment.findFirst({
+  const assignment = await client.shiftAssignment.findFirst({
     where: {
       userId: user.id,
       activatedAt: { not: null },
@@ -81,7 +82,7 @@ export async function getReceptionOperationGate(
      * responsabilidad propia del usuario y evita el callejón sin salida
      * «debes iniciar turno» al intentar cerrar la Caja del turno anterior.
      */
-    const pendingOwnClosure = await prisma.shift.findFirst({
+    const pendingOwnClosure = await client.shift.findFirst({
       where: {
         status: ShiftStatus.ENTREGA_ENVIADA,
         archivedAt: null,
@@ -110,7 +111,7 @@ export async function getReceptionOperationGate(
       };
     }
 
-    const pendingHandover = await prisma.shiftHandover.findFirst({
+    const pendingHandover = await client.shiftHandover.findFirst({
       where: {
         status: HandoverStatus.ENVIADA,
         receivedAt: null,
@@ -188,10 +189,11 @@ function gateMessage(mode: ReceptionOperationMode): string {
 export async function assertReceptionOperationPermission(
   user: CurrentUser,
   permission: string,
+  client: Prisma.TransactionClient = prisma,
 ): Promise<void> {
   if (!isReceptionDeskRole(user.roleKey)) return;
 
-  const gate = await getReceptionOperationGate(user);
+  const gate = await getReceptionOperationGate(user, client);
   if (gate.mode === 'ACTIVE') return;
 
   if (gate.mode === 'NO_SHIFT') {

@@ -884,7 +884,8 @@
       "recipientId",
       "mode",
       "candidateIds",
-      "requirePublishedSchedule"
+      "requirePublishedSchedule",
+      "waitForPublishedSchedule"
     ],
     "permission": "system.configure",
     "risk": "high",

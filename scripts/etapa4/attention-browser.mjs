@@ -87,7 +87,7 @@ try{
         await resultDialog.getByRole('button',{name:'Confirmar',exact:true}).click();
         await resultDialog.waitFor({state:'hidden'});
         await origin.page.goto(`http://localhost:3000/libro/${source.id}`);
-        await origin.page.locator('#atencion-area').getByText('Necesidad atendida y comprobada',{exact:false}).waitFor();
+        await origin.page.locator(`#atencion-area-${work.humanId}`).getByText('Necesidad atendida y comprobada',{exact:false}).waitFor();
         assert.equal((await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id}})).status,'RESUELTO');
       }
       await origin.page.getByRole('button',{name:'Revisar y cerrar',exact:true}).click();

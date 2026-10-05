@@ -61,7 +61,7 @@ try{
   await assignmentPanel.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
   await assignmentPanel.locator('select[name="ownerId"]').selectOption(f.users.worker.id);
   await assignmentPanel.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
-  await measured(`assign visible ${width}`,async()=>{await submit(admin.page,assignmentPanel.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));await card.locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();});console.log('Assignment visible',width);
+  await measured(`assign visible ${width}`,async()=>{await submit(admin.page,assignmentPanel.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));await card.locator('[data-list-item][aria-haspopup="dialog"]').locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();});console.log('Assignment visible',width);
   activePage=worker.page;await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});

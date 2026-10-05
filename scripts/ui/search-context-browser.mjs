@@ -144,7 +144,7 @@ try {
   const hkHiddenTitle = `${marker} HK_OTHER_EXCLUDED`;
   await db.housekeepingRequest.create({ data: { requestKey: `${marker}-other`, workflowVersion: 1, workKind: 'ATENCION', workDate, title: hkHiddenTitle, description: 'Synthetic other work', createdById: fixture.users.admin.id, assignedToId: fixture.users.admin.id, departmentId: fixture.areaId } });
   const hkDemoTitle = `${marker} HK_DEMO_EXCLUDED`;
-  await db.housekeepingRequest.create({ data: { requestKey: `${marker}-demo`, isDemo: true, title: hkDemoTitle, createdById: fixture.users.admin.id } });
+  await db.housekeepingRequest.create({ data: { requestKey: `${marker}-demo`, isDemo: true, title: hkDemoTitle, description: 'Synthetic demo excluded from operational search', createdById: fixture.users.admin.id } });
 
   const entriesBefore = await db.operationalEntry.findMany({ where: { title: { startsWith: marker } }, orderBy: { id: 'asc' } });
   const tasksBefore = await db.task.findMany({ where: { title: { startsWith: marker } }, orderBy: { id: 'asc' } });

@@ -36,7 +36,7 @@ try {
       return url.hostname !== 'localhost' || ['/api/notifications/stream', '/api/alarms', '/api/auth/pulse'].some(path => url.pathname.startsWith(path)) ? route.abort() : route.continue();
     });
     const page = await context.newPage();
-    const navigationFailure = watchSyntheticNavigation(page);
+    const navigationFailure = await watchSyntheticNavigation(page);
     page.setDefaultTimeout(12000);
     const hydrationErrors = [];
     page.on('pageerror', error => hydrationErrors.push(error.message));
@@ -74,9 +74,12 @@ try {
       await panel.waitFor({ state: 'hidden' });
       // Query-only navigation must close the panel and select a single destination.
       await trigger.click();
+      navigationFailure.mark('module-task-query', '/libro?clase=task');
+      const taskDocument = await page.evaluate(() => performance.timeOrigin);
       try {
         await panel.getByRole('link', { name: 'Mis tareas', exact: true }).click();
         await page.waitForURL(url => url.pathname === '/libro' && url.searchParams.get('clase') === 'task');
+        assert.equal(await page.evaluate(() => performance.timeOrigin), taskDocument, 'Module navigation must preserve the current document and global drafts');
       } catch (error) { await navigationFailure('module-task-query'); throw error; }
       await panel.waitFor({ state: 'hidden' });
       await trigger.click();

@@ -52,9 +52,21 @@ function checkFilters(page, marker, status) {
   assert.equal(url.searchParams.has('objeto'), false, 'Native success returns to the filtered list');
 }
 async function submit(page, button) {
-  const [navigation] = await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), button.click()]);
-  assert.ok(navigation, 'A saved custody action must reload the document, not only navigate its fragment');
+  // replaceState publishes a same-document navigation before the actual reload.
+  // Only the main-frame document response and its DOM-ready event prove a fresh
+  // read; the first waitForNavigation event may legitimately have no response.
+  const [navigation] = await Promise.all([
+    page.waitForResponse(response => {
+      const request = response.request();
+      const url = new URL(response.url());
+      return request.isNavigationRequest() && request.resourceType() === 'document'
+        && request.frame() === page.mainFrame() && url.origin === base && url.pathname === '/custodia';
+    }),
+    page.waitForEvent('domcontentloaded'),
+    button.click(),
+  ]);
   assert.equal(navigation.request().resourceType(), 'document');
+  assert.equal(navigation.request().method(), 'GET');
   assert.equal(navigation.ok(), true);
 }
 async function nativeChange(context, fields) {

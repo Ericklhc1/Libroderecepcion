@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
+import { watchSyntheticNavigation } from './navigation-diagnostics.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
 const db = new PrismaClient(), browser = await chromium.launch({ headless: true }), results = [];
@@ -18,10 +19,17 @@ try {
       return url.hostname !== 'localhost' || ['/api/notifications/stream', '/api/alarms', '/api/auth/pulse'].some(path => url.pathname.startsWith(path)) ? route.abort() : route.continue();
     });
     const page = await context.newPage(); page.setDefaultTimeout(12000);
+    const navigationFailure = await watchSyntheticNavigation(page);
     await page.goto('http://localhost:3000/novedades/habitacion');
     assert.equal(await page.locator('[data-room-number]').count(), 89);
-    await page.getByRole('navigation', { name: 'Pisos del hotel' }).getByRole('link', { name: 'Piso 5', exact: true }).click();
-    await page.waitForFunction(() => new URL(location.href).searchParams.get('piso') === '5' && document.querySelectorAll('[data-room-number]').length === 30);
+    const floorLink = page.getByRole('navigation', { name: 'Pisos del hotel' }).getByRole('link', { name: 'Piso 5', exact: true });
+    navigationFailure.mark('room-floor-query', await floorLink.getAttribute('href'));
+    const floorDocument = await page.evaluate(() => performance.timeOrigin);
+    try {
+      await floorLink.click();
+      await page.waitForFunction(() => new URL(location.href).searchParams.get('piso') === '5' && document.querySelectorAll('[data-room-number]').length === 30);
+      assert.equal(await page.evaluate(() => performance.timeOrigin), floorDocument, 'Floor navigation must preserve the current document and global drafts');
+    } catch (error) { await navigationFailure('room-floor-query'); throw error; }
     assert.equal(await page.locator('[data-room-number]').count(), 30);
     await page.locator('[data-room-number="512"]').click();
     await page.getByRole('heading', { name: 'Habitación 512', exact: true }).waitFor();

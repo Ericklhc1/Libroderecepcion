@@ -22,6 +22,20 @@ const responsePrototype = require('node:http').ServerResponse.prototype;
 for (const method of ['write', 'end']) {
   const original = responsePrototype[method];
   responsePrototype[method] = function (...args) {
+    const pathname = this.req?.url?.split('?', 1)[0];
+    if (this.req?.method === 'GET' && this.req.headers.rsc === '1' && ['/libro', '/coordinacion', '/novedades/habitacion'].includes(pathname)) {
+      if (!this.__auditRsc) {
+        const url = new URL(this.req.url, 'http://localhost');
+        const query = new URLSearchParams();
+        for (const key of ['clase', 'tipo', 'pagina', 'piso']) {
+          if (url.searchParams.has(key)) query.set(key, url.searchParams.get(key).slice(0, 60));
+        }
+        this.__auditRsc = { start: Date.now(), path: pathname + (query.size ? '?' + query : ''), bytes: 0 };
+        console.log('[synthetic-rsc-transport]', 'start', this.__auditRsc.path, this.statusCode);
+        for (const event of ['finish', 'close']) this.once(event, () => console.log('[synthetic-rsc-transport]', JSON.stringify({ event, path: this.__auditRsc.path, ms: Date.now() - this.__auditRsc.start, bytes: this.__auditRsc.bytes, status: this.statusCode, finished: this.writableFinished })));
+      }
+      this.__auditRsc.bytes += typeof args[0] === 'string' ? Buffer.byteLength(args[0]) : args[0]?.length ?? 0;
+    }
     if (this.req?.method === 'POST' && this.req.url?.startsWith('/coordinacion')) {
       if (!this.__auditStartedAt) {
         this.__auditStartedAt = Date.now();

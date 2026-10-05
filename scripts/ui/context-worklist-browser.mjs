@@ -37,7 +37,7 @@ try {
     const context = await session(width);
     try {
       const page = await context.newPage();
-      const navigationFailure = watchSyntheticNavigation(page);
+      const navigationFailure = await watchSyntheticNavigation(page);
       page.setDefaultTimeout(15000);
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
@@ -105,9 +105,12 @@ try {
       await panel.getByRole('button', { name: 'Cerrar', exact: true }).click();
       await closed(page, nextAnchor, nextPosition);
       const nextPage = page.getByRole('navigation', { name: 'Páginas de coordinación' }).getByRole('link', { name: 'Siguiente →', exact: true });
+      navigationFailure.mark('coordination-next-page', await nextPage.getAttribute('href'));
+      const listDocument = await page.evaluate(() => performance.timeOrigin);
       try {
         await nextPage.click();
         await page.waitForURL(url => url.searchParams.get('pagina') === '3');
+        assert.equal(await page.evaluate(() => performance.timeOrigin), listDocument, 'Pagination must preserve the current document and global drafts');
       } catch (error) { await navigationFailure('coordination-next-page'); throw error; }
       await page.goBack();
       await row.waitFor();

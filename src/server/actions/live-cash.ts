@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { recordAudit } from '@/server/audit';
 import { requirePermission, requireUser } from '@/server/auth/guard';
-import { RuleError } from '@/server/errors';
+import { ForbiddenError, RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
 import type { PermissionKey } from '@/lib/permissions';
 import { hasPermission } from '@/server/auth/current-user';
@@ -30,7 +30,7 @@ import {
 import { changeGuaranteeState } from '@/server/services/guarantees';
 import { createGymPass, createParkingPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
-import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
+import { assertReceptionCashGuaranteeReturn, assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { notify } from '@/server/notifications';
 import { hotelDateKey, parseHotelDateTimeLocal } from '@/domain/time';
 import { isOperationalRoomNumber } from '@/domain/room-catalog';
@@ -504,7 +504,11 @@ export async function returnCashGuaranteeAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('cash.guarantee_out');
+    const user = await requireUser();
+    if (!hasPermission(user, 'cash.guarantee_out')) {
+      throw new ForbiddenError('No tienes el permiso necesario (cash.guarantee_out) para esta acción.');
+    }
+    await assertReceptionCashGuaranteeReturn(user);
     const input = parseOrThrow(returnGuaranteeSchema, formDataToObject(formData));
 
     await changeGuaranteeState(user, {

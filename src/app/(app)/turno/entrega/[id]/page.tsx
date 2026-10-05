@@ -589,6 +589,7 @@ export default async function HandoverPage({
           previous={previousQuantities}
           reviewerId={user.id}
           role="emisor"
+          canReturnGuaranteeDuringClosing={canEdit && user.permissions.includes('cash.guarantee_out')}
           canReopen={user.permissions.includes('cash.reopen')}
         />
       ) : null}

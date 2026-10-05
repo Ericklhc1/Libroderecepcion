@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { formatDateTime } from '@/lib/format';
 import { useMemo, useRef, useState } from 'react';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
@@ -369,6 +370,7 @@ export function CashBox({
   canApproveMissing = false,
   reviewerId,
   receiverStage,
+  canReturnGuaranteeDuringClosing = false,
 }: {
   handoverId: string;
   shiftId: string;
@@ -386,6 +388,7 @@ export function CashBox({
   canApproveMissing?: boolean;
   reviewerId?: string;
   receiverStage?: 'CASH' | 'CUSTODY';
+  canReturnGuaranteeDuringClosing?: boolean;
 }) {
   if (!state.enabled && state.elements.length === 0) return null;
 
@@ -478,9 +481,19 @@ export function CashBox({
                     <span className="font-semibold tabular text-petrol-900">
                       {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
                     </span>
-                    <span className="text-[0.68rem] text-slate-500">
-                      La devolución se gestiona en Caja operativa, fuera del relevo.
-                    </span>
+                    {role === 'emisor' && canReturnGuaranteeDuringClosing ? (
+                      <Link
+                        href={`/caja?seccion=garantias&q=${guarantee.humanId}&volver=${encodeURIComponent(`/turno/entrega/${handoverId}?paso=1`)}`}
+                        aria-label={`Devolver garantía #${guarantee.humanId} en Caja`}
+                        className="text-[0.68rem] font-semibold text-petrol-700 underline"
+                      >
+                        Devolver esta garantía en Caja
+                      </Link>
+                    ) : (
+                      <span className="text-[0.68rem] text-slate-500">
+                        La devolución se gestiona en Caja operativa, fuera del relevo.
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}

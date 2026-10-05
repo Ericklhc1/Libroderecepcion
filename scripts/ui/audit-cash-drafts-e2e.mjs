@@ -19,6 +19,7 @@ try {
     await db.cashFund.upsert({where:{currency:'CLP'},create:{currency:'CLP',amount:100000},update:{amount:100000,active:true}});
     const denomination=await db.cashDenomination.findUniqueOrThrow({where:{currency_value:{currency:'CLP',value:20000}}});
     const guarantee=await db.guarantee.create({data:{kind:'EFECTIVO',state:'VIGENTE',amount:50000,currency:'CLP',reference:'SYNTHETIC CASH DRAFT',createdById:f.users.admin.id}});
+    const returnGuarantee=await db.guarantee.create({data:{kind:'EFECTIVO',state:'VIGENTE',amount:30000,currency:'CLP',reference:'SYNTHETIC RETURN DURING CLOSE',createdById:f.users.admin.id}});
     const now=new Date();
     const shift=await db.shift.create({data:{type:'DIA',date:now,status:'PREPARANDO_ENTREGA',plannedStart:new Date(Date.now()-3600000),plannedEnd:new Date(Date.now()+3600000),actualStart:now,createdById:f.users.admin.id}});
     await db.shiftAssignment.create({data:{shiftId:shift.id,userId:f.users.admin.id,activatedAt:now}});
@@ -49,6 +50,18 @@ try {
     }
     await page.goto(url);await quantity().fill('5');await form().locator('textarea[name=notes]').fill('SYNTHETIC borrador antes de salir');await check().check();
     await page.evaluate(()=>sessionStorage.setItem('synthetic-unrelated-preference','keep'));
+    await page.getByRole('link',{name:`Devolver garantía #${returnGuarantee.humanId} en Caja`,exact:true}).click();
+    await page.waitForURL(url=>url.pathname==='/caja');
+    assert.equal(await page.getByRole('button',{name:'Cobrar garantía',exact:true}).count(),0,'Charging a guarantee remains blocked during closing');
+    const returnRow=page.locator('li').filter({hasText:`#${returnGuarantee.humanId}`});
+    await returnRow.getByRole('button',{name:'Devolver garantía',exact:true}).click();
+    const returnForm=page.locator('form').filter({has:page.getByRole('button',{name:'CONFIRMAR DEVOLUCIÓN',exact:true})});
+    await returnForm.locator('input[name=confirmed]').check();await submit(returnForm,'CONFIRMAR DEVOLUCIÓN');
+    assert.equal((await db.guarantee.findUniqueOrThrow({where:{id:returnGuarantee.id}})).state,'DEVUELTA');
+    await page.getByRole('link',{name:'Volver al cierre',exact:true}).click();
+    await page.waitForURL(url=>url.pathname===`/turno/entrega/${handover.id}`&&url.searchParams.get('paso')==='1');
+    await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();
+    assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),false,'Returning another guarantee must not restore an unsent physical validation');
     await page.goto(otherUrl);await quantity().waitFor();
     assert.equal(await quantity().inputValue(),'','Another handover must not inherit quantities');
     assert.equal(await form().locator('textarea[name=notes]').inputValue(),'');assert.equal(await check().isChecked(),false);
@@ -103,7 +116,7 @@ try {
     await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();await page.waitForURL('**/login');
     assert.equal(await page.evaluate(()=>Object.keys(sessionStorage).filter(k=>k.startsWith('aroh:form-draft:v1:')).length),0);
     assert.equal(await page.evaluate(()=>sessionStorage.getItem('synthetic-unrelated-preference')),'keep');
-    assert.deepEqual(errors,[]);results.push({width,unsavedRestored:true,physicalDraftNotRestored:true,savedRestored:true,cashRevisionInvalidatesChecks:true,concurrentSavedRevisionWarned:true,staleWarningSurvivesEditAndReload:true,handoverAndHistoryIsolated:true,actorSwitchClearsDrafts:true,saveClearsBeforeReload:true,noteRestored:true,noteHandoverIsolated:true,logoutClearsOnlyDrafts:true});
+    assert.deepEqual(errors,[]);results.push({width,unsavedRestored:true,physicalDraftNotRestored:true,returnedGuaranteeDuringClosing:true,savedRestored:true,cashRevisionInvalidatesChecks:true,concurrentSavedRevisionWarned:true,staleWarningSurvivesEditAndReload:true,handoverAndHistoryIsolated:true,actorSwitchClearsDrafts:true,saveClearsBeforeReload:true,noteRestored:true,noteHandoverIsolated:true,logoutClearsOnlyDrafts:true});
     await context.close();
   }
 } catch(error) {

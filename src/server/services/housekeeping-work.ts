@@ -37,14 +37,14 @@ export async function hkAreaIds(user: CurrentUser, tx: Tx = prisma): Promise<str
   const person = await tx.user.findUnique({ where: { id: user.id }, select: { departmentId: true, scheduleCollaborator: { select: { active: true, memberships: { where: { active: true, department: { active: true } }, select: { departmentId: true } } } } } });
   return [...new Set([person?.departmentId, ...(person?.scheduleCollaborator?.active ? person.scheduleCollaborator.memberships.map(m => m.departmentId) : [])].filter((id): id is string => !!id))];
 }
-export async function hkCapability(user: CurrentUser, departmentId: string, permission: PermissionKey, tx: Tx = prisma) {
+export async function hkCapability(user: CurrentUser, departmentId: string, permission: PermissionKey, tx: Tx = prisma, at = new Date()) {
   hasAccess(user);
   if (!(await tx.department.findFirst({ where: { id: departmentId, active: true }, select: { id: true } }))) throw new RuleError('El área ya no está disponible.');
   if (user.roleKey === ADMIN) return true;
   if (!(await hkAreaIds(user, tx)).includes(departmentId)) return false;
   if (hkHas(user, permission)) return true;
   if (['housekeeping.assign', 'housekeeping.inspect'].includes(permission)) {
-    const now = new Date();
+    const now = at;
     return !!await tx.housekeepingDelegation.findFirst({ where: { userId: user.id, departmentId, permission, revokedAt: null, startsAt: { lte: now }, endsAt: { gt: now }, grantedBy: { active: true, deletedAt: null, role: { OR: [{ key: ADMIN }, { permissions: { some: { permission: { key: 'housekeeping.plan' } } } }] } } } });
   }
   return false;
@@ -255,7 +255,8 @@ export async function prepareHkDay(user: CurrentUser, departmentId:string, date:
 export async function confirmHkAvailability(user:CurrentUser,input:{departmentId:string;workDate:string;userId:string;available:boolean;note:string}){
   validDate(input.workDate);await requireCapability(user,input.departmentId,'housekeeping.assign');await validateWorker(prisma,input.departmentId,input.userId);
   if(!input.available&&!input.note.trim())throw new RuleError('Indica por qué la persona no está disponible.');
-  return prisma.$transaction(async tx=>{const row=await tx.housekeepingDayMember.upsert({where:{departmentId_workDate_userId:{departmentId:input.departmentId,workDate:input.workDate,userId:input.userId}},create:{...input,confirmedById:user.id},update:{available:input.available,note:input.note,confirmedById:user.id}});await record(tx,user,row.id,null,'DISPONIBILIDAD',`${input.userId}: ${input.available?'disponible':'no disponible'} · ${input.note}`);return row;});
+  // Excludes the handoff reader FOR SHARE, while allowing reciprocal actor FK KEY SHARE.
+  return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${input.userId} FOR NO KEY UPDATE`;const row=await tx.housekeepingDayMember.upsert({where:{departmentId_workDate_userId:{departmentId:input.departmentId,workDate:input.workDate,userId:input.userId}},create:{...input,confirmedById:user.id},update:{available:input.available,note:input.note,confirmedById:user.id}});await record(tx,user,row.id,null,'DISPONIBILIDAD',`${input.userId}: ${input.available?'disponible':'no disponible'} · ${input.note}`);return row;});
 }
 export async function saveHkHandover(user:CurrentUser,input:{requestKey:string;departmentId:string;workDate:string;note:string}){
   validDate(input.workDate);await requireCapability(user,input.departmentId,'housekeeping.assign');if(!input.note.trim())throw new RuleError('Indica las instrucciones para el equipo que recibe.');
@@ -275,7 +276,8 @@ export async function delegateHk(user:CurrentUser,input:{departmentId:string;use
   await requireCapability(user,input.departmentId,'housekeeping.plan');
   if(!['housekeeping.assign','housekeeping.inspect'].includes(input.permission)||input.startsAt>=input.endsAt||input.endsAt<=new Date()||input.endsAt.getTime()-input.startsAt.getTime()>31*86400000||!input.reason.trim())throw new RuleError('Define una cobertura de hasta 31 días, su función y el motivo.');
   await validateWorker(prisma,input.departmentId,input.userId);if(input.userId===user.id)throw new RuleError('Selecciona a la persona que cubrirá la función.');
-  return prisma.$transaction(async tx=>{const row=await tx.housekeepingDelegation.create({data:{...input,grantedById:user.id}});await record(tx,user,row.id,null,'DELEGAR',`${input.permission} · ${input.reason}`);return row;});
+  // A↔B delegation must not deadlock when each insert validates grantedById on the other actor.
+  return prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id"=${input.userId} FOR NO KEY UPDATE`;const row=await tx.housekeepingDelegation.create({data:{...input,grantedById:user.id}});await record(tx,user,row.id,null,'DELEGAR',`${input.permission} · ${input.reason}`);return row;});
 }
 export async function revokeHkDelegation(user:CurrentUser,id:string){return prisma.$transaction(async tx=>{const row=await tx.housekeepingDelegation.findUnique({where:{id}});if(!row)throw new NotFoundError();await requireCapability(user,row.departmentId,'housekeeping.plan',tx);await tx.housekeepingDelegation.update({where:{id},data:{revokedAt:new Date()}});await record(tx,user,id,null,'REVOCAR_COBERTURA',row.reason);return{id};});}
 

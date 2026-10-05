@@ -1,10 +1,11 @@
-import Link from 'next/link';
 import { Clock, MessageSquare, Repeat, User } from 'lucide-react';
 import { Badge, Chip } from '@/components/ui/badge';
 import { TONE_STYLES } from '@/components/ui/tone';
 import { formatDateTime, relativeTime } from '@/lib/format';
 import type { BookItem } from '@/server/services/book';
 import { BookMailDialog } from './book-mail-dialog';
+import { ListItemLink } from './list-navigation';
+import { listRowAnchor } from '@/lib/list-navigation';
 
 /**
  * Fila del libro operativo. Muestra de un vistazo tipo, título, estado,
@@ -15,8 +16,9 @@ export function BookRow({ item }: { item: BookItem }) {
   const tone = TONE_STYLES[item.tone];
   return (
     <li className="relative">
-      <Link
+      <ListItemLink
         href={item.href}
+        rowAnchor={listRowAnchor(item.kind, item.id)}
         className="flex gap-3 border-b border-slate-100 px-4 py-3 pr-24 transition-colors last:border-b-0 hover:bg-slate-50"
       >
         <span
@@ -74,7 +76,7 @@ export function BookRow({ item }: { item: BookItem }) {
             ) : null}
           </div>
         </div>
-      </Link>
+      </ListItemLink>
       <div className="absolute right-2 top-2 z-10 no-print">
         <BookMailDialog kind={item.kind} id={item.id} reference={item.ref} />
       </div>

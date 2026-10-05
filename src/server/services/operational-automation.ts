@@ -8,6 +8,9 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, RuleError } from '@/server/errors';
 import { procedureOccurrences, procedureSchema, escalationSchema, substitutionSchema, matchesAutomation } from '@/domain/operational-automation';
 import { isHkFocused } from '@/domain/housekeeping-work';
+import { substitutionAvailabilityReason } from '@/domain/substitution-availability';
+import { COORDINATION_MAX_PAGE, COORDINATION_PAGE_SIZE } from '@/domain/coordination';
+import { substitutionScanCursor, advanceSubstitutionScan } from '@/domain/substitution-scan';
 import { canonicalJson } from '@/domain/fronti-execution';
 import { createTask } from './tasks';
 import { getCoordinationBoard, coordinationMetrics, type CoordinationRow } from './coordination';
@@ -15,18 +18,27 @@ import { coordinationEntries, coordinationTasks, coordinationFollowUps } from '.
 import { hkWorkVisibility, hkCapability } from './housekeeping-work';
 import { hasAcceptedCurrentTerms } from './legal-acceptance';
 import { assertReceptionOperationPermission } from './reception-operation-gate';
-import { chooseSubstitute, applySubstitution } from './automation-substitutions';
+import { chooseSubstitute, applySubstitution, applyPreparedSubstitution } from './automation-substitutions';
+import { lockSubstitutionContext, previewSubstitutionAvailability, readSubstitutionWork, type SubstitutionPreview, type SubstitutionReadCache } from './substitution-availability';
 import { notify } from '@/server/notifications';
 
 const json = (value: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(value));
-export async function automationPrincipal(id: string, policyId: string): Promise<CurrentUser> {
-  const user = await prisma.user.findFirst({ where: { id, active: true, deletedAt: null }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
-  if (!user || user.mustChangePassword || !await hasAcceptedCurrentTerms(user.id)) throw new ForbiddenError('La persona que autorizó la política ya no está habilitada.');
+function isRetryableSubstitutionConflict(error:unknown):boolean {
+  if(!error||typeof error!=='object'||!('code' in error))return false;
+  if(error.code==='P2034')return true;
+  // Prisma wraps PostgreSQL deadlocks from $queryRaw as P2010/40P01. Other
+  // raw-query errors still require intervention; neither message text nor P2010 alone suffices.
+  return error.code==='P2010'&&'meta' in error&&!!error.meta&&typeof error.meta==='object'&&
+    'code' in error.meta&&error.meta.code==='40P01';
+}
+export async function automationPrincipal(id: string, policyId: string, client: Prisma.TransactionClient = prisma): Promise<CurrentUser> {
+  const user = await client.user.findFirst({ where: { id, active: true, deletedAt: null }, include: { role: { include: { permissions: { include: { permission: true } } } } } });
+  if (!user || user.mustChangePassword || !await hasAcceptedCurrentTerms(user.id, client)) throw new ForbiddenError('La persona que autorizó la política ya no está habilitada.');
   return { id: user.id, name: user.name, sessionId: `automation:${policyId}`, roleId: user.roleId, roleKey: user.role.key, roleName: user.role.name, roleLevel: user.role.level, roleOperational: user.role.operational, departmentId: user.departmentId, mustChangePassword: user.mustChangePassword, permissions: user.role.permissions.map(p => p.permission.key as PermissionKey), isSystemAdmin: user.role.key === ROLE_KEYS.SYSTEM_ADMIN, frontiAccessEnabled: user.frontiAccessEnabled };
 }
-async function assertPolicyArea(user: CurrentUser, departmentId: string) {
+async function assertPolicyArea(user: CurrentUser, departmentId: string, client: Prisma.TransactionClient = prisma) {
   if (!user.permissions.includes('system.configure')) throw new ForbiddenError('La habilitación de reglas corresponde a configuración del sistema.');
-  if (!await prisma.department.count({ where: { id: departmentId, active: true } })) throw new RuleError('El área no está activa.');
+  if (!await client.department.count({ where: { id: departmentId, active: true } })) throw new RuleError('El área no está activa.');
 }
 export const automationInput = z.object({
   id: z.string().optional(), version: z.number().int().positive().optional(),
@@ -39,6 +51,15 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
   await assertPolicyArea(user, input.departmentId);
   if (input.expiresAt <= new Date() || input.expiresAt.getTime() > Date.now() + 366 * 86400000) throw new RuleError('Define una vigencia futura de hasta un año.');
   const configuration = input.kind === 'PROCEDURE' ? procedureSchema.parse(input.configuration) : input.kind==='SUBSTITUTION'?substitutionSchema.parse(input.configuration):escalationSchema.parse(input.configuration);
+  let persistedConfiguration=json(configuration);
+  if(input.kind==='SUBSTITUTION'){
+    const parsed=substitutionSchema.parse(configuration);
+    if(parsed.waitForPublishedSchedule)throw new RuleError('La espera futura sigue en preparación: no puede guardarse ni habilitarse en esta entrega. La próxima franja puede consultarse sólo en la simulación.');
+    // The 928f57b reader is strict. Preserve its JSON contract for both absent
+    // and explicit false; no rollout metadata is written to operational data.
+    const {waitForPublishedSchedule:_futureWait,...legacy}=parsed;
+    persistedConfiguration=json(legacy);
+  }
   return prisma.$transaction(async tx => {
     if(input.kind==='ESCALATION'&&input.enabled){
       const config=escalationSchema.parse(configuration);
@@ -52,7 +73,7 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
       const existing=await tx.operationalAutomation.findMany({where:{id:{not:input.id??''},departmentId:input.departmentId,kind:'SUBSTITUTION',enabled:true,revokedAt:null,expiresAt:{gt:new Date()}},select:{configuration:true}});
       if(existing.some(row=>{const other=substitutionSchema.parse(row.configuration);return other.kind===config.kind&&(!other.priority||!config.priority||other.priority===config.priority);}))throw new RuleError('Ya existe una suplencia habilitada para este tipo y prioridad del área. Pausa o delimita la anterior.');
     }
-    const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: json(configuration), expiresAt: input.expiresAt, enabled: input.enabled, scanPage: 1 };
+    const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: persistedConfiguration, expiresAt: input.expiresAt, enabled: input.enabled, scanPage: 1 };
     let id = input.id;
     if (id) {
       const updated = await tx.operationalAutomation.updateMany({ where: { id, ownerId: user.id, version: input.version, revokedAt: null }, data: { ...data, version: { increment: 1 } } });
@@ -71,17 +92,18 @@ export async function revokeAutomation(user: CurrentUser, id: string, version: n
 }
 
 /** Every page is read through the original access-filtered board. Bound and label incomplete scans. */
-export async function automationBoard(user: CurrentUser, departmentId?: string, startPage = 1, deadlineAt = Infinity) {
+export async function automationBoard(user: CurrentUser, departmentId?: string, startPage = 1, deadlineAt = Infinity, maxPages = 10) {
   const rows: CoordinationRow[] = [];
-  let complete = false, nextPage = startPage;
-  for (let page = startPage; page < startPage + 10; page++) {
+  let complete = false, nextPage = startPage, pagesRead=0;
+  for (let page = startPage; page < startPage + maxPages; page++) {
     if(Date.now()>=deadlineAt)break;
     const board = await getCoordinationBoard(user, { departmentId, page });
-    rows.push(...board.rows);
-    nextPage = board.hasMore ? page + 1 : 1;
+    pagesRead++;rows.push(...board.rows);
+    nextPage = board.hasMore && board.page<COORDINATION_MAX_PAGE ? board.page + 1 : 1;
     if (!board.hasMore) { complete = startPage === 1; break; }
+    if(board.page>=COORDINATION_MAX_PAGE)break; // Bound is partial, but never strand the cursor beyond the board.
   }
-  return { rows, complete, nextPage };
+  return { rows, complete, nextPage, pagesRead };
 }
 async function sameAreaUser(id: string, departmentId: string) {
   return prisma.user.findFirst({ where: { id, active: true, deletedAt: null, role: { operational: true }, OR: [{ departmentId }, { scheduleCollaborator: { active: true, memberships: { some: { departmentId, active: true } } } }] }, select: { id: true, name: true } });
@@ -95,7 +117,7 @@ async function procedureAssignee(id:string,departmentId:string) {
   return member;
 }
 
-export async function simulateAutomation(user: CurrentUser, id: string, now = new Date(), deadlineAt = Infinity) {
+export async function simulateAutomation(user: CurrentUser, id: string, now = new Date(), deadlineAt = Infinity, includeFuturePreview = true) {
   const policy = await prisma.operationalAutomation.findFirst({ where: { id, ownerId: user.id } });
   if (!policy) throw new ForbiddenError();
   await assertPolicyArea(user, policy.departmentId);
@@ -106,17 +128,43 @@ export async function simulateAutomation(user: CurrentUser, id: string, now = ne
   }
   if(policy.kind==='SUBSTITUTION'){
     const config=substitutionSchema.parse(policy.configuration);
-    const board=await automationBoard(user,policy.departmentId,policy.scanPage,deadlineAt);
+    const cursor=substitutionScanCursor(policy.scanPage);
+    const board=await automationBoard(user,policy.departmentId,config.waitForPublishedSchedule?cursor.page:policy.scanPage,deadlineAt,config.waitForPublishedSchedule?1:10);
     const matched=board.rows.filter(row=>matchesAutomation(row,{trigger:config.trigger,kind:config.kind,priority:config.priority,receiptMinutes:config.receiptMinutes,recipientId:policy.ownerId,maxItems:config.maxItems},now));
     const done=await prisma.operationalAutomationRun.findMany({where:{policyId:policy.id,status:'SUCCEEDED',stateKey:{in:matched.map(row=>'substitution:'+row.kind+':'+row.id)}},select:{stateKey:true}});
     const pending=matched.filter(row=>!done.some(run=>run.stateKey==='substitution:'+row.kind+':'+row.id));
     const effects=[];
-    for(const row of pending.slice(0,config.maxItems)){
-      const selected=await chooseSubstitute(user,policy.departmentId,config,row,now);
+    const evidenceCache:SubstitutionReadCache=new Map();
+    let previewComplete=true, futureCursor=board.pagesRead?advanceSubstitutionScan(cursor.page,board.rows.length-1,board.rows.length,board.nextPage):policy.scanPage;
+    // Opt-in waits do not monopolize the first maxItems records: inspect this bounded
+    // scan, put executable effects first, and advance past waiting-only pages.
+    const candidates=config.waitForPublishedSchedule?board.rows.slice(cursor.offset):pending.slice(0,config.maxItems);
+    for(const row of candidates){
+      if(Date.now()>=deadlineAt){previewComplete=false;futureCursor=(cursor.page-1)*COORDINATION_PAGE_SIZE+board.rows.indexOf(row)+1;break;}
+      if(config.waitForPublishedSchedule&&!pending.some(p=>p.id===row.id&&p.kind===row.kind)){futureCursor=advanceSubstitutionScan(cursor.page,board.rows.indexOf(row),board.rows.length,board.nextPage);continue;}
+      let availability:SubstitutionPreview|undefined;
+      if(config.requirePublishedSchedule&&(config.waitForPublishedSchedule||includeFuturePreview)){
+        const work=await readSubstitutionWork(user,config.kind,row.id);
+        if(work)availability=await previewSubstitutionAvailability(user,policy,work,now,prisma,false,evidenceCache);
+        else if(config.waitForPublishedSchedule){futureCursor=advanceSubstitutionScan(cursor.page,board.rows.indexOf(row),board.rows.length,board.nextPage);continue;}
+        if(availability?.state==='INCOMPLETE')previewComplete=false;
+      }
+      const selected=config.waitForPublishedSchedule
+        ? availability?.eligibleNow&&availability.selection?{id:availability.selection.userId,name:availability.responsible!}:null
+        : await chooseSubstitute(user,policy.departmentId,config,row,now);
       const retryKey='substitution:'+row.kind+':'+row.id;
-      effects.push({id:row.id,kind:row.kind,retryKey,attemptKey:retryKey+':'+policy.version+':'+row.updatedAt.toISOString(),revision:row.updatedAt.toISOString(),href:row.href,nextAction:config.nextAction,ownerId:row.ownerId,substituteId:selected?.id??null,recipientId:policy.ownerId,responsible:selected?.name??'Sin suplente elegible',title:row.title,eligible:!!selected,action:config.mode});
+      effects.push({id:row.id,kind:row.kind,retryKey,attemptKey:retryKey+':'+policy.version+':'+row.updatedAt.toISOString(),revision:row.updatedAt.toISOString(),href:row.href,nextAction:config.nextAction,ownerId:row.ownerId,substituteId:selected?.id??null,recipientId:policy.ownerId,responsible:selected?.name??'Sin suplente elegible',title:row.title,eligible:!!selected,action:config.mode,availability});
+      if(config.waitForPublishedSchedule){
+        futureCursor=advanceSubstitutionScan(cursor.page,board.rows.indexOf(row),board.rows.length,board.nextPage);
+        if((!includeFuturePreview&&(selected||!availability||!['FUTURE_SLOT','WORK_CHANGED'].includes(availability.state)))||effects.filter(effect=>effect.eligible||!effect.availability||!['FUTURE_SLOT','WORK_CHANGED'].includes(effect.availability.state)).length>=config.maxItems){previewComplete=previewComplete&&board.rows.indexOf(row)===board.rows.length-1;break;}
+      }
     }
-    return {mode:'SIMULATION',version:policy.version,complete:board.complete&&pending.length<=config.maxItems,nextPage:pending.length>config.maxItems?policy.scanPage:board.nextPage,effects,explanation:`${config.mode==='APPLY'?'Reasigna':'Propone reasignar'} sólo a candidatos explícitos elegibles del área. Horario publicado es planificación, no presencia. Una suplencia confirmada por registro y política evita bucles; pausar o revocar impide efectos nuevos.`};
+    if(config.waitForPublishedSchedule)effects.sort((a,b)=>Number(b.eligible)-Number(a.eligible));
+    // Waiting/omitted rows are observations, not dispatchable effects. Never slice
+    // an intervention away behind them after advancing its row cursor.
+    const selectedEffects=config.waitForPublishedSchedule?effects:effects.slice(0,config.maxItems);
+    const holdPage=pending.length>config.maxItems;
+    return {mode:'SIMULATION',version:policy.version,complete:board.complete&&previewComplete&&(config.waitForPublishedSchedule||effects.length<=config.maxItems),nextPage:config.waitForPublishedSchedule?futureCursor:!previewComplete||holdPage?policy.scanPage:board.nextPage,effects:selectedEffects,waitingObserved:config.waitForPublishedSchedule?effects.filter(effect=>effect.availability?.state==='FUTURE_SLOT').length:0,explanation:`${config.mode==='APPLY'?'Reasigna':'Propone reasignar'} sólo a candidatos explícitos elegibles del área. Horario publicado es planificación, no presencia. ${config.waitForPublishedSchedule?'Sin cobertura actual, conserva el pendiente y reevalúa en el barrido existente; la próxima franja es orientativa, sin reserva ni hora exacta garantizada.':'Sin suplente actual, la ejecución conserva su comportamiento de intervención; la franja futura es sólo una vista previa.'} Una suplencia confirmada por registro y política evita bucles; pausar o revocar impide efectos nuevos.`};
   }
   const config = escalationSchema.parse(policy.configuration);
   const board = await automationBoard(user, policy.departmentId, policy.scanPage, deadlineAt);
@@ -137,20 +185,44 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
     if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; break; }
     try {
       const actor = await automationPrincipal(policy.ownerId, policy.id);
-      const simulation = await simulateAutomation(actor, policy.id, now, deadlineAt - 15_000);
+      const simulation = await simulateAutomation(actor, policy.id, now, deadlineAt - 15_000, false);
+      let policyDeferred=false;
       for (const effect of simulation.effects) {
-        if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; break; }
+        const futureHandoff=policy.kind==='SUBSTITUTION'&&substitutionSchema.parse(policy.configuration).waitForPublishedSchedule;
+        // These were fully read during simulation and need no execution budget. Persisting
+        // their row cursor even at the time boundary prevents restarting a partial wait page.
+        if(futureHandoff&&!effect.eligible&&'availability' in effect&&effect.availability&&['FUTURE_SLOT','WORK_CHANGED'].includes(effect.availability.state)){scanned++;continue;}
+        if (scanned >= 25 || Date.now() + 15_000 >= deadlineAt) { deferred = true; policyDeferred=true; break; }
         scanned++;
-        if (!effect.eligible) throw new RuleError('No hay responsable o destinatario elegible en el área. La política se pausa para intervención.');
+        if (!effect.eligible) throw new RuleError(futureHandoff&&'availability' in effect&&effect.availability?`${substitutionAvailabilityReason(effect.availability.reasonCode)}. El trabajo permanece pendiente y la política se pausa.`:'No hay responsable o destinatario elegible en el área. La política se pausa para intervención.');
         const occurrence = 'occurrence' in effect ? effect.occurrence : effect.attemptKey;
         const stateKey = 'occurrence' in effect ? effect.occurrence : effect.retryKey;
+        // READ COMMITTED intentionally refreshes evidence after waiting for native writer locks.
+        // A pre-lock SERIALIZABLE snapshot alone can still see a cancelled slot as published.
         await prisma.$transaction(async tx => {
           await tx.$queryRaw`SELECT "id" FROM "OperationalAutomation" WHERE "id"=${policy.id} FOR UPDATE`;
           const live = await tx.operationalAutomation.findFirst({ where: { id: policy.id, version: policy.version, enabled: true, revokedAt: null, expiresAt: { gt: new Date() } } });
           if (!live) return;
-          const executor=await automationPrincipal(policy.ownerId,policy.id);
-          await assertPolicyArea(executor,policy.departmentId);
+          if(futureHandoff)await lockSubstitutionContext(tx,live);
+          const executor=await automationPrincipal(policy.ownerId,policy.id,tx);
+          await assertPolicyArea(executor,policy.departmentId,tx);
           if (await tx.operationalAutomationRun.findFirst({where:{policyId:policy.id,OR:[{occurrence},{stateKey,status:'SUCCEEDED'}]}})) return;
+          let prepared: {work:NonNullable<Awaited<ReturnType<typeof readSubstitutionWork>>>;preview:SubstitutionPreview}|null=null;
+          if(futureHandoff&&'id' in effect){
+            const config=substitutionSchema.parse(live.configuration);
+            if(config.kind==='entry')await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${effect.id} FOR UPDATE`;
+            else if(config.kind==='task')await tx.$queryRaw`SELECT "id" FROM "Task" WHERE "id"=${effect.id} FOR UPDATE`;
+            else {
+              await tx.$queryRaw`SELECT "id" FROM "HousekeepingRequest" WHERE "id"=${effect.id} FOR UPDATE`;
+              const hkSource=await tx.housekeepingRequest.findUnique({where:{id:effect.id},select:{sourceEntryId:true}});
+              if(hkSource?.sourceEntryId)await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${hkSource.sourceEntryId} FOR SHARE`;
+            }
+            const work=await readSubstitutionWork(executor,config.kind,effect.id,tx);
+            if(!work||work.updatedAt.toISOString()!==effect.revision||!('ownerId' in effect)||work.ownerId!==effect.ownerId)return;
+            const preview=await previewSubstitutionAvailability(executor,live,work,new Date(),tx,true);
+            if(!preview.eligibleNow)return;
+            prepared={work,preview};
+          }
           const run = await tx.operationalAutomationRun.create({ data: { policyId: policy.id, occurrence, stateKey, policyVersion: policy.version, snapshot: json(policy.configuration), status: 'RUNNING' } });
           let result: unknown;
           if (policy.kind === 'PROCEDURE') {
@@ -162,7 +234,7 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
             const task = await createTask(executor, { title: config.title, description: config.description, assigneeId: config.ownerId, departmentId: policy.departmentId, priority: config.priority, startsAt: date.at, dueAt: new Date(date.at.getTime() + config.deadlineMinutes * 60000), fulfillmentCriteria: config.nextAction, evidenceRequired: config.evidenceRequired, checklist: config.checklist, tags: ['procedimiento'], requiresIndependentValidation: config.requiresIndependentValidation, procedureOccurrenceKey: `${policy.id}:${occurrence}` }, tx);
             result = { taskId: task.id, href: `/tareas/${task.id}` };
           } else if(policy.kind==='SUBSTITUTION' && 'substituteId' in effect){
-            result=await applySubstitution(executor,policy.departmentId,policy.configuration,effect,run.id,now,tx);
+            result=prepared?await applyPreparedSubstitution(executor,live.configuration,prepared.work,prepared.preview,run.id,effect.href,tx):await applySubstitution(executor,policy.departmentId,policy.configuration,effect,run.id,now,tx);
           } else if ('id' in effect) {
             const config = escalationSchema.parse(policy.configuration);
             const recipient = await automationPrincipal(config.recipientId, policy.id);
@@ -188,12 +260,20 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
             if(!await tx.notification.count({where:{userId:recipient.id,entity:'OperationalAutomation',entityId:run.id}}))throw new RuleError('No se pudo conservar el aviso interno.');
             result = { sourceId: effect.id, recipientId: recipient.id };
           }
+          if(prepared&&(live.expiresAt<=new Date()||prepared.preview.selection!.eligibleUntil<=new Date()))throw new RuleError('La autorización o franja terminó antes de confirmar el efecto.');
           await tx.operationalAutomationRun.update({ where: { id: run.id }, data: { status: 'SUCCEEDED', result: json(result), completedAt: new Date() } });
           attempted++;
-        }, { timeout: 15000 });
+        }, { timeout: 15000, ...(futureHandoff?{isolationLevel:'ReadCommitted' as const}:{}) });
       }
-      await prisma.operationalAutomation.updateMany({where:{id:policy.id,version:policy.version},data:{lastEvaluatedAt:now,...(!deferred&&'nextPage' in simulation?{scanPage:simulation.nextPage}:{})}});
+      await prisma.operationalAutomation.updateMany({where:{id:policy.id,version:policy.version},data:{lastEvaluatedAt:now,...(!policyDeferred&&'nextPage' in simulation?{scanPage:simulation.nextPage}:{})}});
     } catch (error) {
+      if(policy.kind==='SUBSTITUTION'&&substitutionSchema.parse(policy.configuration).waitForPublishedSchedule&&isRetryableSubstitutionConflict(error)){
+        // A deadlock/write conflict rolled the whole effect back. Retry from fresh evidence
+        // on the existing next sweep; do not consume an occurrence or disable the policy.
+        deferred=true;
+        await prisma.operationalAutomation.updateMany({where:{id:policy.id,version:policy.version},data:{lastEvaluatedAt:now}});
+        continue;
+      }
       failed++;
       await prisma.$transaction(async tx => {
         const paused = await tx.operationalAutomation.updateMany({ where: { id: policy.id, version: policy.version, enabled: true }, data: { enabled: false } });

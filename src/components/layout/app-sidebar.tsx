@@ -10,24 +10,8 @@ import { cn } from '@/lib/cn';
 
 const icons = { home: Home, book: BookOpen, shift: CalendarClock, supervision: ShieldCheck, guest: BedDouble, history: History, metrics: BarChart3, room: DoorClosed, key: KeyRound, cash: Banknote, alarm: AlarmClock, admin: Settings };
 
-export function activeModule(groups: NavGroup[], pathname: string): string | null {
-  const candidates = groups.flatMap(group => group.items).flatMap(item =>
-    [item.href, ...(item.menu ?? []).flatMap(section => section.items.map(link => link.href))]
-      .map(href => ({ root: item.href, path: href.split(/[?#]/)[0] ?? href, primary: href === item.href }))
-  ).filter(candidate => candidate.path === '/' ? pathname === '/' :
-    pathname === candidate.path || pathname.startsWith(candidate.path + '/'));
-  return candidates.sort((a, b) => b.path.length - a.path.length || Number(b.primary) - Number(a.primary))[0]?.root ?? null;
-}
-
-export function activeDestination(item: NavItem, pathname: string, search: string): string | null {
-  const params = new URLSearchParams(search);
-  const candidates = [item.href, ...(item.menu ?? []).flatMap(section => section.items.map(link => link.href))];
-  return candidates.filter(href => {
-    if (href.includes('#')) return false;
-    const url = new URL(href, 'https://navigation.invalid');
-    return url.pathname === pathname && [...url.searchParams].every(([key, value]) => params.get(key) === value);
-  }).sort((a, b) => new URL(b, 'https://navigation.invalid').searchParams.size - new URL(a, 'https://navigation.invalid').searchParams.size)[0] ?? null;
-}
+import { activeDestination, activeModule } from './navigation-state';
+export { activeDestination, activeModule } from './navigation-state';
 
 function Count({ value }: { value: number }) {
   return value > 0 ? <span className="rounded-full bg-gold-500 px-1.5 text-xs font-semibold text-petrol-950">{value > 99 ? '99+' : value}</span> : null;
@@ -43,7 +27,7 @@ function Navigation({ groups, badges, compact = false, light = false, onNavigate
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const route = pathname + '?' + search;
-  const active = activeModule(groups, pathname);
+  const active = activeModule(groups, pathname, search);
   const activeGroup = groups.findIndex(group => group.title && group.items.some(item => item.href === active));
   // Route-scoped state follows navigation, while manual closing stays closed on the current page.
   const [selection, setSelection] = useState<{ route: string; group: number | null; item: string | null } | null>(null);

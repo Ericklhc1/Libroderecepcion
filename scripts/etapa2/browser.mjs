@@ -100,7 +100,18 @@ try {
   const expiry=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Santiago',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
   await details.getByLabel('Autorización válida hasta',{exact:true}).fill(expiry);
   let operationStart=performance.now();
-  await details.getByRole('button',{name:'Guardar versión en pausa',exact:true}).click();
+  // Saving uses the document-native action adapter. Open the disclosure only
+  // on the returned document; opening it before navigation loses that state.
+  const [savedPage]=await Promise.all([
+    page.waitForResponse(response=>{
+      const request=response.request();
+      return request.method()==='GET'&&request.isNavigationRequest()&&request.resourceType()==='document'
+        &&request.frame()===page.mainFrame()&&response.url()==='http://localhost:3000/coordinacion/automatizaciones';
+    }),
+    page.waitForEvent('domcontentloaded'),
+    details.getByRole('button',{name:'Guardar versión en pausa',exact:true}).click(),
+  ]);
+  assert.equal(savedPage.status(),200,'Saved policy returns its native list document');
   let policyList=await openPolicyList();let policy=policyList.locator('article').filter({has:page.getByRole('heading',{name:policyName+' · versión 1',exact:true})});
   await policy.getByText(/^En pausa/).waitFor();
   const saveMs=Math.round(performance.now()-operationStart);assert.ok(saveMs<=3000,`Policy save visible ${saveMs} ms exceeds 3000 ms`);

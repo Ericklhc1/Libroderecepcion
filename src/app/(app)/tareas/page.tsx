@@ -9,6 +9,8 @@ import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardScroll, EmptyState } from '@/components/ui/card';
 import { Filters } from '@/components/operational/filters';
 import { QuickStatusForm } from '@/components/operational/task-actions';
+import { ListItemLink, ListNavigation } from '@/components/operational/list-navigation';
+import { listRowAnchor, operationalListHref } from '@/lib/list-navigation';
 import {
   PRIORITY_LABEL,
   PRIORITY_TONE,
@@ -135,82 +137,84 @@ export default async function TasksPage({
         extraHidden={onlyMine ? { mias: '1' } : undefined}
       />
 
-      <Card>
-        {tasks.length === 0 ? (
-          <EmptyState
-            message="No hay tareas con esos filtros."
-            hint="Crea una tarea desde las acciones rápidas."
-          />
-        ) : (
-          <CardScroll>
-            <ul className="divide-y divide-slate-100">
-            {tasks.map((task) => {
-              const open = TASK_OPEN_STATUSES.includes(task.status);
-              const scheduled = Boolean(task.startsAt && task.startsAt > new Date());
-              const overdue = isOverdue(task.dueAt, open);
-              return (
-                <li key={task.id} className="px-4 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <Link href={`/tareas/${task.id}`} className="min-w-0 flex-1 group">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs tabular text-slate-400">#{task.humanId}</span>
-                        <Badge tone={overdue ? 'critico' : TASK_STATUS_TONE[task.status]}>
-                          {overdue ? 'Vencida' : TASK_STATUS_LABEL[task.status]}
-                        </Badge>
-                        <Badge tone={PRIORITY_TONE[task.priority]} withSymbol={false}>
-                          {PRIORITY_LABEL[task.priority]}
-                        </Badge>
-                        {scheduled ? <Chip>Programada</Chip> : null}
-                        <Chip>{TASK_ORIGIN_LABEL[task.origin]}</Chip>
-                        {task.entry ? <Chip>Registro #{task.entry.humanId}</Chip> : null}
-                      </div>
-                      <p className="mt-1 font-medium text-petrol-900 group-hover:underline">
-                        {task.title}
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {task.assignee ? `Asignada a ${task.assignee.name}` : 'Sin asignar'}
-                        {task.department ? ` · ${task.department.name}` : ''}
-                        {task.startsAt ? ` · inicia ${relativeTime(task.startsAt)}` : ''}
-                        {task.dueAt
-                          ? ` · ${overdue ? 'venció' : 'vence'} ${relativeTime(task.dueAt)}`
-                          : ' · sin fecha límite'}
-                        {task._count.checklist > 0 ? ` · ${task._count.checklist} pasos` : ''}
-                        {task._count.comments > 0 ? ` · ${task._count.comments} comentarios` : ''}
-                      </p>
-                      {task.blockedReason ? (
-                        <p className="mt-1 rounded bg-orange-50 px-2 py-1 text-xs text-orange-800">
-                          Bloqueada: {task.blockedReason}
+      <ListNavigation href={operationalListHref('/tareas', params)} scope={user.id}>
+        <Card>
+          {tasks.length === 0 ? (
+            <EmptyState
+              message="No hay tareas con esos filtros."
+              hint="Crea una tarea desde las acciones rápidas."
+            />
+          ) : (
+            <CardScroll>
+              <ul className="divide-y divide-slate-100">
+              {tasks.map((task) => {
+                const open = TASK_OPEN_STATUSES.includes(task.status);
+                const scheduled = Boolean(task.startsAt && task.startsAt > new Date());
+                const overdue = isOverdue(task.dueAt, open);
+                return (
+                  <li key={task.id} className="px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <ListItemLink href={`/tareas/${task.id}`} rowAnchor={listRowAnchor('task', task.id)} className="min-w-0 flex-1 group rounded-md">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs tabular text-slate-400">#{task.humanId}</span>
+                          <Badge tone={overdue ? 'critico' : TASK_STATUS_TONE[task.status]}>
+                            {overdue ? 'Vencida' : TASK_STATUS_LABEL[task.status]}
+                          </Badge>
+                          <Badge tone={PRIORITY_TONE[task.priority]} withSymbol={false}>
+                            {PRIORITY_LABEL[task.priority]}
+                          </Badge>
+                          {scheduled ? <Chip>Programada</Chip> : null}
+                          <Chip>{TASK_ORIGIN_LABEL[task.origin]}</Chip>
+                          {task.entry ? <Chip>Registro #{task.entry.humanId}</Chip> : null}
+                        </div>
+                        <p className="mt-1 font-medium text-petrol-900 group-hover:underline">
+                          {task.title}
                         </p>
-                      ) : null}
-                    </Link>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {task.assignee ? `Asignada a ${task.assignee.name}` : 'Sin asignar'}
+                          {task.department ? ` · ${task.department.name}` : ''}
+                          {task.startsAt ? ` · inicia ${relativeTime(task.startsAt)}` : ''}
+                          {task.dueAt
+                            ? ` · ${overdue ? 'venció' : 'vence'} ${relativeTime(task.dueAt)}`
+                            : ' · sin fecha límite'}
+                          {task._count.checklist > 0 ? ` · ${task._count.checklist} pasos` : ''}
+                          {task._count.comments > 0 ? ` · ${task._count.comments} comentarios` : ''}
+                        </p>
+                        {task.blockedReason ? (
+                          <p className="mt-1 rounded bg-orange-50 px-2 py-1 text-xs text-orange-800">
+                            Bloqueada: {task.blockedReason}
+                          </p>
+                        ) : null}
+                      </ListItemLink>
 
-                    <div className="flex flex-wrap gap-1.5 no-print">
-                      {!scheduled && task.status === TaskStatus.PENDIENTE &&
-                       (Boolean(task.evidenceRequired) || !user.permissions.includes('task.close')) ? (
-                        <QuickStatusForm
-                          taskId={task.id}
-                          status={TaskStatus.EN_CURSO}
-                          label="Tomar"
-                          variant="secondary"
-                        />
-                      ) : null}
-                      {!scheduled && open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
-                        <QuickStatusForm
-                          taskId={task.id}
-                          status={TaskStatus.COMPLETADA}
-                          label="Resolver"
-                          variant="gold"
-                        />
-                      ) : null}
+                      <div className="flex flex-wrap gap-1.5 no-print">
+                        {!scheduled && task.status === TaskStatus.PENDIENTE &&
+                         (Boolean(task.evidenceRequired) || !user.permissions.includes('task.close')) ? (
+                          <QuickStatusForm
+                            taskId={task.id}
+                            status={TaskStatus.EN_CURSO}
+                            label="Tomar"
+                            variant="secondary"
+                          />
+                        ) : null}
+                        {!scheduled && open && task.status !== TaskStatus.REALIZADA && !task.evidenceRequired && user.permissions.includes('task.close') ? (
+                          <QuickStatusForm
+                            taskId={task.id}
+                            status={TaskStatus.COMPLETADA}
+                            label="Resolver"
+                            variant="gold"
+                          />
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                </li>
-              );
-            })}
-            </ul>
-          </CardScroll>
-        )}
-      </Card>
+                  </li>
+                );
+              })}
+              </ul>
+            </CardScroll>
+          )}
+        </Card>
+      </ListNavigation>
     </div>
   );
 }

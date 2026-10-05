@@ -11,6 +11,8 @@ import { prisma } from '@/lib/prisma';
 import { Card, CardHeader, CardScroll, EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { BookList } from '@/components/operational/book-row';
+import { ListNavigation } from '@/components/operational/list-navigation';
+import { operationalListHref } from '@/lib/list-navigation';
 import { Filters } from '@/components/operational/filters';
 import { AUDIT_ACTION_LABEL } from '@/domain/labels';
 import { formatDateTime } from '@/lib/format';
@@ -109,7 +111,7 @@ export default async function HistoryPage({
           <EmptyState message="Sin resultados para esta búsqueda." />
         ) : (
           <CardScroll>
-            <BookList items={result.items} />
+            <ListNavigation href={operationalListHref('/historial', params)} scope={user.id}><BookList items={result.items} /></ListNavigation>
           </CardScroll>
         )}
         {result.page > 1 || result.hasMore ? (

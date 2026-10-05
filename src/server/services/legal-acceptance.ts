@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { AuditAction } from '@prisma/client';
+import { AuditAction, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import {
   TERMS_DOCUMENT,
@@ -9,8 +9,8 @@ import {
 } from '@/domain/legal';
 import { recordAudit } from '@/server/audit';
 
-export async function hasAcceptedCurrentTerms(userId: string): Promise<boolean> {
-  const acceptance = await prisma.legalAcceptance.findUnique({
+export async function hasAcceptedCurrentTerms(userId: string, client: Prisma.TransactionClient = prisma): Promise<boolean> {
+  const acceptance = await client.legalAcceptance.findUnique({
     where: {
       userId_document_version: {
         userId,

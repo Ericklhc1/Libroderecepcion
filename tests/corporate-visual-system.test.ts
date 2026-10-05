@@ -2,19 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 describe('sistema visual corporativo AROH', () => {
-  it('mantiene la paleta azul noche/cian y reduce los radios globales', () => {
+  it('mantiene la paleta azul noche/cian con geometría FNS compartida', () => {
     const config = readFileSync('tailwind.config.ts', 'utf8');
     expect(config).toContain("500: '#06b6d4'");
     expect(config).toContain("950: '#091820'");
-    expect(config).toContain("lg: '5px'");
-    expect(config).toContain("'2xl': '8px'");
+    expect(config).toContain("lg: '8px'");
+    expect(config).toContain("'2xl': '12px'");
   });
 
   it('usa superficies estructuradas y fondo frío', () => {
     const css = readFileSync('src/app/globals.css', 'utf8');
-    expect(css).toContain('background: #f3f6f8');
-    expect(css).toContain('border border-slate-300 bg-white shadow-card');
-    expect(css).toContain('background-color: #f8fafc');
+    expect(css).toContain('background: var(--aroh-canvas)');
+    expect(css).toContain('--aroh-canvas: #f2f6f9');
+    expect(css).toContain('--aroh-canvas: #0b1c29');
+    expect(css).toContain('border border-slate-200 bg-white shadow-card');
+    expect(css).toContain('background-color: var(--aroh-subtle)');
   });
 
   it('da al sidebar de escritorio el tratamiento oscuro corporativo', () => {
@@ -31,7 +33,8 @@ describe('sistema visual corporativo AROH', () => {
     expect(layout).toContain('AROH');
     expect(layout).toContain('Central IA');
     expect(layout).toContain('hotelName={hotelName}');
-    expect(layout).toContain('<AppSidebar groups={groups} badges={badges}');
+    expect(layout).toContain('<DesktopNav groups={groups} badges={badges} />');
+    expect(layout).not.toContain('<AppSidebar');
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('bg-petrol-950 lg:flex');
   });
 });

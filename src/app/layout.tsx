@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import { APPEARANCE_INIT_SCRIPT } from '@/domain/appearance';
+import { AppearanceProvider } from '@/components/appearance/appearance-provider';
 
 /**
  * Inter es la única familia tipográfica del sistema. La jerarquía se construye
@@ -39,8 +41,11 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="es" className={inter.variable}>
-      <body>{children}</body>
+    <html lang="es" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <script id="aroh-appearance" dangerouslySetInnerHTML={{ __html: APPEARANCE_INIT_SCRIPT }} />
+      </head>
+      <body><AppearanceProvider>{children}</AppearanceProvider></body>
     </html>
   );
 }

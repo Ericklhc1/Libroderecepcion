@@ -8,7 +8,10 @@ import { SubjectActions, SubjectContext } from '@/components/operational/subject
 import { nextWorkAction } from '@/domain/coordination';
 import { notFound } from 'next/navigation';
 import { EntryStatus, EntryType, FollowUpStatus, OperationalAlarmStatus } from '@prisma/client';
-import { ArrowLeft, CalendarClock, Trash2 } from 'lucide-react';
+import { CalendarClock, Trash2 } from 'lucide-react';
+import { ListReturnLink } from '@/components/operational/list-navigation';
+import { detailHrefWithReturnContext, safeListReturnHref } from '@/lib/list-navigation';
+import type { RawSearchParams } from '@/lib/search-params';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
 import { getSubjectEntry } from '@/server/services/entries';
@@ -65,11 +68,15 @@ export const dynamic = 'force-dynamic';
 
 export default async function EntryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   const user = await requirePageUser();
   const { id } = await params;
+  const returnContext = (await searchParams).desdeLista;
+  const returnHref = safeListReturnHref(returnContext, '/libro');
 
   const entry = await getSubjectEntry(user,id).catch(() => null);
   if (!entry) notFound();
@@ -156,13 +163,7 @@ export default async function EntryDetailPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <Link
-        href="/libro"
-        className="inline-flex items-center gap-1 text-sm font-medium text-petrol-600 hover:underline"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Volver al libro operativo
-      </Link>
+      <ListReturnLink href={returnHref} scope={user.id} />
 
       {entry.deletedAt ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-200 px-4 py-3 text-sm text-slate-700">
@@ -261,7 +262,7 @@ export default async function EntryDetailPage({
         {!entry.deletedAt ? (
           <SubjectActions primary={
             activeHk ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={canAccessHousekeeping(user) ? `/admin/housekeeping?area=${activeHk.departmentId??''}&aviso=${activeHk.humanId}` : '#atencion-area'}>Ver atención del área</Link>
-            : activeAttentionTask ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={`/tareas/${activeAttentionTask.id}`}>Continuar atención</Link>
+            : activeAttentionTask ? <Link className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={detailHrefWithReturnContext(`/tareas/${activeAttentionTask.id}`, returnContext)}>Continuar atención</Link>
             : !ENTRY_OPEN_STATUSES.includes(entry.status) ? <a href={receivedResult ? "#resultado-asunto" : "#historial-asunto"} className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">{receivedResult ? "Ver resultado" : "Ver historial"}</a>
             : returnedWork ? (canFinish ? <Dialog title="Revisar y cerrar el asunto" trigger="Revisar y cerrar" triggerVariant="gold" width="sm" description="El resultado del área está incluido. Confirma cómo quedó el asunto; sus controles y seguimientos se mantienen."><EntryStatusForm entryId={entry.id} currentStatus={entry.status} type={entry.type} resolution={receivedResult??null} rootCause={entry.rootCause} targetStatus={EntryStatus.CERRADO} label="Revisar y cerrar"/></Dialog> : <a href="#resultado-asunto" className="rounded-md bg-petrol-800 px-3 py-2 text-sm font-semibold text-white">Ver resultado recibido</a>)
 
@@ -548,7 +549,7 @@ export default async function EntryDetailPage({
               <ul className="divide-y divide-slate-100">
                 {tasks.map((task) => (
                   <li key={task.id}>
-                    <Link href={`/tareas/${task.id}`} className="block px-4 py-3 hover:bg-slate-50">
+                    <Link href={detailHrefWithReturnContext(`/tareas/${task.id}`, returnContext)} className="block px-4 py-3 hover:bg-slate-50">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs tabular text-slate-400">#{task.humanId}</span>
                         <Badge tone={TASK_STATUS_TONE[task.status]}>

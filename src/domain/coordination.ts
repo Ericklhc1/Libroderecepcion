@@ -1,5 +1,7 @@
 import { hotelWallDateTime } from './time';
 export const RECEIPT_MINUTES = 30;
+export const COORDINATION_PAGE_SIZE = 25;
+export const COORDINATION_MAX_PAGE = 100;
 export type CoordinationKind = 'entry' | 'task' | 'housekeeping' | 'followup';
 export function receiptDueAt(assignedAt: Date | null, startsAt: Date | null = null): Date | null {
   if (!assignedAt) return null;

@@ -51,7 +51,7 @@ try{
         const work=await db.housekeepingRequest.findUniqueOrThrow({where:{sourceEntryId:source.id}});
         assert.equal(work.roomId,room.id);assert.equal(work.title,null);assert.equal(work.description,null);
         await origin.page.getByRole('link',{name:'Ver atención del área',exact:true}).click();
-        const card=origin.page.locator(`#aviso-${work.humanId}`);
+        const card=origin.page.locator(`[data-housekeeping-detail="${work.id}"]`);
         await card.getByRole('button',{name:'Asignar / reasignar',exact:true}).waitFor();
         const count=await card.locator('[aria-label="Acciones del asunto"] button,[aria-label="Acciones del asunto"] a,[aria-label="Acciones del asunto"] summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).length);
         assert.ok(count<=4,'Housekeeping prioriza una acción y conserva Más');
@@ -60,18 +60,29 @@ try{
         const assignedBody=await assign.json();assert.equal(assign.status(),200,assignedBody.error);assert.match(assignedBody.reply,/Completado/);
         const workHref=`http://localhost:3000/admin/housekeeping?area=${area.id}&aviso=${work.humanId}`;
         await maid.page.goto(workHref);
-        const maidCard=maid.page.locator(`#aviso-${work.humanId}`);
-        await maidCard.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
-        await maidCard.getByText('Recibido',{exact:true}).waitFor();
+        const maidCard=maid.page.locator(`[data-housekeeping-detail="${work.id}"]`);
+        const receiveButton=maidCard.getByRole('button',{name:'Confirmar recepción',exact:true});
+        const receiveVersion=Number(await receiveButton.locator('xpath=ancestor::form').locator('input[name=version]').inputValue());
+        await receiveButton.click();
+        // The panel's local status notice disappears once refreshed props catch
+        // up. Assert the canonical row badge plus persisted state and revision.
+        const maidSummary=maid.page.locator(`[data-worklist-row="registro-housekeeping-${work.id}"] [data-list-item]`);
+        await maidSummary.getByText('Recibido',{exact:true}).waitFor();
+        assert.equal(await maidCard.getByRole('button',{name:'Confirmar recepción',exact:true}).count(),0,'Received work no longer offers receipt');
         const startButton=maidCard.getByRole('button',{name:'Comenzar',exact:true});
         const beforeStart=await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id},select:{status:true,version:true,sourceVersion:true}});
+        assert.equal(beforeStart.status,'RECIBIDO');
+        assert.ok(beforeStart.version>receiveVersion,'Receipt persists a new revision before starting');
         const startVersion=await startButton.locator('xpath=ancestor::form').locator('input[name=version]').inputValue();
         assert.equal(Number(startVersion),beforeStart.version,'El formulario de la siguiente acción usa la revisión recibida');
         await startButton.click();
-        try { await maidCard.getByText('En proceso',{exact:true}).waitFor(); }
+        try { await maidSummary.getByText('En proceso',{exact:true}).waitFor(); }
         catch(error){console.error('HK start diagnostic',JSON.stringify({before:beforeStart,formVersion:startVersion,after:await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id},select:{status:true,version:true,sourceVersion:true}}),visible:await maidCard.innerText(),forms:await maidCard.locator('form').evaluateAll(forms=>forms.map(form=>Object.fromEntries(new FormData(form))))}));throw error;}
+        const started=await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id},select:{status:true,version:true}});
+        assert.equal(started.status,'EN_GESTION');
+        assert.ok(started.version>beforeStart.version,'Starting persists its own revision');
         await maidCard.getByRole('button',{name:'Marcar terminado',exact:true}).click();
-        const resultDialog=maid.page.getByRole('dialog');
+        const resultDialog=maid.page.getByRole('dialog',{name:'Marcar terminado',exact:true});
         await resultDialog.locator('textarea[name=note]').fill('Necesidad atendida y comprobada');
         await resultDialog.getByRole('button',{name:'Confirmar',exact:true}).click();
         await resultDialog.waitFor({state:'hidden'});

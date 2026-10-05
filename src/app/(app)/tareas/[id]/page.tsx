@@ -5,7 +5,10 @@ import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import { nextWorkAction } from '@/domain/coordination';
 import { notFound } from 'next/navigation';
 import { OperationalAlarmStatus, TaskStatus } from '@prisma/client';
-import { ArrowLeft, Trash2 } from 'lucide-react';
+import { Trash2 } from 'lucide-react';
+import { ListReturnLink } from '@/components/operational/list-navigation';
+import { detailHrefWithReturnContext, safeListReturnHref } from '@/lib/list-navigation';
+import type { RawSearchParams } from '@/lib/search-params';
 import { requirePageUser } from '@/server/auth/guard';
 import { prisma } from '@/lib/prisma';
 import { getTask } from '@/server/services/tasks';
@@ -51,11 +54,15 @@ export const dynamic = 'force-dynamic';
 
 export default async function TaskDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   const user = await requirePageUser();
   const { id } = await params;
+  const returnContext = (await searchParams).desdeLista;
+  const returnHref = safeListReturnHref(returnContext, '/tareas');
 
   const task = await getTask(id,user).catch(() => null);
   if (!task || !await prisma.task.count({where:{id:task.id,AND:[taskFollowUpReadWhere(user)]}})) notFound();
@@ -123,13 +130,7 @@ export default async function TaskDetailPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Link
-        href="/tareas"
-        className="inline-flex items-center gap-1 text-sm font-medium text-petrol-600 hover:underline"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-        Volver a tareas
-      </Link>
+      <ListReturnLink href={returnHref} scope={user.id} />
 
       {task.deletedAt ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-200 px-4 py-3 text-sm text-slate-700">
@@ -229,7 +230,7 @@ export default async function TaskDetailPage({
                 <dt className="text-xs font-medium text-slate-500">Registro origen</dt>
                 <dd>
                   <Link
-                    href={`/libro/${task.entry.id}`}
+                    href={detailHrefWithReturnContext(`/libro/${task.entry.id}`, returnContext)}
                     className="font-medium text-petrol-600 hover:underline"
                   >
                     #{task.entry.humanId} · {task.entry.title}

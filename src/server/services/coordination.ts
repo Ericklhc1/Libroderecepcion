@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { canAccessHousekeeping } from '@/domain/housekeeping';
-import { elapsedMinutes, nextWorkAction, receiptDueAt, hkReceiptAvailableAt, RECEIPT_MINUTES, type CoordinationKind } from '@/domain/coordination';
+import { elapsedMinutes, nextWorkAction, receiptDueAt, hkReceiptAvailableAt, RECEIPT_MINUTES, COORDINATION_PAGE_SIZE, COORDINATION_MAX_PAGE, type CoordinationKind } from '@/domain/coordination';
 import { coordinationEntries, coordinationTasks, coordinationFollowUps, canCoordinate } from './coordination-access';
 import { hkWorkVisibility } from './housekeeping-work';
 import { coverageSlots, scheduledAt } from '@/domain/schedule';
@@ -28,8 +28,6 @@ export type CoordinationRow = {
 
 export type CoordinationView='all'|'reception'|'unassigned'|'unreceived'|'blocked'|'clarification'|'carryover';
 export type CoordinationState='abierto'|'atencion'|'bloqueado'|'revision'|'resuelto';
-const COORDINATION_PAGE_SIZE=25;
-const COORDINATION_MAX_PAGE=100;
 const COORDINATION_IDENTITY_SCAN_LIMIT=5000;
 export async function getCoordinationBoard(user: CurrentUser, input: { departmentId?: string; mine?: boolean; page?: number; history?: boolean; view?:CoordinationView;q?:string;ownerId?:string;state?:CoordinationState;date?:string } = {}) {
   const states:Record<CoordinationState,{entry:Prisma.EnumEntryStatusFilter['in'];task:Prisma.EnumTaskStatusFilter['in'];hk:string[];follow:Prisma.EnumFollowUpStatusFilter['in']}>= {
@@ -167,7 +165,7 @@ export async function getCoordinationTeam(user: CurrentUser, departmentId: strin
 
 type Mutation = { kind:'entry'|'task'; id:string; updatedAt:Date; requestKey:string; action:'RECIBIR'|'ASIGNAR'|'SIGUIENTE'|'ACLARACION'|'RESPONDER_ACLARACION'; ownerId?:string; nextAction:string };
 export async function coordinateWork(user: CurrentUser, input: Mutation, transaction?: Prisma.TransactionClient) {
-  await assertReceptionOperationPermission(user, input.kind==='task'?'task.edit':'entry.edit');
+  await assertReceptionOperationPermission(user, input.kind==='task'?'task.edit':'entry.edit', transaction ?? prisma);
   if (!input.nextAction.trim()) throw new RuleError('Indica la siguiente acción para quien continúa.');
   const perform = async (tx:Prisma.TransactionClient)=>{
     // Lock before checking revision and permissions: no stale assignment or receipt can win.

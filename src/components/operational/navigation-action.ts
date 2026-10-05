@@ -1,5 +1,6 @@
 'use client';
 import type { ActionState } from '@/server/action';
+import { detailHrefWithReturnContext, operationalListHref, listRowAnchor } from '@/lib/list-navigation';
 
 async function submit(procedure: 'coordination'|'task-status'|'automation-save'|'automation-simulate'|'automation-state'|'custody-create'|'custody-change'|'handover-missing'|'handover-missing-approve'|'subject-attention', form: FormData): Promise<ActionState> {
   try {
@@ -12,6 +13,35 @@ async function submit(procedure: 'coordination'|'task-status'|'automation-save'|
     if (typeof result.navigateTo!=='string') throw new Error('Missing destination');
     const destination=new URL(result.navigateTo,window.location.origin);
     if(destination.origin!==window.location.origin)throw new Error('Invalid destination');
+    if (procedure === 'subject-attention' && destination.pathname === window.location.pathname) {
+      const current = new URL(window.location.href);
+      const context = current.searchParams.getAll('desdeLista');
+      const contextual = detailHrefWithReturnContext(destination.pathname + destination.search + destination.hash, context.length === 1 ? context[0] : undefined);
+      destination.search = new URL(contextual, window.location.origin).search;
+    }
+    if ((procedure === 'custody-create' || procedure === 'custody-change') && destination.pathname === '/custodia' && window.location.pathname === '/custodia') {
+      const current = new URL(window.location.href);
+      const params: Record<string, string> = {};
+      for (const key of ['estado', 'q', 'pagina']) {
+        const values = current.searchParams.getAll(key);
+        if (values.length === 1 && values[0]) params[key] = values[0];
+      }
+      const contextual = new URL(operationalListHref('/custodia', params), window.location.origin);
+      destination.search = contextual.search;
+      // A fragment is only a focus hint. The next page decides whether the row
+      // is still visible under its native status and permission filters.
+      destination.hash = procedure === 'custody-change' && typeof result.id === 'string' && /^[a-zA-Z0-9_-]+$/.test(result.id)
+        ? listRowAnchor('custody', result.id) : '';
+      if (destination.search === current.search && destination.hash) {
+        // Assigning a fragment on the same document never refetches its rows,
+        // even when that fragment is already current. Drop the panel marker so
+        // a surviving row returns as a focus hint, then read the saved revision.
+        // Next's native-history adapter preserves its own router metadata.
+        window.history.replaceState(null, '', destination.href);
+        window.location.reload();
+        return result;
+      }
+    }
     // A document navigation does not depend on the stalled RSC action transition.
     window.location.assign(destination.href);
     return result;

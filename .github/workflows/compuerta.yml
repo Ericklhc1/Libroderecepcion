@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - main
+      # Temporary, isolated verification: no PR, no deploy, no persistent CI storage.
+      - codex/aroh-fns-20261005
+      - codex/aroh-future-handoff-20261005
   pull_request:
     branches:
       - main
@@ -66,7 +69,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
+          cache: ${{ github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' && 'npm' || '' }}
 
       - name: Validar infraestructura oficial
         run: |
@@ -99,7 +102,10 @@ jobs:
           fi
 
       - name: Dependencias
-        run: npm ci
+        run: |
+          npm ci
+          node scripts/framework/react-ping-backport.mjs --check
+          node --input-type=module -e "import assert from 'node:assert/strict'; import { reactPingBackport } from './scripts/framework/react-ping-backport.mjs'; assert.equal(reactPingBackport({ projectRoot: process.cwd(), mode: 'apply' }).patched, 0); console.log('Second runtime check made no changes');"
 
       - name: Bloquear vulnerabilidades críticas
         run: npm audit --omit=dev --audit-level=critical
@@ -119,9 +125,12 @@ jobs:
           npm run typecheck 2>&1 | tee etapa3-typecheck.log
 
       - name: Regresiones
-        run: npm run test
+        run: |
+          npm run test
+          node --test scripts/ui/hydration-diagnostics.test.mjs scripts/framework/react-ping-backport.test.mjs scripts/framework/verify-react-ping-build.test.mjs
 
       - name: Build
+        id: production_build
         env:
           NODE_ENV: production
         run: npm run build
@@ -137,13 +146,14 @@ jobs:
         env:
           NODE_ENV: production
         run: |
-          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" npm run start -- --hostname localhost > /tmp/etapa1-server.log 2>&1 &
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/etapa1-server.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
             sleep 1
           done
+          node scripts/framework/verify-react-ping-build.mjs --served
           journey_status=0
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa1/browser.mjs; then
             grep -F '[etapa2-timing]' /tmp/etapa1-server.log || true
@@ -181,8 +191,115 @@ jobs:
           fi
           exit "$journey_status"
 
+      - name: Apariencia y continuidad de listas y suplencias
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          npx tsx scripts/etapa1/fixture.mts
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/appearance-context-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          journey_status=0
+          for script in appearance-browser list-context-browser substitution-candidates-browser; do
+            if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
+              journey_status=1
+              echo "Synthetic browser failure: $script; recent local server diagnostics"
+              tail -60 /tmp/appearance-context-server.log
+            fi
+          done
+          exit "$journey_status"
+
+      - name: Navegación funcional y bandejas de trabajo
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          journey_status=0
+          for script in module-navigation-browser context-worklist-browser housekeeping-worklist-browser room-context-browser; do
+            npx tsx scripts/etapa1/fixture.mts
+            NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/functional-surface-server.log 2>&1 &
+            server_pid=$!
+            trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+            for i in $(seq 1 60); do
+              if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+              sleep 1
+            done
+            if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
+              journey_status=1
+              echo "Synthetic browser failure: $script; recent local server diagnostics"
+              tail -60 /tmp/functional-surface-server.log
+            fi
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          done
+          exit "$journey_status"
+
+      - name: Custodia y consulta con contexto
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          journey_status=0
+          for script in custody-worklist-browser search-context-browser history-context-browser; do
+            npx tsx scripts/etapa1/fixture.mts
+            NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/custody-search-server.log 2>&1 &
+            server_pid=$!
+            trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+            for i in $(seq 1 60); do
+              if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+              sleep 1
+            done
+            if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
+              journey_status=1
+              echo "Synthetic browser failure: $script; recent local server diagnostics"
+              tail -60 /tmp/custody-search-server.log
+            fi
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          done
+          exit "$journey_status"
+
+      - name: Diagnóstico de estado SPA y Flight sin salida externa
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' && github.ref == 'refs/heads/codex/aroh-fns-20261005' }}
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          npx tsx scripts/etapa1/fixture.mts
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/navigation-transport-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/navigation-transport-probe.mjs
+
+      - name: Evidencia temporal en logs sin almacenamiento adicional
+        if: ${{ always() && (github.ref == 'refs/heads/codex/aroh-fns-20261005' || github.ref == 'refs/heads/codex/aroh-future-handoff-20261005' || github.head_ref == 'codex/aroh-future-handoff-20261005') }}
+        run: |
+          echo "Candidate commit: $GITHUB_SHA"
+          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-hydration-diagnostics.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json module-navigation-browser-results.json /tmp/context-worklist-browser-results.json housekeeping-worklist-browser-results.json room-context-browser-results.json custody-worklist-browser-results.json /tmp/search-context-browser-results.json history-context-browser-results.json; do
+            if [ -f "$file" ]; then
+              printf '\n=== %s ===\n' "$file"
+              cat "$file"
+            fi
+          done
+
       - name: Evidencia de recorridos sin credenciales
-        if: always()
+        if: ${{ always() && github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' }}
         uses: actions/upload-artifact@v4
         with:
           name: etapa1-browser-${{ github.sha }}
@@ -199,5 +316,15 @@ jobs:
             etapa4-intent-browser-results.json
             etapa4-surfaces-browser-results.json
             etapa3-typecheck.log
+            appearance-browser-results.json
+            /tmp/list-context-browser-results.json
+            substitution-candidates-browser-results.json
+            module-navigation-browser-results.json
+            /tmp/context-worklist-browser-results.json
+            housekeeping-worklist-browser-results.json
+            room-context-browser-results.json
+            custody-worklist-browser-results.json
+            search-context-browser-results.json
+            history-context-browser-results.json
           if-no-files-found: warn
           retention-days: 7

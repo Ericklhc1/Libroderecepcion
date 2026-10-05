@@ -42,7 +42,8 @@ export async function simulateAutomationAction(_: ActionState|null, form: FormDa
       }
       lines.push(`${effect.action==='PROPOSE'?'Proponer suplencia para':effect.action==='APPLY'?'Reasignar':'Escalar'} ${effect.title} a ${effect.responsible}: ${effect.href}. ${effect.eligible?'Candidato del área; el acceso al origen se verifica al ejecutar.':'Sin destinatario elegible.'}`);
     }
-    return { ok: true, message: `Simulación: ${result.effects.length} registros observados. ${result.complete?'Alcance completo.':'Resultado parcial: hay más registros o evidencia pendiente.'} ${result.explanation}\n${lines.join('\n')}${result.effects.length>10?'\nVista previa limitada a 10 registros; no se ha ejecutado ninguno.':''}` };
+    const countLabel='waitingObserved' in result?'registros observados':'efectos propuestos';
+    return { ok: true, message: `Simulación: ${result.effects.length} ${countLabel}. ${result.complete?'Alcance completo.':'Resultado parcial: hay más registros o evidencia pendiente.'} ${result.explanation}\n${lines.join('\n')}${result.effects.length>10?'\nVista previa limitada a 10 registros; no se ha ejecutado ninguno.':''}` };
   });
 }
 export async function setAutomationStateAction(_: ActionState|null, form: FormData): Promise<ActionState> {

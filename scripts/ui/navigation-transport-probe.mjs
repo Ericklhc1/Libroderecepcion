@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { watchSyntheticNavigation } from './navigation-diagnostics.mjs';
+import { readClientRouterMetadata, replaySyntheticFlight } from './navigation-state-metadata.mjs';
 
 const base = 'http://localhost:3000';
 const blockedPolls = ['/api/notifications/stream', '/api/alarms', '/api/auth/pulse'];
@@ -58,6 +59,7 @@ export async function configureSyntheticTransport(context, page, routed) {
 async function main() {
   await import('../etapa1/guard.cjs');
   const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
+  const expectedBuildId = readFileSync('.next/BUILD_ID', 'utf8').trim();
   const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
   const proxy = createDenyProxy();
   let browser;
@@ -75,7 +77,9 @@ async function main() {
       headless: true,
       proxy: { server: `http://127.0.0.1:${address.port}`, bypass: '<-loopback>,localhost:3000' },
     });
-    for (const routed of [true, false]) {
+    // The recorded A/B run excluded Fetch interception as a sufficient cause.
+    // Keep only the un-intercepted control while inspecting the stalled state.
+    for (const routed of [false]) {
       const mode = routed ? 'A-context-route' : 'B-network-domain';
       stage = mode + '-context';
       const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: 'block' });
@@ -92,6 +96,11 @@ async function main() {
         await context.addCookies([{ name: 'lor_session', value: fixture.users.admin.token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' }]);
         await configureSyntheticTransport(context, page, routed);
         const report = await watchSyntheticNavigation(page);
+        let targetRequest = null;
+        page.on('request', request => {
+          const url = new URL(request.url());
+          if (url.origin === base && url.pathname === '/libro' && url.searchParams.get('clase') === 'task' && request.headers().rsc === '1' && request.headers()['next-router-prefetch'] !== '1') targetRequest = request;
+        });
         stage = mode + '-source';
         await page.goto(base + '/libro?clase=entry&tipo=INCIDENCIA');
         assert.equal(new URL(page.url()).pathname, '/libro', 'Synthetic session must pass authentication');
@@ -113,14 +122,18 @@ async function main() {
         } catch (error) {
           failure = error.name;
           await report(stage);
+          const router = await page.evaluate(readClientRouterMetadata, expectedBuildId).catch(() => ({ available: false, reason: 'inspection-unavailable' }));
+          console.log('NAVIGATION_ROUTER_METADATA ' + JSON.stringify({ mode, router }));
+          const flight = await replaySyntheticFlight(page, targetRequest, expectedBuildId);
+          console.log('NAVIGATION_FLIGHT_METADATA ' + JSON.stringify({ mode, repeatedReadOnlyRequest: true, flight }));
         }
         const sameDocument = (await page.evaluate(() => performance.timeOrigin)) === origin;
         outcomes.push({ mode, navigated, sameDocument, failure, elapsedMs: Date.now() - start, path: new URL(page.url()).pathname, timeoutMs: 12000 });
         console.log('NAVIGATION_TRANSPORT_OBSERVATION ' + JSON.stringify(outcomes.at(-1)));
       } finally { await context.close(); }
     }
-    console.log('NAVIGATION_TRANSPORT_COMPARISON ' + JSON.stringify({ outcomes, proxyDenials: proxy.count(), applicationChanged: false }));
-    assert.ok(outcomes.every(result => result.navigated && result.sameDocument), 'Transport probe retains real SPA success requirements in both cases');
+    console.log('NAVIGATION_STATE_PROBE_SUMMARY ' + JSON.stringify({ outcomes, proxyDenials: proxy.count(), applicationChanged: false }));
+    assert.ok(outcomes.every(result => result.navigated && result.sameDocument), 'State probe retains the real SPA success requirement');
   } catch (error) {
     // The existing journeys remain the gates. This probe also fails explicitly;
     // diagnostics never print a session token, a response body or an error stack.

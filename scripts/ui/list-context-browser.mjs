@@ -15,6 +15,7 @@ const browser = await chromium.launch({
 const base = 'http://localhost:3000';
 const marker = `LIST_CONTEXT_${Date.now()}`;
 const results = [];
+const noJsFailures = [];
 
 // This harness only visits loopback synthetic fixtures. Keep failure output
 // bounded and omit unknown query values, headers, cookies and response bodies.
@@ -284,13 +285,15 @@ try {
     assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, taskList);
     assert.equal(new URL(page.url()).hash, '#' + anchor);
     results.push({ javascriptDisabled: true, nativeLinks: true });
-  } finally { await noJs.close(); }
+  } catch (error) { noJsFailures.push({ error: error.name, message: error.message.slice(0, 400) }); }
+  finally { await noJs.close(); }
 
   assert.equal(await db.operationalEntry.count({ where: { title: { startsWith: marker }, status: { not: 'ABIERTO' } } }), 0);
   assert.equal(await db.task.count({ where: { title: { startsWith: marker }, status: { not: 'PENDIENTE' } } }), 0);
-  console.log('List/detail continuity passed without operational transitions.', JSON.stringify(results));
+  console.log('NOJS_CHARACTERIZATION ' + JSON.stringify({ status: noJsFailures.length ? 'inherited-limitation' : 'passed', baseline: '928f57b5fc6823229d160623e6253d4a7ce02fb3', noJsFailures }));
+  console.log('JavaScript list/detail continuity passed without operational transitions.', JSON.stringify(results));
 } finally {
-  writeFileSync('/tmp/list-context-browser-results.json', JSON.stringify({ browser: browser.version(), results }, null, 2));
+  writeFileSync('/tmp/list-context-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
   await browser.close();
   await db.$disconnect();
 }

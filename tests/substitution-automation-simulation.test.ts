@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { hotelDateKey } from '@/domain/time';
 import { simulateAutomation, runOperationalAutomations } from '@/server/services/operational-automation';
 
 const mocks=vi.hoisted(()=>({
-  db:{operationalAutomation:{findFirst:vi.fn(),findMany:vi.fn(),updateMany:vi.fn()},operationalAutomationRun:{findMany:vi.fn(),upsert:vi.fn()},department:{count:vi.fn()},user:{findFirst:vi.fn()},auditLog:{create:vi.fn()},$transaction:vi.fn()},
+  db:{operationalAutomation:{findFirst:vi.fn(),findMany:vi.fn(),updateMany:vi.fn()},operationalAutomationRun:{findMany:vi.fn(),upsert:vi.fn()},department:{count:vi.fn()},user:{findFirst:vi.fn(),findUnique:vi.fn()},auditLog:{create:vi.fn()},$transaction:vi.fn()},
   board:vi.fn(),preview:vi.fn(),readWork:vi.fn(),permission:vi.fn(),
 }));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
@@ -36,6 +37,7 @@ beforeEach(()=>{
   mocks.db.department.count.mockResolvedValue(1);
   mocks.db.$transaction.mockImplementation(async fn=>fn(mocks.db));
   mocks.db.user.findFirst.mockResolvedValue({id:actor.id,name:'Owner',roleId:'role',mustChangePassword:false,departmentId:'area',role:{key:'CUSTOM',name:'Actor',level:1,operational:true,permissions:[{permission:{key:'system.configure'}}]}});
+  mocks.db.user.findUnique.mockResolvedValue({role:{key:'CUSTOM',permissions:[]}});
   mocks.board.mockResolvedValue({rows:[row('wait'),row('intervention')],page:1,hasMore:false});
   mocks.readWork.mockImplementation(async(_actor,_kind,id)=>({id}));
   mocks.preview.mockImplementation(async(_actor,_policy,work)=>preview(work.id==='wait'?'FUTURE_SLOT':'NO_SLOT'));
@@ -79,8 +81,21 @@ describe('vista previa de la acción: evidencia tipada y límite humano',()=>{
     const result=await simulateAutomationAction(null,form);
     expect(result.ok).toBe(true);
     if(!result.ok)throw new Error('La simulación no confirmó la lectura.');
+    expect(result.message).toContain('Simulación: 2 efectos propuestos.');
     expect(result.message).toContain('Escalar wait a Owner');
     expect(result.message).not.toContain('próxima franja');
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+  });
+  it('conserva el encabezado de procedimientos esperado por el recorrido nativo de Etapa 2',async()=>{
+    mocks.db.operationalAutomation.findFirst.mockResolvedValue({...policy(),kind:'PROCEDURE',configuration:{title:'Procedimiento sintético',description:'Conservar el procedimiento nativo',ownerId:actor.id,priority:'MEDIA',nextAction:'Revisar pendiente original',evidenceRequired:'Resultado de revisión',checklist:['Revisar'],startDate:hotelDateKey(now),localTime:'00:00',weekdays:[0,1,2,3,4,5,6],deadlineMinutes:60}});
+    const {simulateAutomationAction}=await import('@/server/actions/operational-automation');
+    const form=new FormData();form.set('id','policy');
+    const result=await simulateAutomationAction(null,form);
+    expect(result.ok).toBe(true);
+    if(!result.ok)throw new Error('La simulación no confirmó la lectura.');
+    expect(result.message).toContain('Simulación: 1 efectos propuestos.');
+    expect(result.message).toContain('Crear tarea:');
+    expect(result.message).not.toContain('registros observados');
     expect(mocks.db.$transaction).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
 import type { Prisma } from '@prisma/client';
-import type { z } from 'zod';
+import { z } from 'zod';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma, createUser, resetOperationalData, seedCatalog } from './helpers';
 import { prisma as servicePrisma } from '@/lib/prisma';
@@ -31,6 +35,17 @@ const SLOT_DAY = '2090-10-02';
 const BASE_TIME = hotelWallDateTime(ORIGINAL_DAY, 8);
 type Configuration = z.input<typeof substitutionSchema>;
 
+// Execute only the baseline's schema declarations, using its exact committed
+// source. No server, database, provider or time helper is invoked by this reader.
+const baselineSource=execFileSync('git',['show','928f57b5fc6823229d160623e6253d4a7ce02fb3:src/domain/operational-automation.ts'],{encoding:'utf8'});
+const baselineExports:Record<string,unknown>={};
+runInNewContext(transpileModule(baselineSource,{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2022}}).outputText,{
+  exports:baselineExports,
+  require:(name:string)=>{if(name==='zod')return {z};if(name==='./time')return {};throw new Error('Importación inesperada del lector histórico.');},
+});
+if(!(baselineExports.substitutionSchema instanceof z.ZodObject))throw new Error('No se pudo cargar el lector exacto de 928f57b.');
+const baselineSubstitutionSchema=baselineExports.substitutionSchema;
+
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>(done => { resolve = done; });
@@ -45,7 +60,7 @@ async function barrier(promise: Promise<void>, label: string) {
   } finally { if (timer) clearTimeout(timer); }
 }
 
-describe('Suplencia futura: aceptación con PostgreSQL y servicios nativos', () => {
+describe('Suplencia futura: entrega protegida y motor de preparación con PostgreSQL', () => {
   let admin: CurrentUser;
   let first: CurrentUser;
   let second: CurrentUser;
@@ -81,11 +96,15 @@ describe('Suplencia futura: aceptación con PostgreSQL y servicios nativos', () 
     ...overrides,
   });
   const policy = async (overrides: Partial<Configuration> = {}, options: { enabled?: boolean; expiresAt?: Date; departmentId?: string } = {}) => {
+    const prepared=substitutionSchema.parse(configuration(overrides));
     const saved = await saveAutomation(admin, {
       name: 'Suplencia futura sintética', kind: 'SUBSTITUTION', departmentId: options.departmentId ?? area,
-      configuration: configuration(overrides), enabled: options.enabled ?? true,
+      configuration: {...prepared,waitForPublishedSchedule:false}, enabled: prepared.waitForPublishedSchedule?false:options.enabled ?? true,
       expiresAt: options.expiresAt ?? hotelWallDateTime('2090-10-10', 18),
     });
+    // Preparation-only fixture. Real writers reject true; direct synthetic seeding
+    // keeps the isolated future engine's concurrency acceptance coverage available.
+    if(prepared.waitForPublishedSchedule)await prisma.operationalAutomation.update({where:{id:saved.id},data:{configuration:JSON.parse(JSON.stringify(prepared)),enabled:options.enabled??true}});
     return prisma.operationalAutomation.findUniqueOrThrow({ where: { id: saved.id } });
   };
   const task = (overrides: Partial<Parameters<typeof createTask>[1]> = {}) => createTask(admin, {
@@ -136,7 +155,36 @@ describe('Suplencia futura: aceptación con PostgreSQL y servicios nativos', () 
   const sweep = () => runOperationalAutomations(new Date());
   const noSuccess = async (policyId: string) => expect(await prisma.operationalAutomationRun.count({ where: { policyId, status: 'SUCCEEDED' } })).toBe(0);
 
-  it('conserva intervención en políticas antiguas: el opt-in omitido se guarda false', async () => {
+  it.each([undefined,false])('guarda opt-in %s en formato aceptado por el lector exacto 928f57b',async flag=>{
+    const raw=configuration({waitForPublishedSchedule:flag});
+    if(flag===undefined)delete raw.waitForPublishedSchedule;
+    const saved=await saveAutomation(admin,{name:'Política compatible sintética',kind:'SUBSTITUTION',departmentId:area,configuration:raw,enabled:false,expiresAt:hotelWallDateTime('2090-10-10',18)});
+    const persisted=await prisma.operationalAutomation.findUniqueOrThrow({where:{id:saved.id}});
+    expect(persisted.configuration).not.toHaveProperty('waitForPublishedSchedule');
+    expect(baselineSubstitutionSchema.safeParse(persisted.configuration).success).toBe(true);
+    expect(substitutionSchema.parse(persisted.configuration).waitForPublishedSchedule).toBe(false);
+    expect(persisted.enabled).toBe(false);
+  });
+
+  it.each(['crear','editar','activar'] as const)('rechaza %s con true sin persistencia parcial',async operation=>{
+    const saved=operation==='crear'?null:await policy({waitForPublishedSchedule:operation==='activar'},{enabled:false});
+    const beforePolicies=await prisma.operationalAutomation.findMany({orderBy:{id:'asc'}}),before=await effectsSnapshot();
+    const raw=configuration();
+    expect(baselineSubstitutionSchema.safeParse(raw).success).toBe(false);
+    await expect(saveAutomation(admin,{...(saved?{id:saved.id,version:saved.version}:{}),name:'Intento futuro bloqueado',kind:'SUBSTITUTION',departmentId:area,configuration:raw,enabled:operation==='activar',expiresAt:hotelWallDateTime('2090-10-10',18)})).rejects.toThrow('La espera futura sigue en preparación');
+    expect(await prisma.operationalAutomation.findMany({orderBy:{id:'asc'}})).toEqual(beforePolicies);
+    expect(await effectsSnapshot()).toEqual(before);
+  });
+
+  it('no ofrece opt-in utilizable en formulario o catálogo Fronti',()=>{
+    const form=readFileSync('src/components/operational/substitution-form.tsx','utf8');
+    expect(form).not.toContain('name="waitForPublishedSchedule"');
+    expect(form).toContain('sólo como vista previa al simular');
+    const catalog=JSON.parse(readFileSync('src/domain/fronti-action-catalog.json','utf8'));
+    expect(JSON.stringify(catalog)).not.toContain('waitForPublishedSchedule');
+  });
+
+  it('conserva intervención en políticas antiguas: opt-in omitido mantiene false sin agregar la clave', async () => {
     const work = await task();
     await schedule();
     const raw = configuration();
@@ -251,7 +299,7 @@ describe('Suplencia futura: aceptación con PostgreSQL y servicios nativos', () 
     const saved = await policy({}, { expiresAt });
     await sweep();
     const before = await prisma.task.findUniqueOrThrow({ where: { id: work.id } });
-    if (change === 'pausa') await saveAutomation(admin, { id: saved.id, version: saved.version, name: saved.name, kind: saved.kind, departmentId: area, configuration: saved.configuration, expiresAt, enabled: false });
+    if (change === 'pausa') await saveAutomation(admin, { id: saved.id, version: saved.version, name: saved.name, kind: saved.kind, departmentId: area, configuration: {...substitutionSchema.parse(saved.configuration),waitForPublishedSchedule:false}, expiresAt, enabled: false });
     if (change === 'revocación') await revokeAutomation(admin, saved.id, saved.version);
     if (change === 'permiso del autorizador') {
       const role = await prisma.role.findUniqueOrThrow({ where: { key: ROLE_KEYS.HK_ATTENDANT } });

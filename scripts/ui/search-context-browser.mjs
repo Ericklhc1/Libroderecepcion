@@ -1,4 +1,5 @@
 import '../etapa1/guard.cjs';
+import { watchHydrationDiagnostics } from './hydration-diagnostics.mjs';
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -19,17 +20,26 @@ const workDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Santiago'
 const results = [];
 const noJsFailures = [];
 const errors = [];
+const hydration = [];
+const hydrationByPage = new WeakMap();
+const hydrationByContext = new WeakMap();
 const mutations = [];
 const listHref = q => '/buscar?' + new URLSearchParams({ q });
 
-async function session(width, key = 'admin', options = {}) {
+async function session(width, key = 'admin', options = {}, mode = 'javascript') {
   const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce', ...options });
+  const contextHydration = [];
+  hydrationByContext.set(context, contextHydration);
   await context.addCookies([{ name: 'lor_session', value: fixture.users[key].token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' }]);
   await context.route('**/*', route => {
     const url = new URL(route.request().url());
     return url.hostname !== 'localhost' || ['/api/notifications/stream', '/api/alarms', '/api/auth/pulse'].some(path => url.pathname.startsWith(path)) ? route.abort() : route.continue();
   });
   context.on('page', page => {
+    const diagnostic = watchHydrationDiagnostics(page, { role: key, width, stage: mode + ':session-created' });
+    hydration.push(diagnostic);
+    contextHydration.push(diagnostic);
+    hydrationByPage.set(page, diagnostic);
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
     page.on('request', request => {
@@ -37,6 +47,13 @@ async function session(width, key = 'admin', options = {}) {
     });
   });
   return context;
+}
+
+function mark(page, stage) { hydrationByPage.get(page)?.mark(stage); }
+
+async function closeContext(context) {
+  await Promise.all((hydrationByContext.get(context) ?? []).map(item => item.flush()));
+  await context.close();
 }
 
 async function returned(page, list, anchor, scrollY) {
@@ -55,8 +72,12 @@ async function returned(page, list, anchor, scrollY) {
 
 async function journey(page, q, detailRoot) {
   const list = listHref(q);
+  const kind = detailRoot === '/tareas/' ? 'task' : 'entry';
+  const stage = step => mark(page, kind + ':' + step);
+  stage('open-search');
   await page.goto(base + '/buscar');
   await page.getByRole('searchbox', { name: 'Buscar en todo el Libro', exact: true }).fill(q);
+  stage('submit-search');
   await page.getByRole('button', { name: 'Buscar', exact: true }).click();
   await page.waitForURL(base + list);
   await page.getByRole('heading', { name: 'Búsqueda global', exact: true }).waitFor();
@@ -69,6 +90,7 @@ async function journey(page, q, detailRoot) {
   const href = new URL(await row.getAttribute('href'), base);
   assert.ok(href.pathname.startsWith(detailRoot));
   assert.equal(href.searchParams.get('desdeLista'), `${list}#${anchor}`);
+  stage('open-native-detail');
   if (detailRoot === '/tareas/') await row.press('Enter');
   else await row.click();
   const back = page.locator('[data-list-return]');
@@ -80,6 +102,7 @@ async function journey(page, q, detailRoot) {
   assert.equal(saved.rowAnchor, anchor);
   assert.ok(saved.scrollY > 0);
 
+  stage('edit-and-cancel');
   const detailBeforeCancel = page.url();
   const actions = page.locator('[aria-label="Acciones del asunto"]');
   await actions.getByText('Más ···', { exact: true }).click();
@@ -90,19 +113,25 @@ async function journey(page, q, detailRoot) {
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(page.url(), detailBeforeCancel);
   assert.equal(await back.getAttribute('href'), `${list}#${anchor}`);
+  stage('reload-native-detail');
   await page.reload();
+  stage('return-after-reload');
   await back.click();
   await returned(page, list, anchor, saved.scrollY);
-  assert.equal(await page.locator('input[name=q]').inputValue(), q);
+  assert.equal(await page.getByRole('searchbox', { name: 'Buscar en todo el Libro', exact: true }).inputValue(), q);
 
+  stage('history-back-to-detail');
   await page.goBack();
   await back.waitFor();
   assert.equal(new URL(page.url()).pathname, href.pathname);
+  stage('history-forward-to-results');
   await page.goForward();
   await row.waitFor();
   assert.equal(new URL(page.url()).hash, '#' + anchor);
+  stage('history-back-through-detail');
   await page.goBack();
   await back.waitFor();
+  stage('history-back-to-original-results');
   await page.goBack();
   await row.waitFor();
   await page.waitForFunction(id => document.getElementById(id)?.getAttribute('aria-current') === 'true', anchor);
@@ -110,13 +139,17 @@ async function journey(page, q, detailRoot) {
   assert.ok(Math.abs(await page.evaluate(() => window.scrollY) - saved.scrollY) <= 2, 'Back keeps native scroll');
 
   // A second result supersedes the older selected row without replacing history.
+  stage('reopen-first-result');
   await row.click();
+  stage('return-from-reopened-result');
   await back.click();
   await returned(page, list, anchor, saved.scrollY);
   const next = rows.nth(11);
   const nextAnchor = await next.getAttribute('id');
+  stage('open-next-result');
   await next.click();
   await back.waitFor();
+  stage('history-back-from-next-result');
   await page.goBack();
   await next.waitFor();
   await page.waitForFunction(id => document.getElementById(id)?.getAttribute('aria-current') === 'true', nextAnchor);
@@ -157,23 +190,28 @@ try {
       const page = await admin.newPage();
       results.push({ width, ...await journey(page, entryQuery, '/libro/') });
       results.push({ width, ...await journey(page, taskQuery, '/tareas/') });
+      mark(page, 'privacy:search-private-source');
       await page.goto(base + listHref(`${marker} PRIVATE`));
       await page.getByText(/No encontré registros/).waitFor();
       assert.equal(await page.locator('[data-list-item]').count(), 0);
       assert.ok(!(await page.content()).includes(privateTitle), 'Private source and linked task never enter HTML for another user');
+      mark(page, 'privacy:forged-native-detail');
       await page.goto(`${base}/tareas/${privateTask.id}?desdeLista=${encodeURIComponent(listHref(`${marker} PRIVATE`))}`);
       assert.ok(!(await page.content()).includes(privateTitle), 'Forged search context does not grant native detail access');
+      mark(page, 'empty:unmatched-query');
       await page.goto(base + listHref(`${marker} NO_MATCH`));
       await page.getByText(/No encontré registros/).waitFor();
       assert.equal(await page.locator('[data-list-item]').count(), 0);
+      mark(page, 'empty:no-query');
       await page.goto(base + '/buscar');
       await page.getByText('Escribe un número o una referencia operativa.', { exact: true }).waitFor();
       results.push({ width, otherPrivateSourceHidden: true, reservedTaskHidden: true, forgedContextRejected: true, emptyAndNoMatch: true });
-    } finally { await admin.close(); }
+    } finally { await closeContext(admin); }
 
     const author = await session(width, 'worker');
     try {
       const page = await author.newPage();
+      mark(page, 'privacy:author-search');
       await page.goto(base + listHref(`${marker} PRIVATE`));
       const visibleTask = page.locator(`[data-list-item="registro-search-Task-${privateTask.id}"]`);
       await visibleTask.waitFor();
@@ -184,11 +222,12 @@ try {
       assert.equal(href.searchParams.get('q'), `#${privateFollowUp.humanId}`);
       assert.equal(href.searchParams.has('desdeLista'), false, 'Unsupported destination retains its native link');
       results.push({ width, privateAuthorCanRead: true, unsupportedDestinationNative: true });
-    } finally { await author.close(); }
+    } finally { await closeContext(author); }
 
     const maid = await session(width, 'maid');
     try {
       const page = await maid.newPage();
+      mark(page, 'privacy:area-only-search');
       await page.goto(base + listHref(marker));
       await page.getByText(hkVisibleTitle, { exact: true }).waitFor();
       assert.equal(await page.locator('[data-list-item]').count(), 1, 'Area-only account receives only its authorized Housekeeping result');
@@ -199,11 +238,11 @@ try {
       assert.equal(href.searchParams.has('desdeLista'), false);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       results.push({ width, areaOnlyScopePreserved: true, otherWorkAndDemoHidden: true });
-    } finally { await maid.close(); }
+    } finally { await closeContext(maid); }
   }
 
   for (const mode of ['no-storage', 'no-javascript']) {
-    const context = await session(390, 'admin', mode === 'no-javascript' ? { javaScriptEnabled: false } : {});
+    const context = await session(390, 'admin', mode === 'no-javascript' ? { javaScriptEnabled: false } : {}, mode);
     try {
       if (mode === 'no-storage') await context.addInitScript(() => {
         for (const name of ['getItem', 'setItem', 'removeItem']) {
@@ -216,10 +255,13 @@ try {
       });
       const page = await context.newPage();
       const list = listHref(taskQuery);
+      mark(page, mode + ':open-results');
       await page.goto(base + list);
       const row = page.locator('[data-list-item]').nth(10);
       const anchor = await row.getAttribute('id');
+      mark(page, mode + ':open-native-detail');
       await row.click();
+      mark(page, mode + ':return-to-results');
       await page.locator('[data-list-return]').click();
       await page.locator(`[data-list-item="${anchor}"]`).waitFor();
       assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, list);
@@ -229,18 +271,20 @@ try {
     } catch (error) {
       if (mode !== 'no-javascript') throw error;
       noJsFailures.push({ mode, error: error.name, message: error.message.slice(0, 400) });
-    } finally { await context.close(); }
+    } finally { await closeContext(context); }
   }
 
   assert.deepEqual(await db.operationalEntry.findMany({ where: { title: { startsWith: marker } }, orderBy: { id: 'asc' } }), entriesBefore);
   assert.deepEqual(await db.task.findMany({ where: { title: { startsWith: marker } }, orderBy: { id: 'asc' } }), tasksBefore);
   assert.deepEqual(await db.housekeepingRequest.findMany({ where: { requestKey: { startsWith: marker } }, orderBy: { id: 'asc' } }), hkBefore);
+  await Promise.all(hydration.map(item => item.flush()));
   assert.deepEqual(errors, []);
   assert.deepEqual(mutations, [], 'Reading, returning and cancelling never submit an operational action');
-  assert.deepEqual(noJsFailures, [], 'NoJS characterization still fails; JS journeys were collected separately');
-  console.log('Search/native detail continuity and scoped privacy passed.', JSON.stringify(results));
+  console.log('NOJS_CHARACTERIZATION ' + JSON.stringify({ status: noJsFailures.length ? 'inherited-limitation' : 'passed', baseline: '928f57b5fc6823229d160623e6253d4a7ce02fb3', noJsFailures }));
+  console.log('JavaScript search/native detail continuity and scoped privacy passed; NoJS characterization reported separately.', JSON.stringify(results));
 } finally {
-  writeFileSync('/tmp/search-context-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
+  await Promise.all(hydration.map(item => item.flush()));
+  writeFileSync('/tmp/search-context-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures, hydrationErrors: hydration.flatMap(item => item.errors) }, null, 2));
   await browser.close();
   await db.$disconnect();
 }

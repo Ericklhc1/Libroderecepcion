@@ -6,11 +6,15 @@ Fecha: 2026-10-04. Base d72123a. Rama de preparación `codex/aroh-future-handoff
 
 Esta preparación NO forma parte del candidato visual 1.58.0. No está publicada ni activada. No se cambiaron cron, variables de ejecución, políticas reales, permisos, datos, proveedores ni esquema. No implica autorización para activar reglas. Guardar una nueva versión sigue dejándola en pausa; la variable global existente debe permanecer como estaba.
 
+**Entrega escalonada para conservar rollback:** la escritura y activación de `waitForPublishedSchedule=true` están bloqueadas en el servicio, antes de cualquier transacción. La UI y Fronti no ofrecen esa opción como utilizable. Un guardado normal con false o con el campo ausente conserva el JSON antiguo, sin persistir la clave adicional. El lector exacto de `928f57b` es estricto y rechazaría esa clave incluso con false; por eso no basta con dejar una política nueva en pausa. Se mantiene disponible la vista previa futura de sólo lectura sobre políticas nativas. El motor de espera permanece preparado y cubierto mediante fixtures sintéticas explícitas; esas pruebas no autorizan su activación en esta entrega.
+
+No se borra ni transforma configuración real para volver atrás. Frente a `928f57b` hay cero migraciones nuevas, el esquema y los contratos de cierre/custodia siguen iguales. La reversión conserva la base actual; nunca se restaura una copia antigua para revertir este bloque.
+
 La ventana propuesta y el veto de arrastre HK son decisiones técnicas provisionales pendientes de aceptación final: buscar hasta el inicio civil de hoy+14 días en America/Santiago; conservar indisponibilidad de workDate original y de la franja futura. Si el veto impide arrastre, revisión humana sin cambiar la fecha.
 
 **Puerta pendiente:** tipos/build, suite completa, PostgreSQL 16 en CI desechable y QA visual. PostgreSQL 17 local ya aprobó las 31 pruebas específicas, incluidas cancelación concurrente y deadlock SQL real, y 137 regresiones de servicios afectados; esto no reemplaza la Compuerta del árbol final. Si no se acredita seguridad, dejar este bloque fuera de la release y conservar la brecha explícita.
 
-## Conducta y compatibilidad
+## Conducta preparada y compatibilidad
 
 - Nueva configuración JSON `waitForPublishedSchedule`, por defecto false para datos anteriores. true exige `requirePublishedSchedule=true`. No migración.
 - false conserva la ejecución anterior, incluida intervención sin suplente actual. La simulación humana puede mostrar una franja futura orientativa; no modifica el motor viejo. Las garantías nuevas de revalidación no se atribuyen a PROPOSE legado.

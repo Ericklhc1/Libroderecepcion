@@ -51,6 +51,15 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
   await assertPolicyArea(user, input.departmentId);
   if (input.expiresAt <= new Date() || input.expiresAt.getTime() > Date.now() + 366 * 86400000) throw new RuleError('Define una vigencia futura de hasta un año.');
   const configuration = input.kind === 'PROCEDURE' ? procedureSchema.parse(input.configuration) : input.kind==='SUBSTITUTION'?substitutionSchema.parse(input.configuration):escalationSchema.parse(input.configuration);
+  let persistedConfiguration=json(configuration);
+  if(input.kind==='SUBSTITUTION'){
+    const parsed=substitutionSchema.parse(configuration);
+    if(parsed.waitForPublishedSchedule)throw new RuleError('La espera futura sigue en preparación: no puede guardarse ni habilitarse en esta entrega. La próxima franja puede consultarse sólo en la simulación.');
+    // The 928f57b reader is strict. Preserve its JSON contract for both absent
+    // and explicit false; no rollout metadata is written to operational data.
+    const {waitForPublishedSchedule:_futureWait,...legacy}=parsed;
+    persistedConfiguration=json(legacy);
+  }
   return prisma.$transaction(async tx => {
     if(input.kind==='ESCALATION'&&input.enabled){
       const config=escalationSchema.parse(configuration);
@@ -64,7 +73,7 @@ export async function saveAutomation(user: CurrentUser, raw: unknown) {
       const existing=await tx.operationalAutomation.findMany({where:{id:{not:input.id??''},departmentId:input.departmentId,kind:'SUBSTITUTION',enabled:true,revokedAt:null,expiresAt:{gt:new Date()}},select:{configuration:true}});
       if(existing.some(row=>{const other=substitutionSchema.parse(row.configuration);return other.kind===config.kind&&(!other.priority||!config.priority||other.priority===config.priority);}))throw new RuleError('Ya existe una suplencia habilitada para este tipo y prioridad del área. Pausa o delimita la anterior.');
     }
-    const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: json(configuration), expiresAt: input.expiresAt, enabled: input.enabled, scanPage: 1 };
+    const data = { name: input.name, departmentId: input.departmentId, kind: input.kind, configuration: persistedConfiguration, expiresAt: input.expiresAt, enabled: input.enabled, scanPage: 1 };
     let id = input.id;
     if (id) {
       const updated = await tx.operationalAutomation.updateMany({ where: { id, ownerId: user.id, version: input.version, revokedAt: null }, data: { ...data, version: { increment: 1 } } });

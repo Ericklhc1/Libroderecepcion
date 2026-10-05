@@ -122,7 +122,9 @@ jobs:
           npm run typecheck 2>&1 | tee etapa3-typecheck.log
 
       - name: Regresiones
-        run: npm run test
+        run: |
+          npm run test
+          node --test scripts/ui/hydration-diagnostics.test.mjs
 
       - name: Build
         id: production_build
@@ -186,6 +188,7 @@ jobs:
           exit "$journey_status"
 
       - name: Apariencia y continuidad de listas y suplencias
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
         timeout-minutes: 3
         env:
           NODE_ENV: production
@@ -263,7 +266,7 @@ jobs:
           done
           exit "$journey_status"
 
-      - name: Control A/B de transporte SPA sin salida externa
+      - name: Diagnóstico de estado SPA y Flight sin salida externa
         if: ${{ !cancelled() && steps.production_build.outcome == 'success' && github.ref == 'refs/heads/codex/aroh-fns-20261005' }}
         timeout-minutes: 3
         env:
@@ -284,7 +287,7 @@ jobs:
         if: ${{ always() && (github.ref == 'refs/heads/codex/aroh-fns-20261005' || github.ref == 'refs/heads/codex/aroh-future-handoff-20261005') }}
         run: |
           echo "Candidate commit: $GITHUB_SHA"
-          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json module-navigation-browser-results.json /tmp/context-worklist-browser-results.json housekeeping-worklist-browser-results.json room-context-browser-results.json custody-worklist-browser-results.json search-context-browser-results.json history-context-browser-results.json; do
+          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-hydration-diagnostics.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json module-navigation-browser-results.json /tmp/context-worklist-browser-results.json housekeeping-worklist-browser-results.json room-context-browser-results.json custody-worklist-browser-results.json /tmp/search-context-browser-results.json history-context-browser-results.json; do
             if [ -f "$file" ]; then
               printf '\n=== %s ===\n' "$file"
               cat "$file"

@@ -240,7 +240,6 @@ export function validateStep(step: FrontiStep): FrontiStep {
     const required=['name','departmentId','expiresAt',...(kind==='PROCEDURE'?['description','ownerId','priority','nextAction','evidenceRequired','checklist','startDate','localTime','deadlineHours','catchUpDays']:kind==='SUBSTITUTION'?['trigger','workKind','priority','receiptMinutes','mode','candidateIds','requirePublishedSchedule','nextAction']:['trigger','workKind','priority','receiptMinutes','recipientId'])];
     if(parsed.id)required.push('id','version');
     for(const field of required)if(typeof parsed[field]!=='string')throw new RuleError('La política requiere campos completos: falta '+field+'.');
-    if(kind==='SUBSTITUTION'&&parsed.waitForPublishedSchedule!==undefined)z.enum(['true','false']).parse(parsed.waitForPublishedSchedule);
     if(kind==='PROCEDURE')z.array(z.string().regex(/^[0-6]$/)).min(1).max(7).parse(parsed.weekdays);
   }
   if(step.action==='setAutomationStateAction') {

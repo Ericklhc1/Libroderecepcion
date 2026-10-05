@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { SignJWT } from 'jose';
+import { waitForNativeShiftReceipt, withDeadline } from './shift-action-observation.mjs';
 
 const base = 'http://localhost:3000';
 const actionable = request => request.method() === 'POST' && Boolean(request.headers()['next-action']);
@@ -169,9 +170,13 @@ export async function exerciseShiftUx({ browser, db, results }) {
       response.catch(() => {}); // Preserve the original assertion if cleanup closes the page.
       const started = actor.page.waitForRequest(value => actionable(value) && new URL(value.url()).pathname === route);
       started.catch(() => {});
+      const progress = phase => console.log('SHIFT_UX_ACTION', JSON.stringify({ width, step, phase, expectedOk }));
+      progress('acquiring-user-lock');
       await whileUserLocked(async () => {
+        progress('submitting');
         await dialog.getByRole('button', { name: spec.confirm, exact: true }).dblclick();
         await started;
+        progress('request-started');
         await dialog.getByRole('status').filter({ hasText: 'La operación ya está en curso.' }).waitFor();
         assert.ok(await dialog.locator('button[type=submit]').isDisabled());
         assert.ok(await dialog.getByRole('button', { name: spec.back, exact: true }).isDisabled());
@@ -180,15 +185,18 @@ export async function exerciseShiftUx({ browser, db, results }) {
         assert.ok(await dialog.isVisible(), 'Pending cannot pretend to cancel an already submitted operation');
         await dialog.locator('button[type=submit]').evaluate(button => button.click());
         assert.equal(actor.posts.length - before, 1, 'One server action despite a double click and disabled resubmission');
+        progress('pending-checked-releasing-lock');
       });
-      const actual = await response; await actual.finished();
+      progress('lock-released-waiting-response');
+      const actual = await response;
+      progress('response-headers-received');
+      assert.equal(actual.status(), 200, 'Native Server Action transport must respond successfully');
       assert.equal(actor.posts.length - before, 1);
-      await actor.page.waitForFunction(({ formId, offset }) => window.__shiftUxActionResults.slice(offset).some(receipt => receipt.formId === formId), { formId, offset });
-      const receipts = await actor.page.evaluate(({ formId, offset }) => window.__shiftUxActionResults.slice(offset).filter(receipt => receipt.formId === formId), { formId, offset });
-      assert.equal(receipts.length, 1, 'One decoded native outcome belongs to this exact form attempt');
-      assert.equal(receipts[0].ok, expectedOk, 'HTTP 200 alone is not a successful action');
-      return receipts[0];
+      const receipt = await waitForNativeShiftReceipt(actor.page, { formId, offset }, expectedOk);
+      progress('native-receipt-verified');
+      return receipt;
     }
+
     async function assertError(actor, dialog, text, receipt) {
       await dialog.getByRole('alert').filter({ hasText: text }).waitFor();
       assert.ok(await dialog.isVisible());
@@ -277,6 +285,9 @@ export async function exerciseShiftUx({ browser, db, results }) {
         mark('new-navigation-supersedes-late-result');
         await outgoing.page.getByText('Entregar turno', { exact: true }).click();
         const before = outgoing.posts.length, navigations = [];
+        const startButton = outgoing.page.getByRole('button', { name: 'INICIAR CIERRE DE TURNO', exact: true });
+        const formId = await startButton.evaluate(button => button.form.id);
+        const offset = await outgoing.page.evaluate(() => window.__shiftUxActionResults.length);
         const navigated = frame => { if (frame === outgoing.page.mainFrame()) navigations.push(new URL(frame.url()).pathname); };
         outgoing.page.on('framenavigated', navigated);
         const response = outgoing.page.waitForResponse(value => actionable(value.request()) && new URL(value.url()).pathname === '/turno');
@@ -287,7 +298,8 @@ export async function exerciseShiftUx({ browser, db, results }) {
             await outgoing.page.getByRole('button', { name: 'Iniciando cierre…', exact: true }).waitFor();
             await outgoing.page.getByRole('link', { name: 'Continuar operación', exact: true }).click({ noWaitAfter: true });
           });
-          await (await response).finished();
+          assert.equal((await response).status(), 200);
+          await waitForNativeShiftReceipt(outgoing.page, { formId, offset }, true);
           await outgoing.page.waitForURL(url => url.pathname === '/coordinacion');
           assert.equal(outgoing.posts.length - before, 1);
           assert.ok(navigations.every(value => !value.startsWith('/turno/entrega/')), 'The superseded callback must not navigate, even briefly');
@@ -376,7 +388,9 @@ export async function exerciseShiftUx({ browser, db, results }) {
         focusAndKeyboard: true, realDatabaseDelay: true, explicitRetry: true, newerNavigationWins: width === 1280 ? true : 'covered-on-desktop', frontiDraftPreserved: true, sameDocument: true,
         noFrontiSubmission: true, noExternalMail: true, noFalseReception: true });
     } catch (error) {
-      const observed = activePage ? await activePage.evaluate(() => ({ path: location.pathname, dialogs: [...document.querySelectorAll('[role=dialog]')].map(d => ({ title: d.getAttribute('aria-label') || d.getAttribute('aria-labelledby'), alerts: [...d.querySelectorAll('[role=alert]')].map(a => a.textContent), buttons: [...d.querySelectorAll('button')].map(b => ({ text: b.textContent, disabled: b.disabled })) })), activeTag: document.activeElement?.tagName })).catch(() => null) : null;
+      // Report the original failure before optional DOM diagnostics can stall.
+      console.error('Synthetic shift UX failure boundary', JSON.stringify({ width, step, error: { name: error.name, message: String(error.message).slice(0, 1800) } }));
+      const observed = activePage ? await withDeadline(activePage.evaluate(() => ({ path: location.pathname, dialogs: [...document.querySelectorAll('[role=dialog]')].map(d => ({ title: d.getAttribute('aria-label') || d.getAttribute('aria-labelledby'), alerts: [...d.querySelectorAll('[role=alert]')].map(a => a.textContent), buttons: [...d.querySelectorAll('button')].map(b => ({ text: b.textContent, disabled: b.disabled })) })), activeTag: document.activeElement?.tagName, receipts: window.__shiftUxActionResults })), 2000, 'failure DOM snapshot').catch(() => null) : null;
       results.push({ width, journey: 'shift-ux-targeted', step, status: 'failed', observed });
       console.error('Synthetic shift UX failure', JSON.stringify({ width, step, observed, error: { name: error.name, message: String(error.message).slice(0, 1800) }, actionCounts: actors.map(actor => ({ label: actor.label, posts: actor.posts.length })) }));
       throw error;

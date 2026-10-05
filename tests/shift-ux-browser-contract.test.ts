@@ -1,10 +1,16 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('scripts/ui/shift-ux-browser.mjs', 'utf8');
+const observation = readFileSync('scripts/ui/shift-action-observation.mjs', 'utf8');
 const surfaces = readFileSync('scripts/etapa4/surfaces-browser.mjs', 'utf8');
 
 describe('escenas reales de UI de Turnos en la compuerta existente', () => {
+  it('ejercita el observador de recibos y límites sin esperar el fin del stream', () => {
+    execFileSync(process.execPath, ['--test', 'scripts/ui/shift-action-observation.test.mjs'], { stdio: 'pipe' });
+  });
+
   it('reutiliza guard, navegador y evidencia existentes sin crear infraestructura', () => {
     expect(source).toContain("import '../etapa1/guard.cjs'");
     expect(surfaces).toContain('await exerciseShiftUx({ browser, db, results })');
@@ -24,8 +30,11 @@ describe('escenas reales de UI de Turnos en la compuerta existente', () => {
     expect(source).toContain('if (!workFailed) throw lockError;');
     expect(source).toContain('La operación ya está en curso.');
     expect(source).toContain("window.addEventListener('aroh:action-result'");
-    expect(source).toContain('receipt.formId === formId');
-    expect(source).toContain('receipts[0].ok, expectedOk');
+    expect(observation).toContain('receipt.formId === formId');
+    expect(observation).toContain('receipts[0].ok, expectedOk');
+    expect(source).not.toContain('.finished()');
+    expect(source).toContain("progress('native-receipt-verified')");
+    expect(source).toContain("2000, 'failure DOM snapshot'");
     expect(source).not.toContain('response.text()');
     expect(source).toContain("getByRole('alert')");
     expect(source).toContain('.dblclick()');

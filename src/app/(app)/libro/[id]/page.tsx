@@ -315,8 +315,6 @@ export default async function EntryDetailPage({
               </Dialog>
             ) : null}
 
-            {open&&attentionAreas.length>0&&(distributionEnabled?<SubjectDistributionDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} requestKey={randomUUID()} areas={attentionAreas} room={entry.room?.number??null}/>:<SubjectAttentionDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} requestKey={randomUUID()} areas={attentionAreas} room={entry.room?.number??null}/>)}
-
 
             <Dialog
               title="Crear alerta para este asunto"

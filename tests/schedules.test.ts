@@ -374,8 +374,9 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     const accountB = await prisma.scheduleCollaborator.findUniqueOrThrow({ where: { id: b } });
     await prisma.user.update({ where: { id: accountB.userId! }, data: { name: own.name } });
     const board = await getScheduleBoard(admin, area, planId);
+    const ownAccount = await prisma.user.findUniqueOrThrow({ where: { id: own.id }, select: { username: true } });
     const csv = scheduleCsvTemplate(board.collaborators);
-    expect(csv).toContain(`@${own.username}`); expect(csv).toContain('NOMBRE;FECHA');
+    expect(csv).toContain(`@${ownAccount.username}`); expect(csv).toContain('NOMBRE;FECHA');
     const lines = csv.trimEnd().split('\r\n');
     const completed = lines.map((line, i) => !i ? line : line.replace(/;"";"";"";""$/, `;"2090-10-0${i + 2}";"TEST_DIA";"08:00";"19:00"`)).join('\r\n');
     const draft = await reviewScheduleImport(admin, planId, 'plantilla.csv', new TextEncoder().encode(completed));
@@ -385,7 +386,7 @@ describe('Equipo y horarios: flujo persistente en PostgreSQL desechable', () => 
     const namesOnly = await reviewScheduleImport(admin, planId, 'nombres.csv', new TextEncoder().encode(`NOMBRE;FECHA;CODIGO\n${own.name};2090-10-06;LIBRE\n`));
     expect(JSON.stringify(namesOnly.issues)).toContain('homónimos');
     const catalog = await getScheduleCatalog(admin, area);
-    expect(catalog.collaborators.find(p => p.id === a)?.username).toBe(own.username);
+    expect(catalog.collaborators.find(p => p.id === a)?.username).toBe(ownAccount.username);
   });
 
 });

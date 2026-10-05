@@ -1,0 +1,61 @@
+diff --git a/.github/workflows/cross-version-continuity.yml b/.github/workflows/cross-version-continuity.yml
+new file mode 100644
+--- /dev/null
++++ b/.github/workflows/cross-version-continuity.yml
+@@ -0,0 +1,56 @@
++name: Continuidad sintética entre versiones
++
++on:
++  push:
++    branches: [codex/aroh-continuity-once-20261005]
++    paths: [.github/workflows/cross-version-continuity.yml]
++
++permissions:
++  contents: read
++
++concurrency:
++  group: cross-version-continuity-${{ github.ref }}
++  cancel-in-progress: false
++
++jobs:
++  cross-version:
++    if: github.ref == 'refs/heads/codex/aroh-continuity-once-20261005'
++    runs-on: ubuntu-latest
++    timeout-minutes: 30
++    env:
++      BASELINE_SHA: '928f57b5fc6823229d160623e6253d4a7ce02fb3'
++      CANDIDATE_SHA: '02467f43e60220a8a599d1758dde9551d41cc78d'
++    services:
++      postgres:
++        image: postgres:16-alpine
++        env:
++          POSTGRES_USER: libro
++          POSTGRES_PASSWORD: libro_test
++          POSTGRES_DB: libro_test
++        ports:
++          - 5432:5432
++        options: >-
++          --health-cmd="pg_isready -U libro -d libro_test"
++          --health-interval=5s
++          --health-timeout=5s
++          --health-retries=10
++    steps:
++      - name: Exigir las fuentes exactas autorizadas
++        run: |
++          test "$BASELINE_SHA" = '928f57b5fc6823229d160623e6253d4a7ce02fb3'
++          [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]] || { echo 'Falta fijar la candidata autorizada; no ejecutar builds'; exit 2; }
++      - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++          persist-credentials: false
++      - uses: actions/setup-node@v4
++        with:
++          node-version: 24
++      - name: Ensayo real de dos builds sin proveedores externos
++        # A negative cross-version result is intentionally a failed isolated job.
++        run: bash scripts/cross-version/run.sh "$CANDIDATE_SHA"
++      - name: Informe sintético sin sesiones ni secretos
++        if: always()
++        run: |
++          report="$RUNNER_TEMP/aroh-cross-version-evidence/results.json"
++          if [ -f "$report" ]; then cat "$report"; else echo 'INCONCLUSO: el ensayo no produjo informe'; fi

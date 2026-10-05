@@ -1,13 +1,14 @@
 import './guard.cjs';
+import {watchHydrationDiagnostics} from '../ui/hydration-diagnostics.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const f=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const browser=await chromium.launch({headless:true});
 console.log("Synthetic browser",browser.version());
-const results=[];const timings=[];let activePage;const streams=new Map();const inFlight=new Map();
-function persist(){writeFileSync('etapa1-browser-results.json',JSON.stringify({browser:browser.version(),results,timings},null,2));}
-async function measured(label,work){const start=performance.now();try{const result=await work();if(/^(assign|receive|resolve) visible/.test(label))assert.ok(performance.now()-start<=3000,`${label} exceeds visible update budget of 3000 ms`);return result;}finally{const ms=Math.round(performance.now()-start);timings.push({label,ms});console.log('Timing',label,ms);}}
+const results=[];const timings=[];const hydration=[];const hydrationByPage=new WeakMap();let activePage;const streams=new Map();const inFlight=new Map();
+function persist(){writeFileSync('etapa1-browser-results.json',JSON.stringify({browser:browser.version(),results,timings,pageErrors:hydration.flatMap(item=>item.errors)},null,2));}
+async function measured(label,work){if(activePage)hydrationByPage.get(activePage)?.mark(label);const start=performance.now();try{const result=await work();if(/^(assign|receive|resolve) visible/.test(label))assert.ok(performance.now()-start<=3000,`${label} exceeds visible update budget of 3000 ms`);return result;}finally{const ms=Math.round(performance.now()-start);timings.push({label,ms});console.log('Timing',label,ms);}}
 async function submit(page,button){
  const started=performance.now();
  const path=new URL(page.url()).pathname;
@@ -23,6 +24,7 @@ async function actor(name,width){
  await context.addCookies([{name:'lor_session',value:f.users[name].token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
  await context.route('**/*',route=>{const u=new URL(route.request().url());return u.hostname!=='localhost'||['/api/notifications/stream','/api/alarms','/api/auth/pulse'].some(p=>u.pathname.startsWith(p))?route.abort():route.continue();});
  const page=await context.newPage();
+ const diagnostic=watchHydrationDiagnostics(page,{role:name,width});hydration.push(diagnostic);hydrationByPage.set(page,diagnostic);
  const cdp=await context.newCDPSession(page);await cdp.send('Network.enable');const posts=new Set();
  cdp.on('Network.requestWillBeSent',e=>{inFlight.set(e.requestId,{method:e.request.method,path:new URL(e.request.url).pathname});if(e.request.method==='POST'&&new URL(e.request.url).pathname==='/coordinacion')posts.add(e.requestId);});
  cdp.on('Network.responseReceived',async e=>{if(posts.has(e.requestId)){try{const s=await cdp.send('Network.streamResourceContent',{requestId:e.requestId});streams.set(e.requestId,[s.bufferedData]);}catch{console.log('CDP body diagnostics unavailable');}}});
@@ -62,7 +64,7 @@ try{
   await assignmentPanel.locator('select[name="ownerId"]').selectOption(f.users.worker.id);
   await assignmentPanel.locator('textarea[name="nextAction"]').fill('Atender y registrar resultado sintético');
   await measured(`assign visible ${width}`,async()=>{await submit(admin.page,assignmentPanel.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}));await card.locator('[data-list-item][aria-haspopup="dialog"]').locator('strong').filter({hasText:/^Etapa1 worker$/}).waitFor();});console.log('Assignment visible',width);
-  activePage=worker.page;await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
+  activePage=worker.page;hydrationByPage.get(worker.page).mark('open-worker-coordination');await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&mios=1`);
   assert.ok(!(await worker.page.content()).includes('ETAPA1_PRIVATE_TASK'));
   const own=worker.page.locator('article').filter({hasText:t.title});
   await own.locator('[data-list-item][aria-haspopup="dialog"]').click();
@@ -72,16 +74,18 @@ try{
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
   await measured(`navigation task ${width}`,()=>worker.page.goto(`http://localhost:3000/tareas/${t.id}`));
   await measured(`resolve visible ${width}`,async()=>{await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));await worker.page.getByText('Completada',{exact:true}).first().waitFor();});console.log('Resolution visible',width);
-  await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&historial=1`);
+  hydrationByPage.get(worker.page).mark('open-coordination-history');await worker.page.goto(`http://localhost:3000/coordinacion?area=${f.areaId}&historial=1`);
   await worker.page.locator('article').filter({hasText:t.title}).waitFor();
-  const maid=await actor('maid',width);await maid.page.goto('http://localhost:3000/coordinacion');
+  const maid=await actor('maid',width);hydrationByPage.get(maid.page).mark('open-area-only-coordination');await maid.page.goto('http://localhost:3000/coordinacion');
   assert.ok(!(await maid.page.content()).includes(t.title),'Area-only account cannot read reception work');
   results.push({width,flow:'assign-receive-resolve-original-source',privacy:'passed',mobileOverflow:'passed'});
-  await admin.context.close();await worker.context.close();await maid.context.close();
+  await Promise.all(hydration.map(item=>item.flush()));await admin.context.close();await worker.context.close();await maid.context.close();
  }
  const anon=await browser.newContext();const page=await anon.newPage();await page.goto('http://localhost:3000/coordinacion');assert.ok(page.url().includes('/login'));await anon.close();
+ await Promise.all(hydration.map(item=>item.flush()));
+ assert.deepEqual(hydration.flatMap(item=>item.errors),[],'Authenticated journeys must not conceal hydration or runtime errors');
  console.log('Etapa 1 authenticated desktop/mobile journeys passed.');
 }catch(error){
  for(const chunks of streams.values()) {const data=Buffer.concat(chunks.map(c=>Buffer.from(c,'base64'))).toString('utf8');const rows=[...data.matchAll(/(?:^|\n)([0-9a-f]+):/g)].map(m=>m[1]);const refs=[...data.matchAll(/\$(?:L|@)?([0-9a-f]+)(?:["\n:])/g)].map(m=>m[1]);console.log('Synthetic Flight structure',JSON.stringify({bytes:Buffer.byteLength(data),rows,missingRefs:[...new Set(refs.filter(r=>!rows.includes(r)))],hasActionResult:/1:\{"ok":true/.test(data)}));}
  console.log('Requests still in progress (paths only)',JSON.stringify([...inFlight.values()]));
- if(activePage)console.error('Synthetic browser failure',activePage.url(),(await activePage.locator('body').innerText()).slice(0,6500));throw error;}finally{writeFileSync('etapa1-browser-results.json',JSON.stringify({browser:browser.version(),results,timings},null,2));console.log('Synthetic timings',JSON.stringify(timings));await browser.close();}
+ if(activePage)console.error('Synthetic browser failure',activePage.url(),(await activePage.locator('body').innerText()).slice(0,6500));throw error;}finally{await Promise.all(hydration.map(item=>item.flush()));writeFileSync('etapa1-browser-results.json',JSON.stringify({browser:browser.version(),results,timings,pageErrors:hydration.flatMap(item=>item.errors)},null,2));console.log('Synthetic timings',JSON.stringify(timings));await browser.close();}

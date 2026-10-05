@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 // Same disposable PostgreSQL, signed sessions and isolated server as the Etapa journeys.
-// No real login, fixture mutation, external requests, screenshots or persisted artifacts.
+// Only test setup adds a synthetic unread announcement or pending tutorial, restored below.
+// No real login, hotel operations, external requests, screenshots or persisted artifacts.
 const ORIGIN = 'http://localhost:3000';
 const CONTROL = '/admin/mantenimiento';
 const MESSAGE = 'Trabajos de mantenimiento programados por actualizaciones importantes.';
@@ -16,6 +17,7 @@ const results = [];
 let browser;
 let admin;
 let guest;
+let interruption;
 let activePhase = 'startup';
 let failure;
 
@@ -80,6 +82,8 @@ async function controlState(page, enabled) {
   assert.equal(new URL(page.url()).pathname, CONTROL, 'SysAdmin retains the maintenance console');
   await page.getByRole('heading', { name: 'Modo mantenimiento', exact: true }).waitFor();
   await page.getByText(`Estado: ${enabled ? 'Activado' : 'Desactivado'}`, { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Confirmar lectura y continuar', exact: true }).count(), 0, 'Unread announcements cannot obstruct the recovery console');
+  assert.equal(await page.locator('[data-tutorial-ui="true"]').count(), 0, 'Pending tutorial cannot take over the recovery console');
 }
 
 async function toggle(enabled) {
@@ -132,6 +136,90 @@ async function auditedState(enabled, expectedCount) {
   assert.equal(audit.before.enabled, !enabled);
   assert.equal(audit.after.enabled, enabled);
   assert.equal(await auditCount(), expectedCount, 'Exactly one audit entry per confirmed transition');
+  await assertInterruptionUnchanged();
+}
+
+const tutorialSelect = { tutorialDoneAt: true, tutorialKnownModules: true };
+
+async function pendingAnnouncements() {
+  return db.announcement.count({ where: {
+    active: true, deletedAt: null,
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    AND: [{ OR: [{ scope: 'TODOS' }, { scope: 'USUARIO', targetUserId: fixture.users.admin.id }] },
+      { reads: { none: { userId: fixture.users.admin.id } } }],
+  } });
+}
+
+async function seedInterruption(width) {
+  assert.equal(await pendingAnnouncements(), 0, 'Isolated fixture starts without unrelated blocking announcements');
+  const original = await db.user.findUniqueOrThrow({ where: { id: fixture.users.admin.id }, select: { ...tutorialSelect, updatedAt: true } });
+  if (width === 1280) {
+    assert.ok(original.tutorialDoneAt, 'Announcement case uses the fixture with tutorial already complete');
+    const announcement = await db.announcement.create({ data: {
+      title: 'SYNTHETIC MAINTENANCE RECOVERY · unread personal announcement',
+      body: 'Disposable UI recovery fixture. Keep this announcement unread throughout the maintenance test.',
+      scope: 'USUARIO', targetUserId: fixture.users.admin.id, createdById: fixture.users.worker.id,
+      active: true, expiresAt: null, isDemo: true,
+    }, select: { id: true } });
+    interruption = { kind: 'unread-announcement', announcementId: announcement.id, original,
+      expectedTutorial: { tutorialDoneAt: original.tutorialDoneAt, tutorialKnownModules: original.tutorialKnownModules } };
+  } else {
+    const pending = await db.user.update({ where: { id: fixture.users.admin.id },
+      data: { tutorialDoneAt: null, tutorialKnownModules: { set: [] } }, select: tutorialSelect });
+    interruption = { kind: 'pending-tutorial', original, expectedTutorial: pending };
+  }
+  await assertInterruptionUnchanged();
+}
+
+async function assertInterruptionUnchanged() {
+  assert.ok(interruption, 'An independent interruption fixture is prepared');
+  assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: fixture.users.admin.id }, select: tutorialSelect }),
+    interruption.expectedTutorial, 'Recovery never completes, dismisses or changes tutorial progress');
+  assert.equal(await pendingAnnouncements(), interruption.announcementId ? 1 : 0,
+    'Each case retains only its own pending interruption');
+  if (interruption.announcementId) {
+    assert.equal(await db.announcementRead.count({ where: { announcementId: interruption.announcementId, userId: fixture.users.admin.id } }),
+      0, 'Recovery never confirms an unread announcement for the administrator');
+  } else {
+    assert.equal(interruption.expectedTutorial.tutorialDoneAt, null);
+    assert.deepEqual(interruption.expectedTutorial.tutorialKnownModules, []);
+  }
+}
+
+async function restoreInterruption() {
+  if (!interruption) return;
+  const prepared = interruption;
+  await db.$transaction(async tx => {
+    if (prepared.announcementId) {
+      // Only this disposable announcement, including any unexpected synthetic read, is removed.
+      await tx.announcement.delete({ where: { id: prepared.announcementId } });
+    } else {
+      await tx.user.update({ where: { id: fixture.users.admin.id }, data: {
+        tutorialDoneAt: prepared.original.tutorialDoneAt,
+        tutorialKnownModules: { set: prepared.original.tutorialKnownModules },
+        updatedAt: prepared.original.updatedAt,
+      } });
+    }
+  });
+  interruption = undefined;
+  assert.deepEqual(await db.user.findUniqueOrThrow({ where: { id: fixture.users.admin.id }, select: tutorialSelect }),
+    { tutorialDoneAt: prepared.original.tutorialDoneAt, tutorialKnownModules: prepared.original.tutorialKnownModules },
+    'Original synthetic tutorial state restored');
+  assert.equal(await pendingAnnouncements(), 0, 'Synthetic blocking announcement removed');
+  evidence({ phase: 'fixture-restored', interruption: prepared.kind });
+}
+
+async function reopenIfActive() {
+  // Read committed state even if activation succeeded before a response/DOM assertion failed.
+  const row = await db.systemSetting.findUnique({ where: { key: SETTING }, select: { value: true } });
+  if (row?.value?.enabled) {
+    assert.ok(admin, 'An administrator browser session is required to reopen');
+    await admin.page.goto(`${ORIGIN}${CONTROL}`);
+    await controlState(admin.page, true);
+    await toggle(false);
+    evidence({ phase: 'cleanup', maintenance: 'disabled-through-admin-ui' });
+  }
+  if (admin) await availability(admin.context, false);
 }
 
 // Read-only fingerprints cover all business rows and permissions, including updates,
@@ -169,7 +257,6 @@ try {
   const workerUser = await db.user.findUniqueOrThrow({ where: { id: fixture.users.worker.id }, select: { role: { select: { key: true } } } });
   assert.equal(adminUser.role.key, 'ADMINISTRADOR_SISTEMA');
   assert.notEqual(workerUser.role.key, 'ADMINISTRADOR_SISTEMA');
-  let before;
   evidence({ phase: 'started', browser: browser.version(), viewports: [1280, 390] });
 
   for (const width of [1280, 390]) {
@@ -177,6 +264,7 @@ try {
     await admin.page.setViewportSize({ width, height: 900 });
     const worker = await actor('worker', width);
     try {
+      await seedInterruption(width);
       await availability(worker.context, false);
       await version(worker.context);
       await admin.page.goto(`${ORIGIN}${CONTROL}`);
@@ -186,7 +274,7 @@ try {
       assert.equal(new URL(worker.page.url()).pathname, '/perfil', 'Ordinary fixture session authenticates');
       await worker.page.getByRole('heading', { name: 'Mi perfil', exact: true }).waitFor();
       assert.equal((await request(worker.context, '/api/chat/saved')).status(), 200);
-      before ??= await businessSnapshot();
+      const before = await businessSnapshot();
 
       activePhase = `confirmation-${width}`;
       const confirmation = admin.page.getByRole('checkbox', { name: 'Confirmo que se pausará la operación del personal hasta que desactive este modo.', exact: true });
@@ -241,27 +329,25 @@ try {
       await worker.page.getByRole('heading', { name: 'No tienes acceso a esta sección', exact: true }).waitFor();
       assert.equal(await worker.page.getByRole('button', { name: /mantenimiento/ }).count(), 0);
       await assertUnchanged(before);
-      const result = { width, confirmationRequired: true, auditedUiTransitions: 2, exactNotice: true, ordinaryGetPost503: true, noStore: true, adminExemption: true, reloadPersistence: true, nonAdminControlDenied: true, operationReopened: true, publicReadOnlyStatus: true, unrelatedRowsUnchanged: true };
+      const result = { width, interruption: interruption.kind, pendingInterruptionPreserved: true, confirmationRequired: true, auditedUiTransitions: 2, exactNotice: true, ordinaryGetPost503: true, noStore: true, adminExemption: true, reloadPersistence: true, nonAdminControlDenied: true, operationReopened: true, publicReadOnlyStatus: true, unrelatedRowsUnchanged: true };
       results.push(result);
       evidence({ phase: 'passed', ...result });
-    } finally { await worker.context.close(); }
+    } finally {
+      try {
+        await reopenIfActive();
+        await restoreInterruption();
+      } finally { await worker.context.close(); }
+    }
   }
 } catch (error) {
   failure = error;
   evidence({ phase: 'failed', at: activePhase, ...failureDetails(error) });
 } finally {
-  // Inspect committed state even if a response/DOM assertion failed after activation.
-  // Recovery uses a fresh revision and the same authorized UI; never a direct DB reset.
+  // Always reopen through the authenticated UI before restoring test-only setup.
+  // No direct maintenance reset, acknowledgement or tutorial completion is used.
   try {
-    const row = await db.systemSetting.findUnique({ where: { key: SETTING }, select: { value: true } });
-    if (row?.value?.enabled) {
-      assert.ok(admin, 'An administrator browser session is required to reopen');
-      await admin.page.goto(`${ORIGIN}${CONTROL}`);
-      await controlState(admin.page, true);
-      await toggle(false);
-      evidence({ phase: 'cleanup', maintenance: 'disabled-through-admin-ui' });
-    }
-    if (admin) await availability(admin.context, false);
+    await reopenIfActive();
+    await restoreInterruption();
   } catch (error) {
     evidence({ phase: 'cleanup-failed', ...failureDetails(error) });
     failure ??= error;

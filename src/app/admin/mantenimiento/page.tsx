@@ -13,7 +13,7 @@ export default async function SystemMaintenancePage() {
   const user = await requirePageUser({ allowAreaOperation: true });
   if (!user.isSystemAdmin) redirect('/sin-permisos');
   const state = await getMaintenanceState();
-  return <main className="mx-auto max-w-2xl space-y-5">
+  return <main className="mx-auto max-w-2xl space-y-5 px-4 py-8">
     <Link href="/admin" className="text-sm underline">Volver a Administración</Link>
     <h1 className="text-xl font-semibold text-petrol-900">Modo mantenimiento</h1>
     <section className="rounded-lg border border-slate-200 bg-white p-5 space-y-4">

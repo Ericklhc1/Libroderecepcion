@@ -8,6 +8,8 @@ Mensaje: **Trabajos de mantenimiento programados por actualizaciones importantes
 
 Sólo una sesión vigente cuyo rol actual es `SYSTEM_ADMIN` conserva acceso y puede administrar este control. No se identifica al administrador por texto de usuario, parámetros del cliente, headers o cookies sin verificar. Login/logout siguen disponibles. La sesión conserva sus comprobaciones habituales de expiración/revocación y primer acceso.
 
+La consola conserva `/admin/mantenimiento`, pero vive fuera del layout operativo. Un comunicado obligatorio pendiente o un tutorial no puede tapar la recuperación ni obligar a registrar acuses o completar recorridos para desactivar el mantenimiento. Se conservan todas las comprobaciones de sesión, rol, contraseña personal y términos.
+
 ## Comportamiento
 
 - Estado ausente: operación disponible. Estado persistido inválido: operación pausada hasta reparación desde la consola. Fallo de lectura: operaciones API/acciones y tareas automáticas se detienen; no hay fallback que reabra silenciosamente.

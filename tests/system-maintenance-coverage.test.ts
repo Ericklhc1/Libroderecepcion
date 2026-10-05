@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
@@ -137,7 +137,7 @@ describe('mantenimiento temporal · guards, control y presentación', () => {
   });
 
   it('la consola propia exige SysAdmin y el editor genérico no puede modificar esta clave', () => {
-    const page = source('src/app/(app)/admin/mantenimiento/page.tsx');
+    const page = source('src/app/admin/mantenimiento/page.tsx');
     expect(page).toContain("if (!user.isSystemAdmin) redirect('/sin-permisos')");
     expect(page.indexOf('if (!user.isSystemAdmin)')).toBeLessThan(page.indexOf('await getMaintenanceState()'));
     expect(page).toContain('<SystemMaintenanceForm state={state}');
@@ -149,6 +149,16 @@ describe('mantenimiento temporal · guards, control y presentación', () => {
     expect(functionBody('src/server/actions/admin.ts', 'saveSettingAction')).toContain('input.key in DEFAULT_SETTINGS');
     const adminPage = source('src/app/(app)/admin/page.tsx');
     expect(adminPage).toMatch(/user\.isSystemAdmin\s*\?\s*\(\s*<Link href="\/admin\/mantenimiento"/);
+  });
+
+  it('la recuperación queda fuera del shell operativo sin omitir autenticación ni primer acceso', () => {
+    const page = source('src/app/admin/mantenimiento/page.tsx');
+    expect(existsSync('src/app/(app)/admin/mantenimiento/page.tsx')).toBe(false);
+    expect(page).toContain('await requirePageUser({ allowAreaOperation: true })');
+    expect(page).not.toContain('allowIncompleteAccess');
+    expect(page).not.toMatch(/AnnouncementGate|TutorialTour|ReceptionOperationGate/);
+    expect(source('src/app/layout.tsx')).not.toMatch(/AnnouncementGate|TutorialTour|ReceptionOperationGate/);
+    expect(functionBody('src/server/actions/system-maintenance.ts', 'setSystemMaintenanceAction')).toContain('await requireUser()');
   });
 
   it('el formulario envía revisión y confirmación, sin permitir editar el mensaje canónico', () => {

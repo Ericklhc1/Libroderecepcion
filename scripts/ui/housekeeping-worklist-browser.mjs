@@ -8,6 +8,7 @@ const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
 const db = new PrismaClient();
 const browser = await chromium.launch({ headless: true });
 const results = [];
+const noJsFailures = [];
 const base = 'http://localhost:3000';
 async function session(key, width, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, ...options });
@@ -87,7 +88,7 @@ try {
         return state;
       }).catch(() => []);
       console.error('Synthetic no-JavaScript worklist visibility:', JSON.stringify(ancestors));
-      throw error;
+      noJsFailures.push({ width, error: error.name, message: error.message.slice(0, 400) });
     }
     // A focused native destination must not retain page-two offset after the
     // server narrows the result to one authorized human folio.
@@ -135,10 +136,11 @@ try {
     await admin.page.goto(base + archiveList + '#resultado-999999999');
     await admin.page.locator('[data-list-item][aria-haspopup="dialog"]').first().waitFor();
     assert.equal(await admin.page.locator('[data-worklist-panel]').count(), 0, 'Unknown fragment aliases cannot load or open another record');
-    results.push({ width, compactList: true, nestedEscape: true, noMutationOnCancel: true, deepLink: true, originContext: true, explicitReturnClosesPanel: true, nativeNoJavaScript: true, permissionsPreserved: true, nativeFocusFromPageTwo: true, internalResultKeepsPanel: true, bothResultBranches: true, nativeModifiedResultLink: true, unknownFragmentClosed: true });
+    results.push({ width, jsStatus: 'passed', compactList: true, nestedEscape: true, noMutationOnCancel: true, deepLink: true, originContext: true, explicitReturnClosesPanel: true, nativeNoJavaScript: !noJsFailures.some(failure => failure.width === width), permissionsPreserved: true, nativeFocusFromPageTwo: true, internalResultKeepsPanel: true, bothResultBranches: true, nativeModifiedResultLink: true, unknownFragmentClosed: true });
     await maid.context.close(); await admin.context.close(); await noJs.context.close();
   }
+  assert.deepEqual(noJsFailures, [], 'NoJS characterization still fails; JS journeys were collected separately');
 } finally {
-  writeFileSync('housekeeping-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results }, null, 2));
+  writeFileSync('housekeeping-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
   await browser.close(); await db.$disconnect();
 }

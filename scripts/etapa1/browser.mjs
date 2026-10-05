@@ -68,7 +68,7 @@ try{
   await own.locator('[data-list-item][aria-haspopup="dialog"]').click();
   const receiptPanel=worker.page.getByRole('dialog');
   await receiptPanel.getByText('Recepción, siguiente acción y relevo',{exact:true}).click();
-  await measured(`receive visible ${width}`,async()=>{await submit(worker.page,receiptPanel.getByRole('button',{name:'Confirmar recepción',exact:true}));await own.getByText(/^Recibido:/).waitFor();});console.log('Receipt visible',width);
+  await measured(`receive visible ${width}`,async()=>{await submit(worker.page,receiptPanel.getByRole('button',{name:'Confirmar recepción',exact:true}));await own.locator('[data-list-item][aria-haspopup="dialog"]').getByText(/^Recibido:/).waitFor();});console.log('Receipt visible',width);
   assert.ok(await worker.page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'No horizontal mobile overflow');
   await measured(`navigation task ${width}`,()=>worker.page.goto(`http://localhost:3000/tareas/${t.id}`));
   await measured(`resolve visible ${width}`,async()=>{await submit(worker.page,worker.page.getByRole('button',{name:'Resolver',exact:true}));await worker.page.getByText('Completada',{exact:true}).first().waitFor();});console.log('Resolution visible',width);

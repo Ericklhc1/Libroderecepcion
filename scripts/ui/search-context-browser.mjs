@@ -17,6 +17,7 @@ const entryQuery = `${marker} ENTRY habitación &`;
 const taskQuery = `${marker} TASK`;
 const workDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const results = [];
+const noJsFailures = [];
 const errors = [];
 const mutations = [];
 const listHref = q => '/buscar?' + new URLSearchParams({ q });
@@ -55,7 +56,7 @@ async function returned(page, list, anchor, scrollY) {
 async function journey(page, q, detailRoot) {
   const list = listHref(q);
   await page.goto(base + '/buscar');
-  await page.locator('input[name=q]').fill(q);
+  await page.getByRole('searchbox', { name: 'Buscar en todo el Libro', exact: true }).fill(q);
   await page.getByRole('button', { name: 'Buscar', exact: true }).click();
   await page.waitForURL(base + list);
   await page.getByRole('heading', { name: 'Búsqueda global', exact: true }).waitFor();
@@ -225,6 +226,9 @@ try {
       assert.equal(new URL(page.url()).hash, '#' + anchor);
       if (mode === 'no-storage') await page.waitForFunction(id => document.getElementById(id)?.getAttribute('aria-current') === 'true', anchor);
       results.push({ mode, nativeSearchAndAnchorReturn: true });
+    } catch (error) {
+      if (mode !== 'no-javascript') throw error;
+      noJsFailures.push({ mode, error: error.name, message: error.message.slice(0, 400) });
     } finally { await context.close(); }
   }
 
@@ -233,9 +237,10 @@ try {
   assert.deepEqual(await db.housekeepingRequest.findMany({ where: { requestKey: { startsWith: marker } }, orderBy: { id: 'asc' } }), hkBefore);
   assert.deepEqual(errors, []);
   assert.deepEqual(mutations, [], 'Reading, returning and cancelling never submit an operational action');
+  assert.deepEqual(noJsFailures, [], 'NoJS characterization still fails; JS journeys were collected separately');
   console.log('Search/native detail continuity and scoped privacy passed.', JSON.stringify(results));
 } finally {
-  writeFileSync('/tmp/search-context-browser-results.json', JSON.stringify({ browser: browser.version(), results }, null, 2));
+  writeFileSync('/tmp/search-context-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
   await browser.close();
   await db.$disconnect();
 }

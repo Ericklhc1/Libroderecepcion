@@ -8,6 +8,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright-c
 const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
 const results = [];
+const noJsFailures = [];
 const base = 'http://localhost:3000';
 
 async function focused(locator) { return locator.evaluate(node => node === document.activeElement); }
@@ -140,6 +141,7 @@ try {
   }
   for (const key of ['admin', 'maid']) {
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, javaScriptEnabled: false });
+    try {
     await context.addCookies([{ name: 'lor_session', value: fixture.users[key].token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' }]);
     await context.route('**/*', route => new URL(route.request().url()).hostname === 'localhost' ? route.continue() : route.abort());
     const page = await context.newPage();
@@ -159,10 +161,12 @@ try {
     }
     await page.locator('[aria-label="Contexto operativo"] time[datetime]').waitFor();
     results.push({ javascriptDisabled: true, role: key, nativeModuleLinks: true, permissionsPreserved: true, operationalDateVisible: true });
-    await context.close();
+    } catch (error) { noJsFailures.push({ role: key, error: error.name, message: error.message.slice(0, 400) }); }
+    finally { await context.close(); }
   }
+  assert.deepEqual(noJsFailures, [], 'NoJS characterization still fails; JS journeys were collected separately');
   console.log('Module navigation browser verification passed.', JSON.stringify(results));
 } finally {
-  writeFileSync('module-navigation-browser-results.json', JSON.stringify({ browser: browser.version(), results }, null, 2));
+  writeFileSync('module-navigation-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
   await browser.close();
 }

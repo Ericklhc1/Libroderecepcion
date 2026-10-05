@@ -11,6 +11,7 @@ const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIG
 const base = 'http://localhost:3000';
 const marker = `CONTEXT_WORKLIST_${Date.now()}`;
 const results = [];
+const noJsFailures = [];
 const list = '/coordinacion?' + new URLSearchParams({ q: marker, area: fixture.areaId, vista: 'all', mios: '1', pagina: '2' });
 
 async function session(width, options = {}) {
@@ -168,12 +169,14 @@ try {
     await page.locator('[data-list-return]').click();
     assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, list);
     results.push({ javascriptDisabled: true, nativeDetailsAndRecordLinks: true });
-  } finally { await noJs.close(); }
+  } catch (error) { noJsFailures.push({ error: error.name, message: error.message.slice(0, 400) }); }
+  finally { await noJs.close(); }
   assert.equal(await db.task.count({ where: { title: { startsWith: marker }, status: { not: 'PENDIENTE' } } }), 0);
   assert.equal(await db.task.count({ where: { title: { startsWith: marker }, workNextAction: 'UNSAVED_CONTEXT_DRAFT' } }), 0);
+  assert.deepEqual(noJsFailures, [], 'NoJS characterization still fails; JS journeys were collected separately');
   console.log('Contextual worklist native journeys passed.', JSON.stringify(results));
 } finally {
-  writeFileSync('/tmp/context-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results }, null, 2));
+  writeFileSync('/tmp/context-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
   await browser.close();
   await db.$disconnect();
 }

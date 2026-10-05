@@ -9,6 +9,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-c
 const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
 const db = new PrismaClient(), browser = await chromium.launch({ headless: true }), results = [];
 const base = 'http://localhost:3000';
+const noJsFailures = [];
 
 async function session(token, width, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, ...options });
@@ -146,7 +147,7 @@ try {
     assert.equal(record.custodyLocation, 'Gabinete confirmado desde formulario');
     assert.equal(record.version, 3);
     assert.equal(await db.lostFoundEvent.count({ where: { itemId: record.id } }), 3);
-    await row.getByText('Gabinete confirmado desde formulario', { exact: false }).waitFor();
+    await row.getByText('Custodia: Gabinete confirmado desde formulario', { exact: true }).waitFor();
     assert.equal(await page.locator('[data-worklist-panel]').count(), 0, 'A saved change returns to the list even when the row remains visible');
     await row.click();
     await panel.getByText('Gabinete confirmado desde formulario', { exact: true }).waitFor();
@@ -169,7 +170,7 @@ try {
 
     await page.goto(base + filteredHref(marker, 'ENTREGADO', record.humanId));
     await panel.waitFor();
-    await panel.getByText('Acta de entrega sintética', { exact: false }).waitFor();
+    await panel.getByRole('region', { name: 'Resultado registrado', exact: true }).getByText('Evidencia: Acta de entrega sintética', { exact: true }).waitFor();
     assert.equal(await panel.getByRole('button', { name: 'Registrar entrega', exact: true }).count(), 0);
     await panel.getByRole('button', { name: 'Reabrir custodia', exact: true }).click();
     inner = page.getByRole('dialog', { name: 'Reabrir custodia', exact: true });
@@ -186,7 +187,7 @@ try {
     await page.goto(base + filteredHref(marker, 'EN_CUSTODIA', record.humanId));
     await panel.waitFor();
     await panel.getByText('Historial y responsables', { exact: true }).click();
-    await panel.getByText(/ENTREGAR/).waitFor();
+    await panel.locator('ol').getByText(/ · ENTREGAR$/).waitFor();
     await panel.getByRole('button', { name: 'Registrar disposición final', exact: true }).click();
     inner = page.getByRole('dialog', { name: 'Registrar disposición final', exact: true });
     await inner.locator('textarea[name=note]').fill('Disposición final sintética');
@@ -218,7 +219,7 @@ try {
     await readPanel.waitFor();
     assert.equal(await readOnly.page.getByRole('button', { name: 'Registrar objeto', exact: true }).count(), 0);
     assert.equal(await readPanel.locator('button').count(), 0);
-    await readPanel.getByText('Acta de disposición sintética', { exact: false }).waitFor();
+    await readPanel.getByRole('region', { name: 'Resultado registrado', exact: true }).getByText('Evidencia: Acta de disposición sintética', { exact: true }).waitFor();
     const denied = await nativeChange(readOnly.context, { id: record.id, version: String(record.version), action: 'REABRIR', note: 'Debe rechazarse por permiso' });
     assert.equal(denied.status, 400); assert.equal(denied.body.ok, false);
     assert.equal((await db.lostFoundItem.findUniqueOrThrow({ where: { id: record.id } })).version, record.version);
@@ -229,19 +230,23 @@ try {
     assert.equal(await db.lostFoundEvent.count({ where: { itemId: record.id } }), 6, 'Granting permission and viewing do not register a handover');
 
     const noJs = await session(fixture.users.admin.token, width, { javaScriptEnabled: false });
+    try {
     await noJs.page.goto(base + deepLink);
     const fallback = noJs.page.locator('[data-worklist-fallback][open]');
     await fallback.getByText('Hallazgo sintético del recorrido', { exact: true }).waitFor();
-    await fallback.getByText('Acta de disposición sintética', { exact: false }).waitFor();
+    await fallback.getByRole('region', { name: 'Resultado registrado', exact: true }).getByText('Evidencia: Acta de disposición sintética', { exact: true }).waitFor();
     await fallback.getByText('Historial y responsables', { exact: true }).click();
-    await fallback.getByText(/ENTREGAR/).waitFor();
+    await fallback.locator('ol').getByText(/ · ENTREGAR$/).waitFor();
+    } catch (error) { noJsFailures.push({ width, error: error.name, message: error.message.slice(0, 400) }); }
+    finally { await noJs.context.close(); }
     await page.goto(base + closedList + '&objeto=999999999');
     await row.waitFor();
     assert.equal(await page.locator('[data-worklist-panel]').count(), 0, 'An unreturned folio cannot open a record');
-    results.push({ width, compactList: true, originalFolio: true, nestedEscape: true, backForward: true, focusRestored: true, staleVersionRejected: true, nativeMoveReloaded: true, evidenceRequired: true, filtersAfterNativeActions: true, deliveryReopenDisposition: true, actorAndHistoryPreserved: true, readOnlyAndRoleGrant: true, nativeNoJavaScriptRead: true, physicalSafari: false });
-    await admin.context.close(); await readOnly.context.close(); await noJs.context.close();
+    results.push({ width, jsStatus: 'passed', compactList: true, originalFolio: true, nestedEscape: true, backForward: true, focusRestored: true, staleVersionRejected: true, nativeMoveReloaded: true, evidenceRequired: true, filtersAfterNativeActions: true, deliveryReopenDisposition: true, actorAndHistoryPreserved: true, readOnlyAndRoleGrant: true, nativeNoJavaScriptRead: !noJsFailures.some(failure => failure.width === width), physicalSafari: false });
+    await admin.context.close(); await readOnly.context.close();
   }
+  assert.deepEqual(noJsFailures, [], 'NoJS characterization still fails; JS journeys were collected separately');
 } finally {
-  writeFileSync('custody-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results }, null, 2));
+  writeFileSync('custody-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
   await browser.close(); await db.$disconnect();
 }

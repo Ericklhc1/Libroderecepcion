@@ -262,29 +262,22 @@ jobs:
           done
           exit "$journey_status"
 
-      - name: Sonda aislada de NoJS en la base publicada
+      - name: Control A/B de transporte SPA sin salida externa
         if: ${{ !cancelled() && steps.production_build.outcome == 'success' && github.ref == 'refs/heads/codex/aroh-fns-20261005' }}
-        timeout-minutes: 6
+        timeout-minutes: 3
         env:
           NODE_ENV: production
-          BASELINE_SHA: 928f57b5fc6823229d160623e6253d4a7ce02fb3
         run: |
           node scripts/etapa1/guard.cjs
-          baseline_dir=$(mktemp -d /tmp/aroh-nojs-baseline.XXXXXX)
-          git archive "$BASELINE_SHA" | tar -x -C "$baseline_dir"
-          ln -s "$GITHUB_WORKSPACE/node_modules" "$baseline_dir/node_modules"
-          cd "$baseline_dir"
-          npm run build
           npx tsx scripts/etapa1/fixture.mts
-          export BASELINE_BUILD_ID=$(cat .next/BUILD_ID)
-          NODE_OPTIONS="--require=$baseline_dir/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost --port 3101 > /tmp/baseline-nojs-server.log 2>&1 &
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/navigation-transport-server.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:3101/login > /dev/null; then break; fi
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
             sleep 1
           done
-          PLAYWRIGHT_MODULE="$GITHUB_WORKSPACE/node_modules/playwright-core/index.mjs" node "$GITHUB_WORKSPACE/scripts/ui/baseline-nojs-probe.mjs"
+          PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/navigation-transport-probe.mjs
 
       - name: Evidencia temporal en logs sin almacenamiento adicional
         if: ${{ always() && github.ref == 'refs/heads/codex/aroh-fns-20261005' }}

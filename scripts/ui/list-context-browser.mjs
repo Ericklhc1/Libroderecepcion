@@ -270,6 +270,10 @@ try {
     await page.locator('[data-list-return]').click();
     await page.locator(`[data-list-item="${anchor}"]`).waitFor();
     assert.equal(new URL(page.url()).hash, '#' + anchor);
+    // The row is server-rendered before ListNavigation's hydration effect can
+    // select the fragment. With storage disabled there is no return marker to
+    // await; wait for the same selection state asserted below instead.
+    await page.waitForFunction(anchor => document.getElementById(anchor)?.getAttribute('aria-current') === 'true', anchor);
     assert.equal(await page.locator(`[data-list-item="${anchor}"]`).getAttribute('aria-current'), 'true');
     results.push({ storageUnavailable: true, nativeAnchorFallback: true });
   } finally { await noStorage.close(); }

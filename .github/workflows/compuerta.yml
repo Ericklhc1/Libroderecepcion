@@ -127,7 +127,7 @@ jobs:
       - name: Regresiones
         run: |
           npm run test
-          node --test scripts/ui/hydration-diagnostics.test.mjs scripts/framework/react-ping-backport.test.mjs
+          node --test scripts/ui/hydration-diagnostics.test.mjs scripts/framework/react-ping-backport.test.mjs scripts/framework/verify-react-ping-build.test.mjs
 
       - name: Build
         id: production_build
@@ -153,6 +153,7 @@ jobs:
             if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
             sleep 1
           done
+          node scripts/framework/verify-react-ping-build.mjs --served
           journey_status=0
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa1/browser.mjs; then
             grep -F '[etapa2-timing]' /tmp/etapa1-server.log || true

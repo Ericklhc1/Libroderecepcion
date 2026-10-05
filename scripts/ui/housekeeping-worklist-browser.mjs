@@ -9,6 +9,7 @@ const db = new PrismaClient();
 const browser = await chromium.launch({ headless: true });
 const results = [];
 const noJsFailures = [];
+const popupReadiness = [];
 const base = 'http://localhost:3000';
 async function session(key, width, options = {}) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, ...options });
@@ -124,11 +125,22 @@ try {
       await archivePanel.waitFor();
       const [popup] = await Promise.all([admin.context.waitForEvent('page'), archivePanel.getByRole('link', { name: 'Ver resultado', exact: true }).click({ modifiers: ['Control'] })]);
       await popup.waitForLoadState('domcontentloaded');
-      const popupPanel = popup.locator(`[data-housekeeping-detail="${archived.id}"]`);
+      const initialReadiness = await popup.evaluate(id => ({
+        fallbackCopies: document.querySelectorAll('[data-worklist-fallback]').length,
+        hydratedRow: Boolean(document.querySelector(`[data-list-item="registro-housekeeping-${id}"][aria-haspopup="dialog"]`)),
+        richDetail: Boolean(document.querySelector(`[role="dialog"] [data-housekeeping-detail="${id}"]`)),
+        focusInFallback: Boolean(document.activeElement?.closest('[data-worklist-fallback]')),
+      }), archived.id);
+      // Native fragment navigation can reveal/focus the SSR <details> before
+      // React mounts Dialog. That fallback is not an Escape-dismissible modal.
+      await popup.locator(`[data-list-item="registro-housekeeping-${archived.id}"][aria-haspopup="dialog"]`).waitFor();
+      const popupPanel = popup.getByRole('dialog').locator(`[data-housekeeping-detail="${archived.id}"]`);
       await popupPanel.waitFor();
+      assert.equal(await popup.locator('[data-worklist-fallback]').count(), 0, 'Keyboard dismissal targets the hydrated dialog, not the native SSR fallback');
       assert.equal(new URL(popup.url()).searchParams.get('pagina'), '2');
       assert.equal(new URL(popup.url()).hash, (hasResult ? '#resultado-' : '#aviso-') + archived.humanId);
-      await popup.waitForFunction(id => { const panel = document.querySelector(`[data-housekeeping-detail="${id}"]`); return panel && (panel.contains(document.activeElement) || panel === document.activeElement); }, archived.id);
+      await popup.waitForFunction(id => { const panel = document.querySelector(`[role="dialog"] [data-housekeeping-detail="${id}"]`); return panel && (panel.contains(document.activeElement) || panel === document.activeElement); }, archived.id);
+      popupReadiness.push({ width, hasResult, initial: initialReadiness, hydratedDialogBeforeEscape: true });
       await popup.keyboard.press('Escape'); await popupPanel.waitFor({ state: 'hidden' });
       await popup.close();
       assert.equal((await db.housekeepingRequest.findUniqueOrThrow({ where: { id: archived.id } })).version, archived.version);
@@ -141,6 +153,6 @@ try {
   }
   console.log('NOJS_CHARACTERIZATION ' + JSON.stringify({ status: noJsFailures.length ? 'inherited-limitation' : 'passed', baseline: '928f57b5fc6823229d160623e6253d4a7ce02fb3', noJsFailures }));
 } finally {
-  writeFileSync('housekeeping-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures }, null, 2));
+  writeFileSync('housekeeping-worklist-browser-results.json', JSON.stringify({ browser: browser.version(), results, noJsFailures, popupReadiness }, null, 2));
   await browser.close(); await db.$disconnect();
 }

@@ -115,8 +115,18 @@ try {
       const { trigger, panel } = await openMobile(page);
       const close = panel.getByRole('button', { name: 'Cerrar', exact: true });
       assert.ok(await focused(close), 'Mobile dialog initially focuses Close');
+      // Visibility precedes the end of mobile-menu-open (translateY(1rem) -> 0).
+      // Measure its final geometry, using animation state rather than a sleep.
+      await page.waitForFunction(() => {
+        const dialog = document.querySelector('[role="dialog"][aria-label="Todo el menú"]');
+        return dialog && dialog.getAnimations().filter(animation => animation.animationName === 'mobile-menu-open')
+          .every(animation => animation.playState === 'finished' || animation.playState === 'idle');
+      }, undefined, { timeout: 12000 });
       const box = await panel.boundingBox();
-      assert.ok(box && box.y >= 0 && box.y + box.height <= 841, 'Mobile dialog fits above quick actions');
+      const quickActionsBox = await page.getByRole('navigation', { name: 'Navegación rápida', exact: true }).boundingBox();
+      const geometry = JSON.stringify({ width, panel: box, quickActions: quickActionsBox, viewport: page.viewportSize() });
+      assert.ok(box && box.y >= 0 && box.y + box.height <= 841, 'Mobile dialog fits above quick actions: ' + geometry);
+      assert.ok(quickActionsBox && box.y + box.height <= quickActionsBox.y + 1, 'Mobile dialog clears the actual quick-action bar (including its border): ' + geometry);
       await page.keyboard.press('Shift+Tab');
       assert.ok(await focused(panel.getByRole('button', { name: 'Cerrar sesión', exact: true })), 'Focus stays inside the dialog');
       await page.keyboard.press('Tab');

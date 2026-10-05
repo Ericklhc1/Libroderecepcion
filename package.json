@@ -20,7 +20,8 @@
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
     "vercel-build": "tsx scripts/vercel-build.ts",
     "postinstall": "node scripts/framework/react-ping-backport.mjs --apply && prisma generate",
-    "prebuild": "node scripts/framework/react-ping-backport.mjs --prepare-build"
+    "prebuild": "node scripts/framework/react-ping-backport.mjs --prepare-build",
+    "postbuild": "node scripts/framework/verify-react-ping-build.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

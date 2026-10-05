@@ -35,7 +35,7 @@ export async function exerciseShiftUx({ browser, db, results }) {
     const deniedRole = await db.role.findUniqueOrThrow({ where: { key: 'MUCAMA' } });
     const terms = await db.legalAcceptance.findFirstOrThrow({ where: { userId: fixture.users.admin.id }, select: { document: true, version: true } });
     const tutorial = await db.user.findUniqueOrThrow({ where: { id: fixture.users.admin.id }, select: { tutorialKnownModules: true } });
-    const contexts = [];
+    const contexts = [], actors = [];
     let activePage;
     let step='setup';
     function mark(next) { step = next; console.log('SHIFT_UX_STAGE', JSON.stringify({ width, step, elapsedMs: Date.now() - journeyStarted })); }
@@ -65,7 +65,8 @@ export async function exerciseShiftUx({ browser, db, results }) {
       });
       page.on('pageerror', error => errors.push(error.message));
       page.on('console', message => { if (message.type() === 'error' && /hydration|did.n.t match|server rendered html/i.test(message.text())) errors.push(message.text()); });
-      return { user, page, context, posts, frontiPosts, errors };
+      const actor = { label, user, page, context, posts, frontiPosts, errors };
+      actors.push(actor); return actor;
     }
     async function shiftFor(user, status = 'ACTIVO', sent = false) {
       const now = new Date();
@@ -135,19 +136,32 @@ export async function exerciseShiftUx({ browser, db, results }) {
         acquired(); await release;
       }, { timeout: 20000, maxWait: 3000 });
       await Promise.race([locked, transaction.then(() => { throw new Error('Synthetic lock ended before acquisition'); })]);
+      let workFailed = false;
       try { return await work(); }
-      finally { unlock(); await transaction; }
+      catch (error) { workFailed = true; throw error; }
+      finally {
+        unlock();
+        try { await transaction; }
+        catch (lockError) {
+          if (!workFailed) throw lockError;
+          console.error('Synthetic lock cleanup failure', JSON.stringify({ name: lockError.name, message: String(lockError.message).slice(0, 700) }));
+        }
+      }
     }
     async function submitPending(actor, spec, dialog) {
       const before = actor.posts.length;
       const route = new URL(actor.page.url()).pathname;
       const response = actor.page.waitForResponse(value => actionable(value.request()) && new URL(value.url()).pathname === route);
+      response.catch(() => {}); // Preserve the original assertion if cleanup closes the page.
+      const started = actor.page.waitForRequest(value => actionable(value) && new URL(value.url()).pathname === route);
+      started.catch(() => {});
       await whileUserLocked(async () => {
         await dialog.getByRole('button', { name: spec.confirm, exact: true }).dblclick();
+        await started;
         await dialog.getByRole('status').filter({ hasText: 'La operación ya está en curso.' }).waitFor();
         assert.ok(await dialog.locator('button[type=submit]').isDisabled());
         assert.ok(await dialog.getByRole('button', { name: spec.back, exact: true }).isDisabled());
-        assert.equal(await dialog.getByRole('button', { name: 'Cerrar', exact: true }).count(), 0);
+        await dialog.getByRole('button', { name: 'Cerrar', exact: true }).waitFor({ state: 'hidden' });
         await actor.page.keyboard.press('Escape'); await actor.page.mouse.click(4, 4);
         assert.ok(await dialog.isVisible(), 'Pending cannot pretend to cancel an already submitted operation');
         await dialog.locator('button[type=submit]').evaluate(button => button.click());
@@ -247,6 +261,7 @@ export async function exerciseShiftUx({ browser, db, results }) {
         const navigated = frame => { if (frame === outgoing.page.mainFrame()) navigations.push(new URL(frame.url()).pathname); };
         outgoing.page.on('framenavigated', navigated);
         const response = outgoing.page.waitForResponse(value => actionable(value.request()) && new URL(value.url()).pathname === '/turno');
+        response.catch(() => {});
         try {
           await whileUserLocked(async () => {
             await outgoing.page.getByRole('button', { name: 'INICIAR CIERRE DE TURNO', exact: true }).dblclick();
@@ -344,7 +359,7 @@ export async function exerciseShiftUx({ browser, db, results }) {
     } catch (error) {
       const observed = activePage ? await activePage.evaluate(() => ({ path: location.pathname, dialogs: [...document.querySelectorAll('[role=dialog]')].map(d => ({ title: d.getAttribute('aria-label') || d.getAttribute('aria-labelledby'), alerts: [...d.querySelectorAll('[role=alert]')].map(a => a.textContent), buttons: [...d.querySelectorAll('button')].map(b => ({ text: b.textContent, disabled: b.disabled })) })), activeTag: document.activeElement?.tagName })).catch(() => null) : null;
       results.push({ width, journey: 'shift-ux-targeted', step, status: 'failed', observed });
-      console.error('Synthetic shift UX failure', JSON.stringify({ width, step, observed }));
+      console.error('Synthetic shift UX failure', JSON.stringify({ width, step, observed, error: { name: error.name, message: String(error.message).slice(0, 1800) }, actionCounts: actors.map(actor => ({ label: actor.label, posts: actor.posts.length })) }));
       throw error;
     } finally {
       await db.cashFund.updateMany({ data: { active: false } });

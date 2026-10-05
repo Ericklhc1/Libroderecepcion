@@ -165,6 +165,25 @@ const variants = [
     view.cleanup();
   }
   if (!baseline) {
+    let settleQueued;
+    actionImpl = () => calls.length === 1 ? new Promise(resolve => { settleQueued = resolve; }) : Promise.resolve(error);
+    const queued = mount(forms.CancelPreparationForm, { shiftId: 'synthetic-queued' });
+    await open(queued);
+    const queuedPanel = dialog();
+    const queuedSubmit = queuedPanel.querySelector('button[type=submit]');
+    queuedSubmit.click(); queuedSubmit.click();
+    await wait();
+    assert.equal(calls.length, 1);
+    settleQueued(error); await wait(150);
+    assert.equal(calls.length, 1, 'two clicks before disabled paints cannot enqueue a second server call');
+    assert.equal(queuedPanel.querySelector('[role=alert]')?.textContent, error.error);
+    actionImpl = async () => ({ ok: true, message: 'Reintento explícito.' });
+    queuedSubmit.click(); await wait(100);
+    assert.equal(calls.length, 2, 'a visible rejection permits one explicit retry');
+    assert.deepEqual(navigation, [['push', '/turno']]);
+    queued.cleanup();
+    results.push({ queuedDoubleSubmit: 'pass', explicitRetryAfterVisibleError: 'pass' });
+
     let finishImmediate;
     actionImpl = () => new Promise(resolve => { finishImmediate = resolve; });
     const immediate = mount(forms.SendHandoverForm, { shiftId: 'synthetic-immediate' });

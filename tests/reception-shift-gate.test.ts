@@ -148,7 +148,9 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(closeForm).not.toContain('onError={() => setOpen(false)}');
     expect(dialog.indexOf('<ActionForm')).toBeGreaterThan(dialog.indexOf('<Dialog'));
     expect(dialog.indexOf('</ActionForm>')).toBeLessThan(dialog.indexOf('</Dialog>'));
-    expect(dialog).not.toContain('onError=');
+    expect(dialog).toContain('onSubmitCapture=');
+    expect(dialog).toContain('event.preventDefault()');
+    expect(dialog).toContain('submittedRef.current = false');
     expect(form).toContain('role="alert"');
     // scripts/ui/shift-dialog-repro.cjs verifica rechazo, foco y error interno
     // con el renderer real, además de este contrato de composición.

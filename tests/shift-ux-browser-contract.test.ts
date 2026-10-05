@@ -20,7 +20,8 @@ describe('escenas reales de UI de Turnos en la compuerta existente', () => {
   it('comprueba respuesta nativa, pending real y reintento explícito de las cuatro variantes', () => {
     for (const key of ['cancel', 'send', 'close', 'guided']) expect(source).toContain(`specs.${key}`);
     expect(source).toContain('LOCK TABLE "User" IN ACCESS EXCLUSIVE MODE');
-    expect(source).toContain('finally { unlock(); await transaction; }');
+    expect(source).toMatch(/finally\s*\{\s*unlock\(\);/);
+    expect(source).toContain('if (!workFailed) throw lockError;');
     expect(source).toContain('La operación ya está en curso.');
     expect(source).toContain('response.text()');
     expect(source).toContain("getByRole('alert')");

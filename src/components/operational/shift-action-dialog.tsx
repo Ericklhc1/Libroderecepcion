@@ -81,9 +81,10 @@ export function ShiftActionDialog({
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
+  const submittedRef = useRef(false);
   const onPendingChange = useCallback((next: boolean) => {
     // Un efecto inicial de FormStatus no puede desbloquear una acción ya enviada.
-    if (!next && pendingRef.current) return;
+    if (!next && (pendingRef.current || submittedRef.current)) return;
     setPending(next);
   }, []);
   const guardedAction = useCallback<ShiftActionDialogProps['action']>(async (state, formData) => {
@@ -108,7 +109,7 @@ export function ShiftActionDialog({
     }
   }, [action, onPendingChange]);
   const onOpenChange = useCallback((next: boolean) => {
-    if (!pendingRef.current && !pending) setOpen(next);
+    if (!submittedRef.current && !pendingRef.current && !pending) setOpen(next);
   }, [pending]);
 
   return (
@@ -123,11 +124,27 @@ export function ShiftActionDialog({
       onOpenChange={onOpenChange}
       dismissible={!pending}
     >
+      <div onSubmitCapture={(event) => {
+        // Two clicks can arrive before React paints disabled. Stop the second
+        // native submit before useActionState can queue another server call.
+        if (submittedRef.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        submittedRef.current = true;
+        onPendingChange(true);
+      }}>
       <ActionForm
         action={guardedAction}
         hideSuccess
         refreshOnSuccess={refreshOnSuccess}
+        onError={() => {
+          submittedRef.current = false;
+          onPendingChange(false);
+        }}
         onSuccess={(state) => {
+          submittedRef.current = false;
           onPendingChange(false);
           setOpen(false);
           onSuccess?.(state);
@@ -144,6 +161,7 @@ export function ShiftActionDialog({
           onPendingChange={onPendingChange}
         />
       </ActionForm>
+      </div>
     </Dialog>
   );
 }

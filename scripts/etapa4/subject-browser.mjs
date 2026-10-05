@@ -31,10 +31,10 @@ try{
     await dialog.getByLabel('Quién debe atender',{exact:true}).selectOption(f.areaId);
     await dialog.getByText(`Habitación ${room.number} · contexto incluido.`,{exact:true}).waitFor();
     assert.ok(!(await dialog.innerText()).includes(entry.description),'La solicitud conserva el contexto sin transcribir la descripción');
-    await Promise.all([
-      page.waitForURL(url=>url.pathname.startsWith('/tareas/')),
-      dialog.getByRole('button',{name:'Enviar solicitud',exact:true}).click(),
-    ]);
+    const attentionResponse=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/operational-actions/subject-attention');
+    await dialog.getByRole('button',{name:'Enviar solicitud',exact:true}).click();
+    const attentionSaved=await attentionResponse;assert.equal(attentionSaved.status(),200,await attentionSaved.text());
+    await page.getByRole('link',{name:'Continuar atención',exact:true}).waitFor();
     const task=await db.task.findFirstOrThrow({where:{entryId:entry.id,followUpId:null,departmentId:f.areaId}});
     let measured;
     for(let attempt=0;attempt<30;attempt++){

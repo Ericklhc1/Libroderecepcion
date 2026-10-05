@@ -69,7 +69,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: ${{ github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && 'npm' || '' }}
+          cache: ${{ github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' && 'npm' || '' }}
 
       - name: Validar infraestructura oficial
         run: |
@@ -288,7 +288,7 @@ jobs:
           PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/navigation-transport-probe.mjs
 
       - name: Evidencia temporal en logs sin almacenamiento adicional
-        if: ${{ always() && (github.ref == 'refs/heads/codex/aroh-fns-20261005' || github.ref == 'refs/heads/codex/aroh-future-handoff-20261005') }}
+        if: ${{ always() && (github.ref == 'refs/heads/codex/aroh-fns-20261005' || github.ref == 'refs/heads/codex/aroh-future-handoff-20261005' || github.head_ref == 'codex/aroh-future-handoff-20261005') }}
         run: |
           echo "Candidate commit: $GITHUB_SHA"
           for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-hydration-diagnostics.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json module-navigation-browser-results.json /tmp/context-worklist-browser-results.json housekeeping-worklist-browser-results.json room-context-browser-results.json custody-worklist-browser-results.json /tmp/search-context-browser-results.json history-context-browser-results.json; do
@@ -299,7 +299,7 @@ jobs:
           done
 
       - name: Evidencia de recorridos sin credenciales
-        if: ${{ always() && github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' }}
+        if: ${{ always() && github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' }}
         uses: actions/upload-artifact@v4
         with:
           name: etapa1-browser-${{ github.sha }}

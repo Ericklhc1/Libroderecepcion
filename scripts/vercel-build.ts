@@ -19,7 +19,7 @@ console.log(`✔ ${result.detail}`);
 const steps: Array<[string, string]> = [
   ['Generando el cliente de base de datos', 'npx prisma generate'],
   ['Aplicando migraciones', 'npx prisma migrate deploy'],
-  ['Compilando la aplicación', 'npx next build'],
+  ['Compilando la aplicación', 'npm run build'],
 ];
 
 for (const [label, command] of steps) {

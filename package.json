@@ -19,7 +19,8 @@
     "demo:purge": "tsx scripts/purge-demo.ts",
     "verify": "npm run lint && npm run typecheck && npm run test && npm run build",
     "vercel-build": "tsx scripts/vercel-build.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "node scripts/framework/react-ping-backport.mjs --apply && prisma generate",
+    "prebuild": "node scripts/framework/react-ping-backport.mjs --prepare-build"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -33,7 +34,7 @@
     "exceljs": "^4.4.0",
     "jose": "^6.2.12",
     "lucide-react": "^1.46.0",
-    "next": "^15.5.25",
+    "next": "15.5.25",
     "nodemailer": "^10.0.10",
     "pdfjs-dist": "^4.10.38",
     "react": "^19.3.0",

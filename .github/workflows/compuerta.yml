@@ -102,7 +102,10 @@ jobs:
           fi
 
       - name: Dependencias
-        run: npm ci
+        run: |
+          npm ci
+          node scripts/framework/react-ping-backport.mjs --check
+          node --input-type=module -e "import assert from 'node:assert/strict'; import { reactPingBackport } from './scripts/framework/react-ping-backport.mjs'; assert.equal(reactPingBackport({ projectRoot: process.cwd(), mode: 'apply' }).patched, 0); console.log('Second runtime check made no changes');"
 
       - name: Bloquear vulnerabilidades críticas
         run: npm audit --omit=dev --audit-level=critical
@@ -124,7 +127,7 @@ jobs:
       - name: Regresiones
         run: |
           npm run test
-          node --test scripts/ui/hydration-diagnostics.test.mjs
+          node --test scripts/ui/hydration-diagnostics.test.mjs scripts/framework/react-ping-backport.test.mjs
 
       - name: Build
         id: production_build

@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import {
   getR2AccountIdDiagnostics,
@@ -10,7 +11,7 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   const status = getR2ConfigStatus();
   const accountIdDiagnostics = getR2AccountIdDiagnostics();
   const credentialDiagnostics = getR2CredentialRelationshipDiagnostics();
@@ -58,3 +59,5 @@ export async function GET() {
     },
   );
 }
+
+export const GET = withMaintenance(GETHandler);

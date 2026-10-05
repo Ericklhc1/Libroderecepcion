@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import { notificationWhereForUser } from './notification-access';
 import { notificationDeviceItems, notificationPresentation } from '@/domain/notification-summary';
 
@@ -255,6 +256,7 @@ async function sendPushSignal(
 export async function dispatchWebPushForUsers(
   userIds: string[],
 ): Promise<{ attempted: number; sent: number; removed: number; failed: number }> {
+  if (await maintenanceBlocksBackground()) return { attempted: 0, sent: 0, removed: 0, failed: 0 };
   const uniqueIds = [...new Set(userIds.filter(Boolean))];
   if (uniqueIds.length === 0) {
     return { attempted: 0, sent: 0, removed: 0, failed: 0 };
@@ -313,6 +315,7 @@ export async function dispatchWebPushForUsers(
   let failed = 0;
 
   for (const subscription of subscriptions) {
+    if (await maintenanceBlocksBackground()) break;
     const latest = latestByUser.get(subscription.userId);
     const cursor = subscription.lastTriggeredAt ?? subscription.createdAt;
     if (!latest || latest <= cursor) continue;
@@ -362,6 +365,7 @@ export async function flushWebPushSubscriptions(): Promise<{
   removed: number;
   failed: number;
 }> {
+  if (await maintenanceBlocksBackground()) return { users: 0, attempted: 0, sent: 0, removed: 0, failed: 0 };
   const rows = await prisma.pushSubscription.findMany({
     where: { disabledAt: null, user: { active: true, deletedAt: null } },
     distinct: ['userId'],

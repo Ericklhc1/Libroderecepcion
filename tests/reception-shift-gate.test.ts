@@ -131,9 +131,30 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(closeAction).not.toContain("requirePermissionOrOwner('shift.manage'");
 
     const form = readFileSync('src/components/ui/form.tsx', 'utf8');
-    const shiftActions = readFileSync('src/components/operational/shift-actions.tsx', 'utf8');
     expect(form).toContain('onError?: (state: Extract<ActionState, { ok: false }>) => void');
-    expect(shiftActions).toContain('onError={() => setOpen(false)}');
+  });
+
+  it('el cierre mantiene formulario y error dentro del diálogo al rechazar', () => {
+    const shiftActions = readFileSync('src/components/operational/shift-actions.tsx', 'utf8');
+    const closeForm = shiftActions.slice(
+      shiftActions.indexOf('export function CloseShiftForm'),
+      shiftActions.indexOf('export function CancelPreparationForm'),
+    );
+    const dialog = readFileSync('src/components/operational/shift-action-dialog.tsx', 'utf8');
+    const form = readFileSync('src/components/ui/form.tsx', 'utf8');
+
+    expect(closeForm).toContain('<ShiftActionDialog');
+    expect(closeForm).toContain('useShiftReturnNavigation(closeShiftAction, shiftId)');
+    expect(closeForm).toContain('action={closeShift}');
+    expect(closeForm).not.toContain('onError={() => setOpen(false)}');
+    expect(dialog.indexOf('<ActionForm')).toBeGreaterThan(dialog.indexOf('<Dialog'));
+    expect(dialog.indexOf('</ActionForm>')).toBeLessThan(dialog.indexOf('</Dialog>'));
+    expect(dialog).toContain('onSubmitCapture=');
+    expect(dialog).toContain('event.preventDefault()');
+    expect(dialog).toContain('submittedRef.current = false');
+    expect(form).toContain('role="alert"');
+    // scripts/ui/shift-dialog-repro.cjs verifica rechazo, foco y error interno
+    // con el renderer real, además de este contrato de composición.
   });
 
   it('las acciones operativas con guard propio también pasan por el gate', () => {

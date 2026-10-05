@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError, chatJson } from '@/server/api/chat';
@@ -13,7 +14,7 @@ const editSchema = z.object({
   body: z.string().min(1).max(4000),
 });
 
-export async function PATCH(
+async function PATCHHandler(
   request: Request,
   { params }: { params: Promise<{ id: string; messageId: string }> },
 ) {
@@ -34,7 +35,7 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
+async function DELETEHandler(
   _request: Request,
   { params }: { params: Promise<{ id: string; messageId: string }> },
 ) {
@@ -49,3 +50,6 @@ export async function DELETE(
     return chatApiError(error);
   }
 }
+
+export const PATCH = withMaintenance(PATCHHandler);
+export const DELETE = withMaintenance(DELETEHandler);

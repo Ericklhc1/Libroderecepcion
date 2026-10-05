@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { refreshSession } from '@/server/auth/session';
@@ -16,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 const headers = { 'Cache-Control': 'no-store' };
 
-export async function POST() {
+async function POSTHandler() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json(
@@ -77,3 +78,5 @@ export async function POST() {
     );
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

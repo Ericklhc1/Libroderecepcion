@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError } from '@/server/api/chat';
 import { getChatStickerObject } from '@/server/services/chat';
@@ -5,7 +6,7 @@ import { getChatStickerObject } from '@/server/services/chat';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+async function GETHandler(
   _request: Request,
   { params }: { params: Promise<{ stickerId: string }> },
 ) {
@@ -27,3 +28,5 @@ export async function GET(
     return chatApiError(error);
   }
 }
+
+export const GET = withMaintenance(GETHandler);

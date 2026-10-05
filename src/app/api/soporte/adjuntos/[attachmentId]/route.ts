@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requirePermission } from '@/server/auth/guard';
@@ -14,7 +15,7 @@ function errorStatus(error: AppError): number {
   return 400;
 }
 
-export async function GET(
+async function GETHandler(
   _request: Request,
   { params }: { params: Promise<{ attachmentId: string }> },
 ) {
@@ -45,3 +46,5 @@ export async function GET(
     return NextResponse.json({ error: 'No se pudo abrir el adjunto.' }, { status: 500 });
   }
 }
+
+export const GET = withMaintenance(GETHandler);

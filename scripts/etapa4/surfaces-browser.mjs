@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {PrismaClient} from '@prisma/client';
 import {SignJWT} from 'jose';
+import { exerciseShiftUx } from '../ui/shift-ux-browser.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE);
 const fixture=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const db=new PrismaClient(),browser=await chromium.launch({headless:true}),results=[];
@@ -73,4 +74,5 @@ try{
     results.push({width,cashVisibleActions:visible,noFinancialWrite:true,turnProgressive:true,continuityVisible:true,keysByIntent:true,noFalseRecovery:true});
     await reception.context.close();await admin.context.close();
   }
+  await exerciseShiftUx({ browser, db, results });
 }finally{writeFileSync('etapa4-surfaces-browser-results.json',JSON.stringify(results,null,2));await browser.close();await db.$disconnect();}

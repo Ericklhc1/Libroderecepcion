@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -9,7 +10,7 @@ import { isSameOriginMutation } from '@/server/security/same-origin';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   if (!isSameOriginMutation(request)) {
     return NextResponse.json({ error: 'Origen no autorizado.' }, { status: 403 });
   }
@@ -54,3 +55,5 @@ export async function POST(request: Request) {
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }
+
+export const POST = withMaintenance(POSTHandler);

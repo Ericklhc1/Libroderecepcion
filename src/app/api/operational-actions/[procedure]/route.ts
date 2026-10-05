@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { requestSubjectAttentionAction } from '@/server/actions/subject-attention';
 import { createLostFoundAction, changeLostFoundAction } from '@/server/actions/lost-found';
 import { reportMissingElementAction, approveMissingElementAction } from '@/server/actions/cash';
@@ -24,7 +25,7 @@ const allowed = {
 } as const;
 
 /** JSON transport only: authorization, validation and writes remain in the native actions. */
-export async function POST(request: Request, context: { params: Promise<{ procedure: string }> }) {
+async function POSTHandler(request: Request, context: { params: Promise<{ procedure: string }> }) {
   const headers = { 'Cache-Control': 'no-store' };
   if (!isSameOriginMutation(request) || request.headers.get('origin') !== new URL(request.url).origin) return NextResponse.json({ ok:false,error:'Origen no autorizado.' }, { status:403,headers });
   const { procedure } = await context.params;
@@ -49,3 +50,5 @@ export async function POST(request: Request, context: { params: Promise<{ proced
     return NextResponse.json({ok:false,error:'No se pudo confirmar el resultado. Revisa el registro antes de volver a enviar.'},{status:400,headers});
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

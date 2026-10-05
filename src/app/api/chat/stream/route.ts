@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/server/auth/guard';
 import {
@@ -17,7 +18,7 @@ const headers = { 'Cache-Control': 'no-store' };
  * Esta ruta termina después de una comprobación, reduciendo drásticamente la
  * memoria provisionada mientras conserva la actualización incremental.
  */
-export async function GET() {
+async function GETHandler() {
   try {
     const user = await requireUser();
     await touchChatPresence(user);
@@ -33,3 +34,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withMaintenance(GETHandler);

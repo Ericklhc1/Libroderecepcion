@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import {
   assistantHealthFromFailure,
@@ -116,7 +117,7 @@ async function probeAssistant(): Promise<{
   };
 }
 
-export async function GET() {
+async function GETHandler() {
   const now = Date.now();
   if (!cached || now - cached.at > PROBE_TTL_MS) {
     const probed = await probeAssistant();
@@ -152,3 +153,5 @@ export async function GET() {
     { headers: { 'Cache-Control': 'no-store' } },
   );
 }
+
+export const GET = withMaintenance(GETHandler);

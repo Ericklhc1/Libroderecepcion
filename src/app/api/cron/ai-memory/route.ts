@@ -1,3 +1,4 @@
+import { maintenanceCronResponse } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { enforceFrontiRetentionPolicy } from '@/server/ai/retention-policy';
 import { isAuthorizedCronRequest } from '@/server/cron-auth';
@@ -13,6 +14,8 @@ export async function GET(request: Request) {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: 'No autorizado.' }, { status: 401 });
   }
+  const maintenance = await maintenanceCronResponse();
+  if (maintenance) return maintenance;
 
   const deleted = await enforceFrontiRetentionPolicy();
   return NextResponse.json(

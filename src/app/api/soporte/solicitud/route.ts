@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentUser } from '@/server/auth/current-user';
@@ -80,7 +81,7 @@ function decodeAttachment(input: z.infer<typeof attachmentSchema>): MailAttachme
   };
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: 'Tu sesión venció.' }, { status: 401 });
@@ -257,3 +258,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

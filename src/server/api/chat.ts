@@ -2,6 +2,7 @@ import 'server-only';
 
 import { NextResponse } from 'next/server';
 import { AppError } from '@/server/errors';
+import { maintenanceResponse } from '@/server/api/maintenance';
 
 const headers = { 'Cache-Control': 'no-store' };
 
@@ -10,6 +11,7 @@ export function chatJson(data: unknown, status = 200) {
 }
 
 export function chatApiError(error: unknown) {
+  if (error instanceof AppError && error.code === 'MAINTENANCE') return maintenanceResponse(error.message);
   if (error instanceof AppError) {
     const status =
       error.code === 'UNAUTHENTICATED'

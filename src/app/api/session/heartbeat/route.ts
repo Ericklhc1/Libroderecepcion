@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { refreshSession } from '@/server/auth/session';
@@ -21,7 +22,7 @@ function expiredResponse() {
  * componentes compartidos no deben perder la sesión sólo porque una cuenta
  * todavía no participe del rollout del asistente.
  */
-export async function GET() {
+async function GETHandler() {
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) return expiredResponse();
 
@@ -30,3 +31,5 @@ export async function GET() {
 
   return NextResponse.json({ ok: true }, { headers });
 }
+
+export const GET = withMaintenance(GETHandler);

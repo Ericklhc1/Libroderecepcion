@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/server/auth/current-user';
 import { needsInstall } from '@/server/services/install';
 import { getSettingString } from '@/server/services/settings';
 import { LoginForm } from './login-form';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 
 export const metadata = { title: 'Iniciar sesión' };
 
@@ -24,6 +25,7 @@ export default async function LoginPage() {
 
   const hotelName = await getSettingString('hotel.name', 'Hotel').catch(() => 'Hotel');
   const showDemoHint = process.env.NODE_ENV !== 'production';
+  const maintenance = await getMaintenanceState();
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-petrol-950 px-4 py-10">
@@ -40,6 +42,7 @@ export default async function LoginPage() {
 
         <div className="rounded-lg border border-petrol-800/10 border-t-2 border-t-gold-500 bg-white p-6 shadow-card">
           <h2 className="text-base font-semibold text-petrol-900">Iniciar sesión</h2>
+          {maintenance.enabled && <p role="status" className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-950">{maintenance.message} El Administrador de sistema conserva acceso.</p>}
           <p className="mt-1 text-sm text-slate-500">
             Accede con tu cuenta operativa para entrar a tu turno.
           </p>

@@ -78,6 +78,19 @@ describe('Fronti contextual · cobertura de pantallas', () => {
     expect(pages.map(routeForPage)).toContain('/admin/fronti');
   });
 
+  it('reconoce mantenimiento sin recomendar herramientas de modificación', () => {
+    const page = resolveFrontiPageContext({ pathname: '/admin/mantenimiento' });
+    expect(page.moduleKey).toBe('administracion');
+    expect(page.sectionKey).toBe('mantenimiento');
+    expect(page.sectionLabel).toBe('Modo mantenimiento');
+    expect(page.recommendedTools).toEqual(['consultar_contexto_pantalla']);
+    const reader = readFileSync('src/server/ai/fronti-v2/page-context-tool.ts', 'utf8');
+    const maintenance = reader.slice(reader.indexOf("case 'mantenimiento':"), reader.indexOf("case 'usuarios':"));
+    expect(maintenance).toContain('if (!user.isSystemAdmin)');
+    expect(maintenance).toContain('await getMaintenanceState()');
+    expect(maintenance).not.toContain('setSystemMaintenance');
+  });
+
   it('resuelve entidad dinámica y filtros visibles sin exponer parámetros sensibles', () => {
     const context = resolveFrontiPageContext({
       pathname: '/tareas/abc-123',

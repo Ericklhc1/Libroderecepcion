@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { markReadableNotifications } from '@/server/services/notification-access';
@@ -15,7 +16,7 @@ const payloadSchema = z.object({
 
 const headers = { 'Cache-Control': 'no-store' };
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) {
     return NextResponse.json(
@@ -50,3 +51,5 @@ export async function POST(request: Request) {
   const snapshot = await getNotificationFeedForUser(user.id);
   return NextResponse.json(snapshot, { headers });
 }
+
+export const POST = withMaintenance(POSTHandler);

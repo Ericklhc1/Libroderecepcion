@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError, chatJson } from '@/server/api/chat';
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 const schema = z.object({ active: z.boolean() });
 
-export async function POST(
+async function POSTHandler(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -27,3 +28,5 @@ export async function POST(
     return chatApiError(error);
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

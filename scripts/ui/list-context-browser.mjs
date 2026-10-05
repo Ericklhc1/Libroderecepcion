@@ -224,10 +224,12 @@ try {
     createdById: author.id, ownerId: fixture.users.admin.id, departmentId: fixture.areaId,
     priority: 'ALTA', occurredAt: new Date(Date.now() - index * 1000),
   })) });
+  // The navigation fixture needs stable page membership, independent of SQL tie order.
+  const fixtureEpoch = Date.now();
   await db.task.createMany({ data: Array.from({ length: 55 }, (_, index) => ({
     title: `${marker} task ${index}`, description: 'Synthetic list continuity only',
     createdById: fixture.users.admin.id, assigneeId: fixture.users.admin.id, departmentId: fixture.areaId,
-    priority: 'ALTA',
+    priority: 'ALTA', createdAt: new Date(fixtureEpoch - index * 1000),
   })) });
 
   const entryList = `/libro?${new URLSearchParams({ q: marker, clase: 'entry', tipo: 'INCIDENCIA', estado: 'abiertos', prioridad: 'ALTA', area: fixture.areaId, responsable: fixture.users.admin.id, pagina: '2' })}`;

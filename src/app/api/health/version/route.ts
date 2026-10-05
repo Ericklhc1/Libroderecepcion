@@ -15,6 +15,7 @@ export async function GET() {
       provider: process.env.VERCEL ? 'vercel' : 'unknown',
       version: packageJson.version,
       commit,
+      maintenanceControl: 'v1',
     },
     {
       headers: {

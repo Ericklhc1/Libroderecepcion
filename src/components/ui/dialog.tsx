@@ -36,6 +36,7 @@ export function Dialog({
   triggerVariant = 'primary',
   triggerSize = 'md',
   triggerClassName,
+  overlayClassName,
   open: controlledOpen,
   onOpenChange,
   dismissible = true,
@@ -50,6 +51,8 @@ export function Dialog({
   triggerVariant?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'gold';
   triggerSize?: 'sm' | 'md' | 'lg';
   triggerClassName?: string;
+  /** Clases del overlay sólo para el consumidor que las solicite. */
+  overlayClassName?: string;
   /** Permite que un flujo compuesto controle el diálogo desde fuera. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -70,9 +73,11 @@ export function Dialog({
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const layerId = useRef(Symbol('dialog'));
   const closeRef = useRef(setOpen);
+  const dismissibleRef = useRef(dismissible);
   const [layer, setLayer] = useState(100);
 
   useEffect(() => { closeRef.current = setOpen; }, [setOpen]);
+  useEffect(() => { dismissibleRef.current = dismissible; }, [dismissible]);
 
   useEffect(() => setMounted(true), []);
 
@@ -88,10 +93,10 @@ export function Dialog({
 
     const onKey = (event: KeyboardEvent) => {
       if (activeDialogs.at(-1) !== id) return;
-      if (dismissible && event.key === 'Escape') {
+      if (event.key === 'Escape') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        closeRef.current(false);
+        if (dismissibleRef.current) closeRef.current(false);
         return;
       }
 
@@ -137,11 +142,11 @@ export function Dialog({
       const previous = previousFocusRef.current;
       if (wasTop && previous?.isConnected) requestAnimationFrame(() => previous.focus({ preventScroll: true }));
     };
-  }, [open, dismissible]);
+  }, [open]);
 
   const overlay = (
     <div
-      className="fixed inset-0 z-[100] bg-petrol-950/40 overscroll-contain"
+      className={cn('fixed inset-0 z-[100] bg-petrol-950/40 overscroll-contain', overlayClassName)}
       style={{ zIndex: layer }}
       onMouseDown={(event) => {
         if (dismissible && event.target === event.currentTarget) setOpen(false);

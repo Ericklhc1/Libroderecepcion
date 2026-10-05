@@ -1,10 +1,11 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { getWebPushPublicKey } from '@/server/services/web-push';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   try {
     const publicKey = await getWebPushPublicKey();
     return NextResponse.json(
@@ -28,3 +29,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withMaintenance(GETHandler);

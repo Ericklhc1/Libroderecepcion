@@ -1,4 +1,5 @@
 import 'server-only';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import {
   AlertLevel,
   AlertStatus,
@@ -358,6 +359,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
 export async function runAlertEngine(
   now = new Date(),
 ): Promise<{ created: number; resolved: number; reopened: number }> {
+  if (await maintenanceBlocksBackground()) return { created: 0, resolved: 0, reopened: 0 };
   /*
    * AROH 1.33.0:
    * el motor deja de fabricar Alert a partir de tareas, novedades, seguimientos

@@ -344,7 +344,8 @@ async function prepare(page, fixture, evidence, row) {
   await submit(page, 'SÍ, INICIAR CIERRE', evidence);
   const handover = await eventually(() => db.shiftHandover.findUnique({ where: { fromShiftId: fixture.shiftId } }), 'No native draft');
   row.preparation = { backend: activeBackend, nativeWritePersisted: true, automaticNavigation: true,
-    explicitDocumentReloadBeforeMeasuredDraft: false, nativeContinueLinkUsed: false };
+    explicitDocumentReloadBeforeMeasuredDraft: false, nativeContinueLinkUsed: false,
+    explicitNativeNewTabBeforeMeasuredDraft: false };
   const destination = `/turno/entrega/${handover.id}`;
   try { await page.waitForURL(url => url.pathname === destination); }
   catch {
@@ -357,14 +358,23 @@ async function prepare(page, fixture, evidence, row) {
       row.preparation.explicitDocumentReloadBeforeMeasuredDraft = true;
       await page.reload({ waitUntil: 'domcontentloaded' });
     }
-    await continueLink.click();
+    if (activeBackend === 'baseline') {
+      // Open the actual visible href with the browser's native new-tab gesture.
+      // This is explicit contract-precondition setup, never a navigation pass.
+      const [nextPage] = await Promise.all([
+        page.context().waitForEvent('page', { timeout: 15000 }),
+        continueLink.click({ modifiers: ['Control'] }),
+      ]);
+      page = nextPage; page.setDefaultTimeout(15000);
+      row.preparation.explicitNativeNewTabBeforeMeasuredDraft = true;
+    } else await continueLink.click();
     row.preparation.nativeContinueLinkUsed = true;
     await page.waitForURL(url => url.pathname === destination);
   }
   await button(page, 'Guardar arqueo declarado').waitFor();
   assert.equal((await db.shift.findUniqueOrThrow({ where: { id: fixture.shiftId } })).status, 'PREPARANDO_ENTREGA');
   const element = await db.handoverElement.findUniqueOrThrow({ where: { handoverId_elementTypeId: { handoverId: handover.id, elementTypeId: fixture.elementTypeId } } });
-  return { handoverId: handover.id, elementId: element.id, path: `${origin}/turno/entrega/${handover.id}` };
+  return { page, handoverId: handover.id, elementId: element.id, path: `${origin}/turno/entrega/${handover.id}` };
 }
 async function closeCash(page, fixture, path, evidence) {
   await page.goto(`${path}?paso=1`);
@@ -384,7 +394,7 @@ async function closeCash(page, fixture, path, evidence) {
   }
   return rows[0];
 }
-async function finishCycle(browser, outgoing, fixture, state, width, evidence) {
+async function finishCycle(browser, outgoing, fixture, state, width, evidence, row) {
   const { handoverId, path, elementId } = state;
   await outgoing.goto(`${path}?paso=2`);
   await submit(outgoing, 'CONFIRMAR PENDIENTES REVISADOS', evidence);
@@ -413,12 +423,24 @@ async function finishCycle(browser, outgoing, fixture, state, width, evidence) {
     OR: [{ entityId: fixture.shiftId }, { entityId: handoverId }] }, orderBy: { id: 'asc' } });
   assert.ok(outgoingAudits.some(audit => audit.action === 'TURNO_CERRAR' && audit.sessionId === fixture.users.outgoing.sessionId));
   assert.ok(outgoingAudits.some(audit => audit.action === 'TURNO_ENTREGAR' && audit.sessionId === fixture.users.outgoing.sessionId));
+  row.cycleProgress = { outgoingClosedInDatabase: true, endTimeAndActorVerified: true,
+    outgoingAssignmentsEnded: true, handoverSent: true, issuerAndSessionAudited: true };
 
   const { page: incoming } = await actor(browser, fixture, 'incoming', width);
   await incoming.goto(`${origin}/turno`);
   await button(incoming, 'INICIAR RECEPCIÓN DE TURNO').click();
   await submit(incoming, 'SÍ, INICIAR RECEPCIÓN', evidence);
-  await incoming.waitForURL(`**/turno/entrega/${handoverId}`);
+  const reception = await db.shiftHandover.findUniqueOrThrow({ where: { id: handoverId } });
+  assert.ok(reception.toShiftId);
+  assert.equal((await db.shift.findUniqueOrThrow({ where: { id: reception.toShiftId } })).status, 'INICIADO');
+  row.receptionEntry = { nativeWritePersisted: true, automaticNavigation: true, nativeContinueLinkUsed: false };
+  try { await incoming.waitForURL(url => url.pathname === `/turno/entrega/${handoverId}`); }
+  catch {
+    row.receptionEntry.automaticNavigation = false;
+    await incoming.getByRole('link', { name: 'CONTINUAR RECEPCIÓN · 5 PASOS', exact: true }).click();
+    row.receptionEntry.nativeContinueLinkUsed = true;
+    await incoming.waitForURL(url => url.pathname === `/turno/entrega/${handoverId}`);
+  }
   await submit(incoming, 'CONFIRMAR ENTREGA REVISADA', evidence);
   await fillCash(incoming, fixture, 'CONFIRMADO', 'PRUEBA SINTÉTICA · recuento receptor');
   await submit(incoming, 'Confirmar arqueo recibido', evidence);
@@ -517,8 +539,10 @@ try {
           continue;
         }
         const fixture = await runFixture();
-        const { context, page } = await actor(browser, fixture, 'outgoing', width);
+        const outgoingActor = await actor(browser, fixture, 'outgoing', width);
+        const context = outgoingActor.context; let page = outgoingActor.page;
         const state = await prepare(page, fixture, row.actions, row);
+        page = state.page;
         row.nightEndsAtHotel08 = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit' }).format(new Date(fixture.plannedEnd)) === '08:00';
         assert.equal(row.nightEndsAtHotel08, true);
         const notes = `PRUEBA SINTÉTICA · arqueo ${mode} ${width}`;
@@ -545,7 +569,11 @@ try {
               attempts.push({ form: name, compatible: true });
             } catch (error) {
               let inputRetained = false; try { await unchanged(target, form, snapshot); inputRetained = true; } catch {}
-              attempts.push({ form: name, compatible: false, inputRetainedAfterFailure: inputRetained, failure: error.message });
+              const persistedRows = name === 'Guardar arqueo declarado'
+                ? await db.cashCount.count({ where: { handoverId: state.handoverId, kind: 'DECLARADO' } })
+                : Number((await db.handoverElement.findUniqueOrThrow({ where: { id: state.elementId } })).declared);
+              attempts.push({ form: name, compatible: false, inputRetainedAfterFailure: inputRetained,
+                persistedRowsOrDeclaredFlagAfterFailure: persistedRows, failure: error.message });
             }
           }
           row.oldFormSubmissions = attempts;
@@ -558,6 +586,7 @@ try {
         }
         row.stage = 'formal-cash-closure';
         await closeCash(page, fixture, state.path, row.actions);
+        row.activeCashClosureVerified = true;
         await page.goto(`${state.path}?paso=2`);
         const noteName = 'Guardar nota para el turno siguiente', noteForm = formFor(page, noteName);
         const observation = `PRUEBA SINTÉTICA · borrador sin guardar ${mode} ${width}`;
@@ -578,7 +607,9 @@ try {
           try { await submit(page, noteName, row.actions, 'candidate'); }
           catch (error) {
             let retained = false; try { await unchanged(page, noteForm, draft); retained = true; } catch {}
-            row.inputRetainedAfterFailure = retained; throw error;
+            row.inputRetainedAfterFailure = retained;
+            row.manualNotesPersistedAfterFailure = await db.handoverItem.count({ where: { handoverId: state.handoverId, manual: true } });
+            throw error;
           }
           assert.equal(await page.evaluate(() => window.__crossDocument), draft.documentId, 'Old note required a hard reload');
           page.__oldDocument = false;
@@ -586,8 +617,9 @@ try {
         const manual = await db.handoverItem.findMany({ where: { handoverId: state.handoverId, manual: true } });
         assert.equal(manual.length, 1); assert.equal(manual[0].title, `Observación: ${observation}`);
         assert.equal(manual[0].detail, 'Siguiente acción: Revisar pendiente nocturno sin copiar ni duplicar');
+        row.manualNotePersisted = true;
         row.stage = 'native-close-and-receive';
-        row.cycle = await finishCycle(browser, page, fixture, state, width, row.actions);
+        row.cycle = await finishCycle(browser, page, fixture, state, width, row.actions, row);
         row.status = 'PASS';
       } catch (error) {
         row.status = mode.includes('control') ? 'CONTROL_FAILED' : 'NO_GO_OR_HARNESS_FAILURE'; row.failure = error.message;
@@ -621,8 +653,14 @@ try {
   }
   report.runtimeNetworkClean = !report.externalBrowserRequestBlocked && !report.webSocketBlocked &&
     (!existsSync(`${output}/network-violations.log`) || readFileSync(`${output}/network-violations.log`, 'utf8').trim() === '');
-  report.nativePreparationNavigation = results.filter(row => row.preparation).every(row => row.preparation.automaticNavigation)
-    ? 'PASS' : 'FAILED_RECORDED_SEPARATELY_FROM_FORM_CONTRACTS';
+  const normalRows = results.filter(row => !row.mode.includes('custom-custody'));
+  report.nativePreparationNavigation = normalRows.length === 6 && normalRows.every(row => row.preparation?.automaticNavigation)
+    ? 'PASS' : normalRows.some(row => row.preparation?.automaticNavigation === false)
+      ? 'FAILED_RECORDED_SEPARATELY_FROM_FORM_CONTRACTS' : 'NOT_FULLY_REACHED';
+  const cycleControls = results.filter(row => row.mode === 'candidate-control');
+  report.nativeReceptionEntryNavigation = cycleControls.length === 2 && cycleControls.every(row => row.receptionEntry?.automaticNavigation)
+    ? 'PASS' : cycleControls.some(row => row.receptionEntry?.automaticNavigation === false)
+      ? 'FAILED_WITH_NATIVE_CONTINUE_LINK_AVAILABLE' : 'NOT_FULLY_REACHED';
   report.localCompatibility = results.every(row => row.status === 'PASS') && report.runtimeNetworkClean &&
     report.nativePreparationNavigation === 'PASS' ? 'PASS' : 'NO_GO_OR_INCONCLUSIVE';
   report.customApiCompatibility = results.filter(row => row.mode.includes('custom-custody')).every(row => row.status === 'PASS') &&

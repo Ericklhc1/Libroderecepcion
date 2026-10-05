@@ -113,6 +113,10 @@ Incluso código 0 mantiene `productionDecision=UNVERIFIED_PLATFORM_AND_RELOAD_LI
   precondición de contrato. Se registra por separado y la navegación automática
   permanece fallida. En candidata se utiliza el enlace visible «Continuar cierre»;
   no se hace un goto oculto ni se recarga un borrador medido para recuperar verde.
+  El enlace visible de baseline puede abrirse en pestaña nueva mediante el gesto
+  nativo del navegador, registrado como precondición explícita antes del borrador.
+  Al iniciar recepción, el enlace nativo «CONTINUAR RECEPCIÓN · 5 PASOS» permite
+  seguir cuando no se completa el avance automático; esa fricción queda aparte.
 - No migra esquemas diferentes, no ensaya una caída del servidor durante un POST,
   concurrencia de dos recepcionistas ni reintentos de doble clic en este bloque.
 - Los controles de red son instrumentación Node y rutas Playwright, no un
@@ -269,3 +273,20 @@ builds, pero no avanzó automáticamente al acta. En candidata quedó disponible
 enlace real Continuar cierre. El siguiente ensayo registra esa fricción y usa
 ese enlace; la construcción explícita de precondición en baseline no aprueba el
 recorrido automático. Todavía no hubo guardado cruzado de arqueo ni cierre formal.
+
+Run `37257675859`, candidata `9ad0138`: aprobaron las cuatro pruebas de API custom
+(cruce y control a 1280/390). El control candidato, con fondos activos, guardó
+arqueo/custodia/nota, cerró Caja, envió entrega y cerró el turno saliente con actor,
+hora y sesión verificados en DB en ambos anchos. Iniciar recepción respondió 200;
+quedó pendiente continuar por el enlace real de recepción. No se declaró completa
+la recepción ni aprobado el avance automático.
+
+El reemplazo directo viejo→nuevo rechazó por 404 IDs Server Action exclusivos del
+manifiesto antiguo: arqueo y elementos en 1280 y nota en ambos anchos. El navegador
+mostró su pantalla de error y no permitió volver a leer esos borradores; la
+recarga separada perdió el texto no guardado. Eso no es evidencia de borrado de
+datos ya persistidos ni fallo de reglas de negocio. Los controles de esos guardados
+en candidata fueron aceptados y verificados en DB, aunque el control de ciclo
+completo seguía pendiente de recepción. La plataforma real podría enrutar al build
+viejo mediante Skew; este ensayo no lo emula. Los IDs públicos y BUILD_ID quedan
+registrados, nunca las claves de cifrado.

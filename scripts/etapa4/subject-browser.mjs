@@ -18,24 +18,24 @@ try{
     await page.goto(`http://localhost:3000/libro/${entry.id}`);
     const surface=page.locator('[aria-label="Acciones del asunto"]');
     await surface.getByRole('button',{name:'Solicitar atención',exact:true}).waitFor();
+    assert.equal(await surface.getByRole('button',{name:'Solicitar atención',exact:true}).count(),1,'Solicitar atención aparece una sola vez');
     const visibleBefore=await surface.locator('button,a,summary').evaluateAll(elements=>elements.filter(el=>el.checkVisibility()).length);
     assert.ok(visibleBefore>0&&visibleBefore<=4,`Una primaria, hasta dos secundarias y Más: ${JSON.stringify(await surface.locator('button,a,summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).map(e=>e.textContent)))}`);
     const sourceText=await page.locator('main').innerText();
     if(sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'))console.error('Synthetic reserved projection:',await page.locator('main').getByText('PRUEBA_PRIVADA_NO_PROYECTAR',{exact:true}).evaluateAll(es=>es.map(e=>({tag:e.tagName,section:e.closest('section')?.innerText,visible:e.getClientRects().length>0}))),sourceText);
     assert.ok(!sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'));
     assert.equal(await surface.getByRole('button',{name:'Editar',exact:true}).isVisible(),false);
-    await surface.getByText('Más ···',{exact:true}).click();
-    await surface.getByRole('button',{name:'Solicitar otra atención',exact:true}).click();
-    const dialog=page.getByRole('dialog');
-    const formStarted=await page.evaluate(()=>{window.__arohResultAt=null;window.addEventListener('aroh:action-result',()=>{window.__arohResultAt=performance.now();},{once:true});return performance.now();});
-    assert.equal(await dialog.locator('input[name=title]').inputValue(),entry.title);
-    assert.equal(await dialog.locator('textarea[name=description]').inputValue(),entry.description);
-    assert.equal(await dialog.locator('select[name=roomId]').inputValue(),room.id);
-    assert.equal(await dialog.locator('select[name=departmentId]').inputValue(),f.areaId);
-    assert.equal(await dialog.locator('select[name=priority]').inputValue(),'ALTA');
-    await dialog.getByRole('button',{name:'Asignar tarea',exact:true}).click();
-    await dialog.waitFor({state:'hidden'});
-    const resultAt=await page.evaluate(()=>window.__arohResultAt);
+    await surface.getByRole('button',{name:'Solicitar atención',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Solicitar atención',exact:true});
+    assert.equal(await dialog.locator('input[name=entryId]').inputValue(),entry.id);
+    await dialog.getByLabel('Quién debe atender',{exact:true}).selectOption(f.areaId);
+    await dialog.getByText(`Habitación ${room.number} · contexto incluido.`,{exact:true}).waitFor();
+    assert.ok(!(await dialog.innerText()).includes(entry.description),'La solicitud conserva el contexto sin transcribir la descripción');
+    await Promise.all([
+      page.waitForURL(url=>url.pathname.startsWith('/tareas/')),
+      dialog.getByRole('button',{name:'Enviar solicitud',exact:true}).click(),
+    ]);
+    const task=await db.task.findFirstOrThrow({where:{entryId:entry.id,followUpId:null,departmentId:f.areaId}});
     let measured;
     for(let attempt=0;attempt<30;attempt++){
       const records=await db.operationalMetricEvent.findMany({where:{userId:f.users.admin.id,entityId:entry.id,eventType:'UX_RESULT'},orderBy:{createdAt:'desc'}});
@@ -46,10 +46,6 @@ try{
     assert.ok(measured,'El resultado continúa la intención original');
     const actions=await db.operationalMetricEvent.findMany({where:{correlationId:measured.correlationId,eventType:'UX_ACTION'}});
     assert.equal(actions.filter(r=>r.metadata?.selectedAction==='REQUEST_ATTENTION').length,1,'Enviar no duplica la acción');
-    assert.ok(measured.durationMs>=Math.floor(resultAt-formStarted)-2,'Duración incluye completar formulario');
-    await page.reload();
-    await surface.getByRole('link',{name:'Continuar atención',exact:true}).click();
-    const task=await db.task.findFirstOrThrow({where:{entryId:entry.id,followUpId:null}});
     assert.equal(await db.task.count({where:{entryId:entry.id,followUpId:null}}),1);
     assert.equal(task.roomId,room.id);assert.equal(task.departmentId,f.areaId);
     await page.getByRole('button',{name:'Confirmar recepción',exact:true}).click();

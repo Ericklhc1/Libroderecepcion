@@ -4,11 +4,12 @@ import { MANUAL_DOCUMENT_LIMITS as LIMITS } from '@/domain/manual-documents/type
 import type { DocumentEvidence, DocumentExtraction } from '@/domain/manual-documents/types';
 
 export async function createLocalPdfTask(data: Uint8Array): Promise<PDFDocumentLoadingTask> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  // Bundled same-origin worker. No CDN, external font service or native PDF plugin.
-  const worker = new Worker(new URL('pdfjs-dist/legacy/build/pdf.worker.mjs', import.meta.url), { type: 'module' });
-  const pdfWorker: InstanceType<typeof pdfjs.PDFWorker> = pdfjs.PDFWorker.fromPort({ port: worker });
-  const task = pdfjs.getDocument({ data: Uint8Array.from(data), worker: pdfWorker,
+  // PDF.js' Webpack entrypoint owns the same-origin module worker. Keeping the
+  // worker URL relative to the package lets Next bundle it instead of trying
+  // to require an ESM worker through serverExternalPackages.
+  // @ts-expect-error pdfjs-dist does not publish a declaration for webpack.mjs.
+  const pdfjs: typeof import('pdfjs-dist') = await import('pdfjs-dist/webpack.mjs');
+  const task = pdfjs.getDocument({ data: Uint8Array.from(data),
     isEvalSupported: false, useSystemFonts: false, disableAutoFetch: true, disableStream: true,
     useWorkerFetch: false, maxImageSize: 4_000_000, canvasMaxAreaInBytes: 16_000_000,
   });
@@ -18,7 +19,7 @@ export async function createLocalPdfTask(data: Uint8Array): Promise<PDFDocumentL
     // A stuck decoder must not hold cancellation hostage to its own reply.
     let timer: ReturnType<typeof setTimeout> | undefined;
     try { await Promise.race([destroy().catch(() => undefined), new Promise<void>((resolve) => { timer = setTimeout(resolve, 100); })]); }
-    finally { clearTimeout(timer); pdfWorker.destroy(); worker.terminate(); }
+    finally { clearTimeout(timer); }
   })();
   return task;
 }

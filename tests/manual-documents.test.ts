@@ -160,6 +160,12 @@ describe('revisión humana local: historial y límites de autoridad', () => {
     expect(Object.isFrozen(MANUAL_DOCUMENT_CAPABILITIES)).toBe(true);
     expect(() => buildFrontiDocumentText(draft())).toThrow(/capacidad y coste/);
   });
+  it('empaqueta el worker PDF local mediante el entrypoint Webpack oficial', () => {
+    const runtime = readFileSync('src/components/supervision/manual-documents/pdf-runtime.ts', 'utf8');
+    expect(runtime).toContain("import('pdfjs-dist/webpack.mjs')");
+    expect(runtime).not.toContain("new URL('pdfjs-dist/legacy/build/pdf.worker.mjs'");
+    expect(runtime).not.toMatch(/https?:\/\//);
+  });
   it('mantiene permiso de Supervisión, separación del importador actual y mensajes honestos', () => {
     const page = readFileSync('src/app/(app)/supervision/documentos/page.tsx', 'utf8');
     const ui = readFileSync('src/components/supervision/manual-documents/review-workspace.tsx', 'utf8');

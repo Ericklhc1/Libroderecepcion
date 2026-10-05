@@ -6,6 +6,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
 
 const [baseline, candidate, output] = process.argv.slice(2).map(p => resolve(p));
 const requireCandidate = createRequire(`${candidate}/package.json`);
@@ -16,6 +17,8 @@ const origin = 'http://localhost:3000';
 const backends = { baseline: { tree: baseline, port: 3101 }, candidate: { tree: candidate, port: 3102 } };
 let activeBackend = 'baseline';
 const children = [], contexts = [], results = [];
+const customResponses = new Map();
+let customResponseSequence = 0;
 const report = { platformSkew: 'NOT_TESTED', productionDecision: 'UNVERIFIED',
   candidateStatus: 'PROVISIONAL_COMPATIBILITY_ONLY_NOT_RELEASE_APPROVED', results,
   sourceCommits: {
@@ -61,9 +64,30 @@ assert.equal(report.builds.independentActionEncryptionKeys, true, 'Independent b
 // fallback, sticky routing, request replay, asset merging or simulated Skew.
 const proxy = http.createServer((request, response) => {
   const selected = activeBackend;
+  const observeCustomJson = request.method === 'POST' && /^\/api\/operational-actions\/handover-missing(?:-approve)?(?:\?|$)/.test(request.url);
+  const observationId = observeCustomJson ? String(++customResponseSequence) : null;
   const upstream = http.request({ hostname: '127.0.0.1', port: backends[selected].port,
     path: request.url, method: request.method, headers: request.headers }, incoming => {
-    response.writeHead(incoming.statusCode, { ...incoming.headers, 'x-cross-version-backend': selected });
+    if (observeCustomJson) {
+      const chunks = []; let bytes = 0;
+      incoming.on('data', chunk => { bytes += chunk.length; if (bytes <= 65536) chunks.push(chunk); });
+      incoming.on('end', () => {
+        try {
+          if (bytes > 65536) throw new Error('Synthetic custom API response exceeds observation limit');
+          let body = Buffer.concat(chunks);
+          const encoding = incoming.headers['content-encoding'];
+          const limits = { maxOutputLength: 65536 };
+          if (encoding === 'gzip') body = gunzipSync(body, limits);
+          else if (encoding === 'deflate') body = inflateSync(body, limits);
+          else if (encoding === 'br') body = brotliDecompressSync(body, limits);
+          else if (encoding && encoding !== 'identity') throw new Error('Unsupported response encoding in synthetic observer');
+          if (body.length > 65536) throw new Error('Decoded synthetic response exceeds observation limit');
+          customResponses.set(observationId, { body: JSON.parse(body.toString('utf8')) });
+        } catch (error) { customResponses.set(observationId, { error: error.message }); }
+      });
+    }
+    response.writeHead(incoming.statusCode, { ...incoming.headers, 'x-cross-version-backend': selected,
+      ...(observationId ? { 'x-cross-version-observation': observationId } : {}) });
     incoming.pipe(response);
   });
   upstream.on('error', () => { if (!response.headersSent) response.writeHead(502); response.end('Synthetic upstream unavailable'); });
@@ -114,7 +138,7 @@ async function submit(page, name, evidence, expectedBackend = activeBackend) {
   if (captured.error) throw new Error('No browser Server Action POST was observed');
   const response = captured.response;
   const actionId = response.request().headers()['next-action'];
-  const row = { control: name, backend: response.headers()['x-cross-version-backend'], status: response.status(),
+  const row = { control: name, actionId, backend: response.headers()['x-cross-version-backend'], status: response.status(),
     actionFromBaselineManifest: oldBuild.actionIds.has(actionId), actionPresentInCandidateManifest: newBuild.actionIds.has(actionId) };
   evidence.push(row);
   assert.equal(row.backend, expectedBackend, 'Submission went to the wrong build');
@@ -155,15 +179,21 @@ async function submitCustom(draft, evidence, expectedError) {
   await unchanged(page, form, snapshot);
   const oldDocument = page.__oldDocument;
   const endpoint = `/api/operational-actions/${procedure}`;
-  // Observe the response immediately. Do not replay requests, change headers,
-  // fake a response, pin the old client or prevent its native navigation.
+  // Observe bytes at the transparent proxy: native document navigation can
+  // remove CDP's response body before Playwright reads it. Do not replay,
+  // modify bodies, pin the client or delay its real navigation.
   const pending = page.waitForResponse(response => response.request().method() === 'POST' && new URL(response.url()).pathname === endpoint)
-    .then(async response => ({ response, body: await response.json(), headers: await response.request().allHeaders() }))
+    .then(async response => ({ response, headers: await response.request().allHeaders() }))
     .then(value => ({ value }), error => ({ error }));
   await button(page, name).click();
   const captured = await pending;
   if (captured.error) throw new Error(`Custom API observation failed: ${captured.error.message}`);
-  const { response, body, headers } = captured.value;
+  const { response, headers } = captured.value;
+  const observationId = response.headers()['x-cross-version-observation'];
+  const observed = await eventually(() => customResponses.get(observationId), 'Custom API response was not observed at proxy');
+  customResponses.delete(observationId);
+  assert.equal(observed.error, undefined, observed.error);
+  const body = observed.body;
   const request = response.request(), requestFields = request.postDataJSON();
   const action = { transport: 'custom-json', procedure,
     clientDocument: oldDocument ? 'baseline' : 'candidate',
@@ -307,13 +337,30 @@ async function declareElements(page, elementId) {
   assert.equal(await form.locator(`input[name="e_${elementId}"]`).inputValue(), 'true');
   return form;
 }
-async function prepare(page, fixture, evidence) {
+async function prepare(page, fixture, evidence, row) {
   await page.goto(`${origin}/turno`);
   await page.locator('summary').filter({ hasText: /^Entregar turno$/ }).click();
   await button(page, 'INICIAR CIERRE DE TURNO').click();
   await submit(page, 'SÍ, INICIAR CIERRE', evidence);
   const handover = await eventually(() => db.shiftHandover.findUnique({ where: { fromShiftId: fixture.shiftId } }), 'No native draft');
-  await page.waitForURL(`**/turno/entrega/${handover.id}?paso=1`);
+  row.preparation = { backend: activeBackend, nativeWritePersisted: true, automaticNavigation: true,
+    explicitDocumentReloadBeforeMeasuredDraft: false, nativeContinueLinkUsed: false };
+  const destination = `/turno/entrega/${handover.id}`;
+  try { await page.waitForURL(url => url.pathname === destination); }
+  catch {
+    row.preparation.automaticNavigation = false;
+    const continueLink = page.getByRole('link', { name: 'Continuar cierre · Caja y entrega', exact: true });
+    if (!await continueLink.isVisible() && activeBackend === 'baseline') {
+      // Baseline 1.57 may remain in its pending action after the confirmed DB
+      // write. This explicit reload is only precondition construction, BEFORE
+      // any draft under measurement exists; it never passes the native journey.
+      row.preparation.explicitDocumentReloadBeforeMeasuredDraft = true;
+      await page.reload({ waitUntil: 'domcontentloaded' });
+    }
+    await continueLink.click();
+    row.preparation.nativeContinueLinkUsed = true;
+    await page.waitForURL(url => url.pathname === destination);
+  }
   await button(page, 'Guardar arqueo declarado').waitFor();
   assert.equal((await db.shift.findUniqueOrThrow({ where: { id: fixture.shiftId } })).status, 'PREPARANDO_ENTREGA');
   const element = await db.handoverElement.findUniqueOrThrow({ where: { handoverId_elementTypeId: { handoverId: handover.id, elementTypeId: fixture.elementTypeId } } });
@@ -471,7 +518,7 @@ try {
         }
         const fixture = await runFixture();
         const { context, page } = await actor(browser, fixture, 'outgoing', width);
-        const state = await prepare(page, fixture, row.actions);
+        const state = await prepare(page, fixture, row.actions, row);
         row.nightEndsAtHotel08 = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit' }).format(new Date(fixture.plannedEnd)) === '08:00';
         assert.equal(row.nightEndsAtHotel08, true);
         const notes = `PRUEBA SINTÉTICA · arqueo ${mode} ${width}`;
@@ -574,7 +621,10 @@ try {
   }
   report.runtimeNetworkClean = !report.externalBrowserRequestBlocked && !report.webSocketBlocked &&
     (!existsSync(`${output}/network-violations.log`) || readFileSync(`${output}/network-violations.log`, 'utf8').trim() === '');
-  report.localCompatibility = results.every(row => row.status === 'PASS') && report.runtimeNetworkClean ? 'PASS' : 'NO_GO_OR_INCONCLUSIVE';
+  report.nativePreparationNavigation = results.filter(row => row.preparation).every(row => row.preparation.automaticNavigation)
+    ? 'PASS' : 'FAILED_RECORDED_SEPARATELY_FROM_FORM_CONTRACTS';
+  report.localCompatibility = results.every(row => row.status === 'PASS') && report.runtimeNetworkClean &&
+    report.nativePreparationNavigation === 'PASS' ? 'PASS' : 'NO_GO_OR_INCONCLUSIVE';
   report.customApiCompatibility = results.filter(row => row.mode.includes('custom-custody')).every(row => row.status === 'PASS') &&
     report.runtimeNetworkClean ? 'PASS' : 'NO_GO_OR_INCONCLUSIVE';
   // Even an entirely green local run cannot verify Vercel routing or durability.

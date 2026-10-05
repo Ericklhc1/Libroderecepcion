@@ -1,8 +1,8 @@
 # Ensayo sintético entre versiones 1.57.0 → 1.58.0
 
-Estado: preparado, **sin ejecutar**. Sólo se comprobaron sintaxis y contratos de
-fuente. No habilita merge, despliegue ni operación sobre Production. Los archivos
-nuevos y su publicación requieren autorización antes de subirlos al repositorio.
+Estado: **validación parcial, sin aprobación de release**. Ver ejecuciones y
+límites al final. No habilita merge, despliegue ni operación sobre Production.
+Los cambios y su ejecución quedan acotados a la rama QA autorizada.
 
 ## Identidad y método
 
@@ -49,6 +49,7 @@ Las pruebas no corren concurrentemente porque comparten la base.
 | Caso | Estado antes del cambio | Criterio obligatorio | Evidencia |
 |---|---|---|---|
 | Infraestructura | SHAs exactos y mismo esquema | Versiones 1.57.0/1.58.0, BUILD_ID diferentes, ninguna diferencia Prisma | SHAs, build IDs, cantidad de IDs comunes; nunca claves |
+| Navegación al preparar | Acción nativa ya confirmada en DB | Registrar si avanza sola al acta; si no, usar enlace visible Continuar cierre como paso adicional | Un paso extra no convierte en aprobada la transición automática |
 | Arqueo viejo | Turno NOCHE activo → preparación nativa en base; CLP 20.000 + USD 20 y garantía CLP 10.000 marcados, sin guardar | Documento y todos los campos sobreviven al cambio; POST de acción antigua llega a candidata y es aceptado | Backend del POST, pertenencia del ID a cada manifiesto, HTTP y evento ActionForm |
 | Persistencia de arqueo | Mismo formulario anterior | Exactamente un DECLARADO, cantidades 1/1, nota exacta, usuario/timestamp, garantía en snapshot separado | CashCount/Line/expectedSnapshot |
 | Custodia vieja | Segunda pestaña de base con selección sin guardar de llaves/teléfono | Selección y documento intactos; POST auténtico aceptado; declared=true | Campo e_ID, manifiesto, backend y HandoverElement |
@@ -105,7 +106,13 @@ Incluso código 0 mantiene `productionDecision=UNVERIFIED_PLATFORM_AND_RELOAD_LI
 - Los fetch custom observados pueden hacer navegación documental completa al
   terminar. El ensayo la registra y no la oculta; no promete conservar otros
   formularios sin guardar cuando esa navegación sucede. Sus respuestas JSON se
-  observan inmediatamente, sin reproducción manual ni respuesta simulada.
+  observan en el proxy transparente, sin reproducción manual, modificación de
+  cuerpos, demora de navegación ni respuesta simulada.
+- Si baseline queda pendiente después de crear el acta nativa, una recarga
+  explícita ANTES de escribir los formularios medidos permite construir la
+  precondición de contrato. Se registra por separado y la navegación automática
+  permanece fallida. En candidata se utiliza el enlace visible «Continuar cierre»;
+  no se hace un goto oculto ni se recarga un borrador medido para recuperar verde.
 - No migra esquemas diferentes, no ensaya una caída del servidor durante un POST,
   concurrencia de dos recepcionistas ni reintentos de doble clic en este bloque.
 - Los controles de red son instrumentación Node y rutas Playwright, no un
@@ -251,3 +258,14 @@ activo sin cierre de Caja, correctamente impedido por la base. Son fallos del
 arnés, no evidencia de incompatibilidad de la aplicación. Se corrigen esas
 precondiciones; el ciclo normal conserva fondos activos y cierre nativo completo.
 Los fallos futuros incluyen diagnóstico de texto visible exclusivamente sintético.
+
+Run `37256408149`, candidata `9ad0138`: los casos de cliente viejo contra ambas
+API custom aprobaron a 1280/390, con escrituras y auditorías verificadas, rechazo
+sin cambios de revisiones anteriores y correcciones que revocan aprobación; nunca
+se marcó posesión física. Sus controles candidato se detuvieron al desaparecer
+el cuerpo de respuesta del registro CDP después de navegar: se cambia sólo el
+observador al proxy. Preparar entrega nativa respondió 200 y persistió en ambos
+builds, pero no avanzó automáticamente al acta. En candidata quedó disponible el
+enlace real Continuar cierre. El siguiente ensayo registra esa fricción y usa
+ese enlace; la construcción explícita de precondición en baseline no aprueba el
+recorrido automático. Todavía no hubo guardado cruzado de arqueo ni cierre formal.

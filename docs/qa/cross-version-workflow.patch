@@ -51,7 +51,7 @@ new file mode 100644
 +      - uses: actions/setup-node@v4
 +        with:
 +          node-version: 24
-+      - name: Ensayo real de dos builds sin proveedores externos
++      - name: Ensayo de dos builds con observación JSON y continuación nativa
 +        # A negative cross-version result is intentionally a failed isolated job.
 +        run: bash scripts/cross-version/run.sh "$CANDIDATE_SHA"
 +      - name: Informe sintético sin sesiones ni secretos

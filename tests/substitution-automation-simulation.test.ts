@@ -4,8 +4,11 @@ import { simulateAutomation, runOperationalAutomations } from '@/server/services
 
 const mocks=vi.hoisted(()=>({
   db:{operationalAutomation:{findFirst:vi.fn(),findMany:vi.fn(),updateMany:vi.fn()},operationalAutomationRun:{findMany:vi.fn(),upsert:vi.fn()},department:{count:vi.fn()},user:{findFirst:vi.fn()},auditLog:{create:vi.fn()},$transaction:vi.fn()},
-  board:vi.fn(),preview:vi.fn(),readWork:vi.fn(),
+  board:vi.fn(),preview:vi.fn(),readWork:vi.fn(),permission:vi.fn(),
 }));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('@/server/auth/guard',()=>({requirePermission:mocks.permission}));
+vi.mock('@/server/action',()=>({runAction:async(fn:()=>Promise<unknown>)=>fn()}));
 vi.mock('@/lib/prisma',()=>({prisma:mocks.db}));
 vi.mock('@/server/services/tasks',()=>({createTask:vi.fn()}));
 vi.mock('@/server/services/coordination',()=>({getCoordinationBoard:mocks.board,coordinationMetrics:vi.fn()}));
@@ -25,6 +28,7 @@ function row(id:string){return {id,kind:'task',title:id,ownerId:null,updatedAt:n
 function preview(state:string){return {state,reasonCode:state==='NO_SLOT'?'NO_SLOT_IN_WINDOW':state==='FUTURE_SLOT'?'NEXT_PUBLISHED_SLOT':'WORK_NO_LONGER_PENDING',selection:null,eligibleNow:false,responsible:null,generatedAt:now,searchUntil:new Date(now.getTime()+86400000),sourceRevision:now.toISOString(),planningOnly:true,policyVersion:1,policyState:'ACTIVE'};}
 beforeEach(()=>{
   vi.clearAllMocks();
+  mocks.permission.mockResolvedValue(actor);
   mocks.db.operationalAutomation.findFirst.mockResolvedValue(policy());
   mocks.db.operationalAutomation.findMany.mockResolvedValue([policy()]);
   mocks.db.operationalAutomation.updateMany.mockResolvedValue({count:1});
@@ -35,6 +39,50 @@ beforeEach(()=>{
   mocks.board.mockResolvedValue({rows:[row('wait'),row('intervention')],page:1,hasMore:false});
   mocks.readWork.mockImplementation(async(_actor,_kind,id)=>({id}));
   mocks.preview.mockImplementation(async(_actor,_policy,work)=>preview(work.id==='wait'?'FUTURE_SLOT':'NO_SLOT'));
+});
+
+describe('vista previa de la acción: evidencia tipada y límite humano',()=>{
+  it('muestra diez franjas con sus advertencias y no pierde el total observado',async()=>{
+    const rows=Array.from({length:11},(_,index)=>row(`espera-${index}`));
+    mocks.board.mockResolvedValue({rows,page:1,hasMore:false});
+    mocks.preview.mockResolvedValue({...preview('FUTURE_SLOT'),responsible:'Persona sintética',policyState:'PAUSED',selection:{userId:'candidate',candidatePosition:0,slotId:'slot',planId:'plan',publishedVersion:1,slotUpdatedAt:now,startAt:new Date(now.getTime()+3600000),effectiveEndAt:new Date(now.getTime()+7200000),eligibleUntil:new Date(now.getTime()+7200000)}});
+    const {simulateAutomationAction}=await import('@/server/actions/operational-automation');
+    const form=new FormData();form.set('id','policy');
+    const result=await simulateAutomationAction(null,form);
+    expect(result.ok).toBe(true);
+    if(!result.ok)throw new Error('La simulación no confirmó la lectura.');
+    expect(result.message).toContain('11 registros observados');
+    expect(result.message.match(/próxima franja publicada de Persona sintética/g)).toHaveLength(10);
+    expect(result.message).toContain('Política en pausa: sólo simulación.');
+    expect(result.message).toContain('Requiere revalidación; no asignado.');
+    expect(result.message).toContain('Siguiente acción: Revisar pendiente original.');
+    expect(result.message).toContain('Vista previa limitada a 10 registros');
+    expect(result.message).not.toContain('espera-10');
+    expect(mocks.permission).toHaveBeenCalledWith('system.configure');
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+  });
+  it('conserva el motivo de intervención cuando no hay franja',async()=>{
+    const {simulateAutomationAction}=await import('@/server/actions/operational-automation');
+    const form=new FormData();form.set('id','policy');
+    const result=await simulateAutomationAction(null,form);
+    expect(result.ok).toBe(true);
+    if(!result.ok)throw new Error('La simulación no confirmó la lectura.');
+    expect(result.message).toContain('intervention: No hay una franja publicada elegible');
+    expect(result.message).toContain('Leído');
+    expect(result.message).toContain('/tareas/intervention');
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+  });
+  it('conserva la presentación de efectos de escalamiento sin disponibilidad',async()=>{
+    mocks.db.operationalAutomation.findFirst.mockResolvedValue({...policy(),kind:'ESCALATION',configuration:{trigger:'UNASSIGNED',kind:'task',priority:null,receiptMinutes:30,maxItems:25,recipientId:actor.id}});
+    const {simulateAutomationAction}=await import('@/server/actions/operational-automation');
+    const form=new FormData();form.set('id','policy');
+    const result=await simulateAutomationAction(null,form);
+    expect(result.ok).toBe(true);
+    if(!result.ok)throw new Error('La simulación no confirmó la lectura.');
+    expect(result.message).toContain('Escalar wait a Owner');
+    expect(result.message).not.toContain('próxima franja');
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+  });
 });
 
 describe('motor real de simulación: cupo de efectos e intervención',()=>{

@@ -26,14 +26,22 @@ export async function saveAutomationAction(_: ActionState|null, form: FormData):
 export async function simulateAutomationAction(_: ActionState|null, form: FormData): Promise<ActionState> {
   return runAction(async () => {
     const result = await simulateAutomation(await requirePermission('system.configure'), value(form,'id'));
-    const lines=result.effects.slice(0,10).map(effect=>{
-      if('occurrence' in effect)return `Crear tarea: ${effect.occurrence}, responsable ${effect.responsible}, plazo ${formatDateTime(effect.dueAt)}. ${effect.eligible?'Elegible.':'Sin responsable elegible.'}`;
+    // Iterating the original union preserves each effect's typed evidence; array
+    // method inference can collapse substitution effects into the shared base shape.
+    const lines:string[]=[];
+    for(const effect of result.effects){
+      if(lines.length===10)break;
+      if('occurrence' in effect){
+        lines.push(`Crear tarea: ${effect.occurrence}, responsable ${effect.responsible}, plazo ${formatDateTime(effect.dueAt)}. ${effect.eligible?'Elegible.':'Sin responsable elegible.'}`);
+        continue;
+      }
       if('availability' in effect&&effect.availability&&!effect.eligible){
         const preview=effect.availability, slot=preview.selection;
-        return `${effect.title}: ${slot?`Pendiente; próxima franja publicada de ${preview.responsible}, ${formatDateTime(slot.startAt)} a ${formatDateTime(slot.effectiveEndAt)}, con autorización para asignar hasta ${formatDateTime(slot.eligibleUntil)}. Requiere revalidación; no asignado.`:substitutionAvailabilityReason(preview.reasonCode)} ${preview.policyState==='PAUSED'?'Política en pausa: sólo simulación. ':''}Leído ${formatDateTime(preview.generatedAt)}; consulta acotada hasta ${formatDateTime(preview.searchUntil)}. Siguiente acción: ${effect.nextAction}. ${effect.href}`;
+        lines.push(`${effect.title}: ${slot?`Pendiente; próxima franja publicada de ${preview.responsible}, ${formatDateTime(slot.startAt)} a ${formatDateTime(slot.effectiveEndAt)}, con autorización para asignar hasta ${formatDateTime(slot.eligibleUntil)}. Requiere revalidación; no asignado.`:substitutionAvailabilityReason(preview.reasonCode)} ${preview.policyState==='PAUSED'?'Política en pausa: sólo simulación. ':''}Leído ${formatDateTime(preview.generatedAt)}; consulta acotada hasta ${formatDateTime(preview.searchUntil)}. Siguiente acción: ${effect.nextAction}. ${effect.href}`);
+        continue;
       }
-      return `${effect.action==='PROPOSE'?'Proponer suplencia para':effect.action==='APPLY'?'Reasignar':'Escalar'} ${effect.title} a ${effect.responsible}: ${effect.href}. ${effect.eligible?'Candidato del área; el acceso al origen se verifica al ejecutar.':'Sin destinatario elegible.'}`;
-    });
+      lines.push(`${effect.action==='PROPOSE'?'Proponer suplencia para':effect.action==='APPLY'?'Reasignar':'Escalar'} ${effect.title} a ${effect.responsible}: ${effect.href}. ${effect.eligible?'Candidato del área; el acceso al origen se verifica al ejecutar.':'Sin destinatario elegible.'}`);
+    }
     return { ok: true, message: `Simulación: ${result.effects.length} registros observados. ${result.complete?'Alcance completo.':'Resultado parcial: hay más registros o evidencia pendiente.'} ${result.explanation}\n${lines.join('\n')}${result.effects.length>10?'\nVista previa limitada a 10 registros; no se ha ejecutado ninguno.':''}` };
   });
 }

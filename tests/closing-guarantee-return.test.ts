@@ -49,7 +49,8 @@ describe('devolver garantía durante preparación de cierre', () => {
     expect(caja).toContain("operationGate.shiftStatus === 'PREPARANDO_ENTREGA'");
     expect(caja).toContain('const canChargeGuarantee = canOperateCash');
     expect(caja).toContain('const canReturnGuarantee = (canOperateCash || canReturnDuringClosing)');
-    expect(caja).toContain("returnCandidate.startsWith('/turno/entrega/')");
+    expect(caja).toContain("const hasReturnToHandover = returnCandidate.startsWith('/turno/entrega/')");
+    expect(caja).toContain("hasReturnToHandover ? <Link className=\"font-semibold underline\" href={returnHref}>Volver al cierre</Link>");
     expect(action.slice(action.indexOf('export async function returnCashGuaranteeAction'), action.indexOf('const chargeGuaranteeSchema'))).toContain('assertReceptionCashGuaranteeReturn(user)');
     expect(action.slice(action.indexOf('export async function chargeCashGuaranteeAction'))).toContain("requirePermission('cash.guarantee_out')");
     expect(cashBox).toContain('Devolver esta garantía en Caja');

@@ -11,6 +11,13 @@ const results = [];
 const noJsFailures = [];
 const base = 'http://localhost:3000';
 
+async function checkFrontiDraft(page, expected) {
+  await page.getByRole('button', { name: 'Abrir Fronti', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Fronti', exact: true });
+  assert.equal(await panel.getByRole('textbox', { name: 'Mensaje para Fronti', exact: true }).inputValue(), expected, 'SPA navigation and history retain the unsent Fronti draft');
+  await panel.getByRole('button', { name: 'Minimizar Fronti', exact: true }).click();
+}
+
 async function focused(locator) { return locator.evaluate(node => node === document.activeElement); }
 async function noOverflow(page) {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Navigation must fit the viewport');
@@ -40,11 +47,19 @@ try {
     const navigationFailure = await watchSyntheticNavigation(page);
     page.setDefaultTimeout(12000);
     const hydrationErrors = [];
+    const frontiPosts = [];
+    page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/fronti') frontiPosts.push(request.method()); });
     page.on('pageerror', error => hydrationErrors.push(error.message));
     page.on('console', message => { if (message.type() === 'error' && /hydration|didn.t match|server rendered html/i.test(message.text())) hydrationErrors.push(message.text()); });
     await page.goto(base + '/libro?clase=entry&tipo=INCIDENCIA');
     assert.equal(new URL(page.url()).pathname, '/libro', 'The synthetic session must pass native authentication');
     await noOverflow(page);
+    const documentOrigin = await page.evaluate(() => performance.timeOrigin);
+    const draft = 'UNSENT_SYNTHETIC_FRONTI_DRAFT_' + width;
+    await page.getByRole('button', { name: 'Abrir Fronti', exact: true }).click();
+    const fronti = page.getByRole('region', { name: 'Fronti', exact: true });
+    await fronti.getByRole('textbox', { name: 'Mensaje para Fronti', exact: true }).fill(draft);
+    await fronti.getByRole('button', { name: 'Minimizar Fronti', exact: true }).click();
 
     if (width >= 1024) {
       const nav = page.getByRole('navigation', { name: 'Módulos', exact: true });
@@ -131,12 +146,21 @@ try {
       await page.waitForURL(url => url.searchParams.get('tipo') === 'INCIDENCIA');
       await panel.waitFor({ state: 'hidden' });
     }
+    await checkFrontiDraft(page, draft);
+    await page.goForward();
+    await page.waitForURL(url => url.pathname === '/libro' && url.searchParams.get('clase') === 'task');
+    await checkFrontiDraft(page, draft);
+    await page.goBack();
+    await page.waitForURL(url => url.searchParams.get('tipo') === 'INCIDENCIA');
+    await checkFrontiDraft(page, draft);
+    assert.equal(await page.evaluate(() => performance.timeOrigin), documentOrigin, 'Navigation and Back/Forward preserve the document');
+    assert.deepEqual(frontiPosts, [], 'Checking a draft never sends it or invokes an assistant action');
     await noOverflow(page);
     await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
     const headerBox = await page.locator('header').first().boundingBox();
     assert.ok(headerBox && Math.abs(headerBox.y) <= 1, 'The shared header stays at the top while scrolling');
     assert.deepEqual(hydrationErrors, []);
-    results.push({ width, groups: true, querySelection: true, keyboard: true, focusReturn: true, backDismissal: true, noOverflow: true });
+    results.push({ width, groups: true, querySelection: true, keyboard: true, focusReturn: true, backDismissal: true, forwardAndBack: true, frontiDraftPreserved: true, noFrontiSubmission: true, noOverflow: true });
     await context.close();
   }
   for (const key of ['admin', 'maid']) {

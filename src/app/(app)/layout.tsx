@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { UxJourney } from '@/components/observability/ux-journey';
@@ -172,7 +173,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </header>
 
           <main id="contenido-principal" tabIndex={-1} className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] pt-5 lg:pb-8">
-            {children}
+            {/* Keep streamed route content on its own fiber. React bundled with
+                Next 15 can replay a claimed host before rewinding hydration. A
+                constant keyed Fragment preserves HTML and route/shell identity. */}
+            <Fragment key="aroh-route-content">{children}</Fragment>
           </main>
 
           <div className="mx-auto w-full max-w-[1680px] px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] lg:pb-4">

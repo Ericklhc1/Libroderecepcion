@@ -33,7 +33,7 @@ try{
     assert.ok(!(await dialog.innerText()).includes(entry.description),'La solicitud conserva el contexto sin transcribir la descripción');
     const attentionResponse=page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/api/operational-actions/subject-attention');
     await dialog.getByRole('button',{name:'Enviar solicitud',exact:true}).click();
-    const attentionSaved=await attentionResponse;assert.equal(attentionSaved.status(),200,await attentionSaved.text());
+    const attentionSaved=await attentionResponse;assert.equal(attentionSaved.status(),200);
     await page.getByRole('link',{name:'Continuar atención',exact:true}).waitFor();
     const task=await db.task.findFirstOrThrow({where:{entryId:entry.id,followUpId:null,departmentId:f.areaId}});
     let measured;

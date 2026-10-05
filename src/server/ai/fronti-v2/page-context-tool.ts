@@ -1,5 +1,6 @@
 import {alertReadWhere} from '@/server/services/followup-access';
 import 'server-only';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
 import { getCoordinationBoard, coordinationMetrics, type CoordinationView } from '@/server/services/coordination';
@@ -545,6 +546,12 @@ async function adminSnapshot(user: CurrentUser, page: FrontiResolvedPageContext)
   );
 
   switch (page.sectionKey) {
+    case 'mantenimiento': {
+      if (!user.isSystemAdmin) throw new Error('Sólo el Administrador de sistema puede consultar este control.');
+      const state = await getMaintenanceState();
+      return { enabled: state.enabled, message: state.message, startedAt: state.startedAt,
+        note: 'Control temporal de disponibilidad. Fronti sólo explica el estado; activar o desactivar exige la confirmación explícita del Administrador de sistema en esta pantalla. No se modifican permisos ni datos hoteleros.' };
+    }
     case 'usuarios':
       return safeRead(user, 'consultar_usuarios', { includeInactive: true });
     case 'auditoria':

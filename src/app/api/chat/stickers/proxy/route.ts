@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError, chatJson } from '@/server/api/chat';
 import { createChatSticker } from '@/server/services/chat';
@@ -7,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 const PROXY_MAX_BYTES = 3 * 1024 * 1024;
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requireUser();
     const form = await request.formData();
@@ -34,3 +35,5 @@ export async function POST(request: Request) {
     return chatApiError(error);
   }
 }
+
+export const POST = withMaintenance(POSTHandler);

@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getCurrentUser } from '@/server/auth/current-user';
@@ -22,7 +23,7 @@ const schema = z.discriminatedUnion('action', [
 
 const headers = { 'Cache-Control': 'no-store' };
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) {
     return NextResponse.json({ error: 'Tu sesión venció.' }, { status: 401, headers });
@@ -53,3 +54,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json(await getNotificationFeedForUser(user.id), { headers });
 }
+
+export const POST = withMaintenance(POSTHandler);

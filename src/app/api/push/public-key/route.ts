@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
@@ -6,7 +7,7 @@ import { getWebPushPublicKey } from '@/server/services/web-push';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function GETHandler() {
   const user = await getCurrentUser();
   if (!user || user.mustChangePassword) {
     return NextResponse.json({ error: 'Sesión vencida.' }, { status: 401 });
@@ -29,3 +30,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withMaintenance(GETHandler);

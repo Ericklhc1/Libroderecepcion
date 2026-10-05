@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import type { NextRequest } from 'next/server';
 import { requirePermission } from '@/server/auth/guard';
 import { buildSupervisorReport, reportDateRange, type SupervisorReportType } from '@/server/services/supervisor-reports';
@@ -8,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 const TYPES = new Set<SupervisorReportType>(['gimnasio', 'multas', 'estado']);
 
-export async function GET(request: NextRequest) {
+async function GETHandler(request: NextRequest) {
   await requirePermission('supervision.view');
   const url = new URL(request.url);
   const rawType = url.searchParams.get('tipo') as SupervisorReportType | null;
@@ -32,3 +33,5 @@ export async function GET(request: NextRequest) {
     },
   });
 }
+
+export const GET = withMaintenance(GETHandler);

@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth/guard';
 import { updateOwnChatProfile } from '@/server/services/chat';
@@ -13,7 +14,7 @@ const profileSchema = z.object({
   soundEnabled: z.unknown().optional(),
 });
 
-export async function PATCH(request: Request) {
+async function PATCHHandler(request: Request) {
   try {
     const user = await requireUser();
     const payload = profileSchema.parse(await request.json());
@@ -25,3 +26,5 @@ export async function PATCH(request: Request) {
     return chatApiError(error);
   }
 }
+
+export const PATCH = withMaintenance(PATCHHandler);

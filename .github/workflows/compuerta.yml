@@ -191,6 +191,27 @@ jobs:
           fi
           exit "$journey_status"
 
+      - name: Mantenimiento temporal y recuperación SysAdmin
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          npx tsx scripts/etapa1/fixture.mts
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/maintenance-recovery-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/maintenance/browser.mjs; then
+            echo "Synthetic maintenance recovery failure; recent local server diagnostics"
+            tail -60 /tmp/maintenance-recovery-server.log
+            exit 1
+          fi
+
       - name: Apariencia y continuidad de listas y suplencias
         if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
         timeout-minutes: 3

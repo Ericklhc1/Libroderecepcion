@@ -144,7 +144,8 @@ describe('Recepción · gate obligatorio de turno', () => {
     const form = readFileSync('src/components/ui/form.tsx', 'utf8');
 
     expect(closeForm).toContain('<ShiftActionDialog');
-    expect(closeForm).toContain('action={closeShiftAction}');
+    expect(closeForm).toContain('useShiftReturnNavigation(closeShiftAction, shiftId)');
+    expect(closeForm).toContain('action={closeShift}');
     expect(closeForm).not.toContain('onError={() => setOpen(false)}');
     expect(dialog.indexOf('<ActionForm')).toBeGreaterThan(dialog.indexOf('<Dialog'));
     expect(dialog.indexOf('</ActionForm>')).toBeLessThan(dialog.indexOf('</Dialog>'));

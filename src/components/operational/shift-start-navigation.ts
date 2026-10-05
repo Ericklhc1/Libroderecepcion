@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import type { ActionState } from '@/server/action';
 
 type ShiftStartAction = (state: ActionState | null, form: FormData) => Promise<ActionState>;
-type ShiftStartMode = 'handover' | 'reception';
+type ShiftStartMode = 'handover' | 'reception' | 'return';
 
-/** Only the two shift-start forms use this adapter; server actions stay unchanged. */
+/** Shift form navigation only; server actions and their result contracts stay unchanged. */
 export function createShiftStartAction(
   action: ShiftStartAction,
   mode: ShiftStartMode,
@@ -68,9 +68,11 @@ export function createShiftStartAction(
         changedEntry();
         // Revalidation may already have unmounted the form. Its explicit
         // successful result can still advance the same, uninterrupted visit.
-        if (result.ok && result.id && !superseded) {
+        const destination = !result.ok ? null : mode === 'return' ? '/turno'
+          : result.id ? `/turno/entrega/${encodeURIComponent(result.id)}${mode === 'handover' ? '?paso=1' : ''}` : null;
+        if (destination && !superseded) {
           cleanup();
-          navigate(`/turno/entrega/${encodeURIComponent(result.id)}${mode === 'handover' ? '?paso=1' : ''}`);
+          navigate(destination);
         }
         return result;
       } finally {
@@ -95,4 +97,8 @@ export function useShiftStartNavigation(action: ShiftStartAction, mode: ShiftSta
     current.current = { action, mode, recordId, router, run: createShiftStartAction(action, mode, href => router.push(href)) };
   }
   return current.current.run;
+}
+
+export function useShiftReturnNavigation(action: ShiftStartAction, recordId: string) {
+  return useShiftStartNavigation(action, 'return', recordId);
 }

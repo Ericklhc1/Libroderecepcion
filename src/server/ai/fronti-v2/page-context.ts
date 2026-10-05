@@ -415,6 +415,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     '/admin/auditoria': ['auditoria', 'Auditoría', ['consultar_contexto_pantalla', 'consultar_auditoria']],
     '/admin/correo': ['correo', 'Correo', ['consultar_contexto_pantalla']],
     '/admin/diagnostico': ['diagnostico', 'Diagnóstico y reparación', ['consultar_contexto_pantalla', 'consultar_auditoria']],
+    '/admin/mantenimiento': ['mantenimiento', 'Modo mantenimiento', ['consultar_contexto_pantalla']],
     '/admin/eliminados': ['eliminados', 'Papelera / eliminados', ['consultar_contexto_pantalla', 'consultar_auditoria']],
     '/admin/fronti': ['fronti', 'Fronti', ['consultar_contexto_pantalla', 'consultar_configuracion_operativa']],
     '/admin/parametros': ['parametros', 'Parámetros', ['consultar_contexto_pantalla', 'consultar_configuracion_operativa']],

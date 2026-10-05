@@ -17,7 +17,7 @@ const { JSDOM } = require(process.env.AROH_JSDOM_MODULE || 'jsdom');
 const dom = new JSDOM('<!doctype html><html><body></body></html>', {
   url: 'http://localhost:3000/turno', pretendToBeVisual: true,
 });
-for (const key of ['window', 'document', 'Node', 'HTMLElement', 'HTMLInputElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLFormElement', 'MutationObserver', 'FormData', 'CustomEvent']) {
+for (const key of ['window', 'document', 'Node', 'Element', 'HTMLElement', 'HTMLInputElement', 'HTMLSelectElement', 'HTMLTextAreaElement', 'HTMLFormElement', 'MutationObserver', 'FormData', 'CustomEvent']) {
   globalThis[key] = key === 'window' ? dom.window : dom.window[key];
 }
 Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
@@ -148,6 +148,7 @@ const variants = [
     settle(error); await wait(100);
     assert.equal(dialog(), panel, 'rejection keeps the same mounted form');
     assert.equal(panel.querySelector('[role="alert"]')?.textContent, error.error);
+    assert.ok(panel.contains(document.activeElement), 'the presented error returns focus inside its still-connected dialog');
     assert.equal(submit.disabled, false);
     assert.equal(back.disabled, false);
     assert.equal(navigation.length, 0, 'rejection must not navigate or refresh');
@@ -165,6 +166,26 @@ const variants = [
     view.cleanup();
   }
   if (!baseline) {
+    for (const name of ['CancelPreparationForm', 'CloseShiftForm']) {
+      for (const newerRoute of [false, true]) {
+        window.history.replaceState(null, '', '/turno/entrega/synthetic');
+        const unmounted = mount(forms[name], { shiftId: 'synthetic-unmount' });
+        await open(unmounted);
+        actionImpl = async () => {
+          await wait(10);
+          flushSync(() => unmounted.root.render(h('p', null, 'Updated server branch without the form')));
+          if (newerRoute) window.history.replaceState(null, '', '/coordinacion');
+          return { ok: true, message: 'Guardado' };
+        };
+        dialog().querySelector('button[type=submit]').click();
+        await wait(100);
+        assert.equal(calls.length, 1);
+        assert.deepEqual(navigation, newerRoute ? [] : [['push', '/turno']], 'committed return survives unmount but never replaces a newer route');
+        unmounted.cleanup();
+        results.push({ name, unmountBeforeResult: 'pass', newerRouteWins: newerRoute });
+      }
+    }
+    window.history.replaceState(null, '', '/turno');
     let settleQueued;
     actionImpl = () => calls.length === 1 ? new Promise(resolve => { settleQueued = resolve; }) : Promise.resolve(error);
     const queued = mount(forms.CancelPreparationForm, { shiftId: 'synthetic-queued' });

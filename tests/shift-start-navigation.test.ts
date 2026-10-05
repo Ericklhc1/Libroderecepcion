@@ -48,6 +48,7 @@ describe('avance acotado al iniciar entrega o recepción', () => {
   it.each([
     ['handover', '/turno/entrega/synthetic-handover?paso=1'],
     ['reception', '/turno/entrega/synthetic-handover'],
+    ['return', '/turno'],
   ] as const)('avanza %s sólo después del resultado explícito y no altera campos', async (mode, href) => {
     const pending = deferred();
     const action = vi.fn().mockReturnValue(pending.promise);
@@ -76,10 +77,10 @@ describe('avance acotado al iniciar entrega o recepción', () => {
     expect(navigate).toHaveBeenCalledTimes(1);
   });
 
-  it('devuelve errores y campos originales; permite corregir y reintentar', async () => {
+  it.each(['reception', 'return'] as const)('%s devuelve errores y permite corregir y reintentar', async mode => {
     const error: ActionState = { ...rejected, fieldErrors: { type: ['No permitido'] } };
     const action = vi.fn().mockResolvedValueOnce(error).mockResolvedValueOnce(success);
-    const adapted = createShiftStartAction(action, 'reception', navigate);
+    const adapted = createShiftStartAction(action, mode, navigate);
     expect(await adapted(null, new FormData())).toBe(error);
     expect(navigate).not.toHaveBeenCalled();
     expect(await adapted(error, new FormData())).toBe(success);
@@ -95,6 +96,16 @@ describe('avance acotado al iniciar entrega o recepción', () => {
     expect(await adapted(value, new FormData())).toBe(value);
     expect(navigate).not.toHaveBeenCalled();
     expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it('vuelve al turno tras cancelar/cerrar aunque su contrato nativo no incluya ID', async () => {
+    const value = { ok: true, message: 'Turno actualizado' } as const;
+    const action = vi.fn().mockResolvedValue(value);
+    const adapted = createShiftStartAction(action, 'return', navigate);
+    expect(await adapted(null, new FormData())).toBe(value);
+    expect(await adapted(value, new FormData())).toBe(value);
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/turno');
   });
 
   it('libera la espera si la acción arroja una excepción síncrona', async () => {
@@ -114,9 +125,9 @@ describe('avance acotado al iniciar entrega o recepción', () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it('respeta un enlace nuevo incluso antes de que cambie la URL de una transición lenta', async () => {
+  it.each(['handover', 'return'] as const)('%s respeta un enlace nuevo antes de que cambie la URL', async mode => {
     const pending = deferred();
-    const result = createShiftStartAction(() => pending.promise, 'handover', navigate)(null, new FormData());
+    const result = createShiftStartAction(() => pending.promise, mode, navigate)(null, new FormData());
     click('https://aroh.invalid/coordinacion');
     expect(location.pathname).toBe('/turno');
     pending.resolve(success); await result;

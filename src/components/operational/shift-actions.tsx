@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Compass, X } from 'lucide-react';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
-import { useShiftStartNavigation } from '@/components/operational/shift-start-navigation';
+import { useShiftReturnNavigation, useShiftStartNavigation } from '@/components/operational/shift-start-navigation';
 import { ShiftActionDialog } from './shift-action-dialog';
 import {
   addShiftMemberAction,
@@ -667,13 +667,12 @@ export function CloseShiftForm({
   guided?: boolean;
   guidanceSession?: number;
 }) {
-  const router = useRouter();
+  const closeShift = useShiftReturnNavigation(closeShiftAction, shiftId);
 
   return (
     <ShiftActionDialog
-      action={closeShiftAction}
+      action={closeShift}
       shiftId={shiftId}
-      onSuccess={() => router.push('/turno')}
       trigger={guided ? 'Cerrar mi turno' : 'CERRAR MI TURNO'}
       triggerClassName="min-h-10"
       title={guided ? 'Último paso: cerrar el turno' : '¿Confirmas el cierre definitivo de tu turno?'}
@@ -716,13 +715,12 @@ export function CloseShiftForm({
 }
 
 export function CancelPreparationForm({ shiftId }: { shiftId: string }) {
-  const router = useRouter();
+  const cancelPreparation = useShiftReturnNavigation(cancelHandoverPreparationAction, shiftId);
 
   return (
     <ShiftActionDialog
-      action={cancelHandoverPreparationAction}
+      action={cancelPreparation}
       shiftId={shiftId}
-      onSuccess={() => router.push('/turno')}
       trigger="Cancelar cierre"
       triggerVariant="ghost"
       title="¿Estás seguro/a de que quieres cancelar el cierre?"

@@ -58,6 +58,17 @@ export async function exerciseShiftUx({ browser, db, results }) {
         return url.hostname !== 'localhost' || ['/api/notifications/stream', '/api/alarms', '/api/auth/pulse'].some(p => url.pathname.startsWith(p)) ? route.abort() : route.continue();
       });
       const page = await context.newPage(); page.setDefaultTimeout(12000);
+      await page.addInitScript(() => {
+        // Observe the app's real decoded ActionState receipt; do not fabricate
+        // events or assume a human string is contiguous in the Flight stream.
+        window.__shiftUxActionResults = [];
+        window.addEventListener('aroh:action-result', event => {
+          const detail = event.detail;
+          if (detail && typeof detail.ok === 'boolean' && typeof detail.formId === 'string') {
+            window.__shiftUxActionResults.push({ ok: detail.ok, formId: detail.formId });
+          }
+        });
+      });
       const posts = [], frontiPosts = [], errors = [];
       page.on('request', request => {
         if (actionable(request)) posts.push(new URL(request.url()).pathname);
@@ -148,8 +159,11 @@ export async function exerciseShiftUx({ browser, db, results }) {
         }
       }
     }
-    async function submitPending(actor, spec, dialog) {
+    async function submitPending(actor, spec, dialog, expectedOk = true) {
       const before = actor.posts.length;
+      const formId = await dialog.locator('form').getAttribute('id');
+      assert.ok(formId);
+      const offset = await actor.page.evaluate(() => window.__shiftUxActionResults.length);
       const route = new URL(actor.page.url()).pathname;
       const response = actor.page.waitForResponse(value => actionable(value.request()) && new URL(value.url()).pathname === route);
       response.catch(() => {}); // Preserve the original assertion if cleanup closes the page.
@@ -169,12 +183,17 @@ export async function exerciseShiftUx({ browser, db, results }) {
       });
       const actual = await response; await actual.finished();
       assert.equal(actor.posts.length - before, 1);
-      return actual;
+      await actor.page.waitForFunction(({ formId, offset }) => window.__shiftUxActionResults.slice(offset).some(receipt => receipt.formId === formId), { formId, offset });
+      const receipts = await actor.page.evaluate(({ formId, offset }) => window.__shiftUxActionResults.slice(offset).filter(receipt => receipt.formId === formId), { formId, offset });
+      assert.equal(receipts.length, 1, 'One decoded native outcome belongs to this exact form attempt');
+      assert.equal(receipts[0].ok, expectedOk, 'HTTP 200 alone is not a successful action');
+      return receipts[0];
     }
-    async function assertError(dialog, text, response) {
+    async function assertError(actor, dialog, text, receipt) {
       await dialog.getByRole('alert').filter({ hasText: text }).waitFor();
       assert.ok(await dialog.isVisible());
-      assert.ok((await response.text()).includes(text), 'The visible error came from the real Server Action response');
+      assert.equal(receipt.ok, false, 'The exact form received a native rejected ActionState');
+      await inside(actor.page, dialog);
       assert.equal(await dialog.locator('button[type=submit]').isDisabled(), false);
     }
     async function cash(active) {
@@ -232,9 +251,9 @@ export async function exerciseShiftUx({ browser, db, results }) {
       let opened = await openDialog(outgoing, specs.cancel);
       await db.user.update({ where: { id: outgoing.user.id }, data: { roleId: deniedRole.id } });
       let response;
-      try { response = await submitPending(outgoing, specs.cancel, opened.dialog); }
+      try { response = await submitPending(outgoing, specs.cancel, opened.dialog, false); }
       finally { await db.user.update({ where: { id: outgoing.user.id }, data: { roleId: originalRole.id } }); }
-      await assertError(opened.dialog, 'No tienes el permiso necesario (shift.handover) para esta acción.', response);
+      await assertError(outgoing, opened.dialog, 'No tienes el permiso necesario (shift.handover) para esta acción.', response);
       assert.equal((await db.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } })).status, 'BORRADOR');
       await opened.dialog.getByRole('button', { name: specs.cancel.back, exact: true }).click();
       await opened.dialog.waitFor({ state: 'hidden' }); await focused(outgoing.page, opened.trigger);
@@ -287,8 +306,8 @@ export async function exerciseShiftUx({ browser, db, results }) {
       await dismissals(outgoing, specs.send, outgoingFixture.shift.id);
       opened = await openDialog(outgoing, specs.send);
       await db.shiftHandover.update({ where: { id: handover.id }, data: { finalReviewAt: null } });
-      response = await submitPending(outgoing, specs.send, opened.dialog);
-      await assertError(opened.dialog, 'Antes de enviar, confirma la revisión final de la entrega.', response);
+      response = await submitPending(outgoing, specs.send, opened.dialog, false);
+      await assertError(outgoing, opened.dialog, 'Antes de enviar, confirma la revisión final de la entrega.', response);
       assert.equal(await db.auditLog.count({ where: { entity: 'ShiftHandover', entityId: handover.id, action: 'TURNO_ENTREGAR' } }), 0);
       assert.equal((await db.shift.findUniqueOrThrow({ where: { id: outgoingFixture.shift.id } })).status, 'PREPARANDO_ENTREGA');
       await db.shiftHandover.update({ where: { id: handover.id }, data: { finalReviewAt: new Date() } });
@@ -307,8 +326,8 @@ export async function exerciseShiftUx({ browser, db, results }) {
       mark('close-nonguided-native-rejection');
       await dismissals(outgoing, specs.close, outgoingFixture.shift.id);
       opened = await openDialog(outgoing, specs.close); await cash(true);
-      response = await submitPending(outgoing, specs.close, opened.dialog);
-      await assertError(opened.dialog, cashError, response);
+      response = await submitPending(outgoing, specs.close, opened.dialog, false);
+      await assertError(outgoing, opened.dialog, cashError, response);
       assert.equal((await db.shift.findUniqueOrThrow({ where: { id: outgoingFixture.shift.id } })).status, 'ENTREGA_ENVIADA');
       assert.equal(await db.auditLog.count({ where: { entity: 'Shift', entityId: outgoingFixture.shift.id, action: 'TURNO_CERRAR' } }), 0);
       await cash(false); mark('close-nonguided-explicit-retry');
@@ -324,8 +343,8 @@ export async function exerciseShiftUx({ browser, db, results }) {
       await dismissals(guided, specs.guided, guidedFixture.shift.id);
       opened = await openDialog(guided, specs.guided);
       assert.equal(await opened.dialog.locator('ol > li').count(), 4);
-      await cash(true); response = await submitPending(guided, specs.guided, opened.dialog);
-      await assertError(opened.dialog, cashError, response);
+      await cash(true); response = await submitPending(guided, specs.guided, opened.dialog, false);
+      await assertError(guided, opened.dialog, cashError, response);
       assert.equal((await db.shift.findUniqueOrThrow({ where: { id: guidedFixture.shift.id } })).status, 'ENTREGA_ENVIADA');
       assert.equal(await db.auditLog.count({ where: { entity: 'Shift', entityId: guidedFixture.shift.id, action: 'TURNO_CERRAR' } }), 0);
       await cash(false); mark('close-guided-explicit-retry');

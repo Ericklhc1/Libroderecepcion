@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { formDataToObject, parseOrThrow, runAction, zRequiredString, type ActionState } from '@/server/action';
 import { passwordSchema } from '@/server/auth/password';
 import { needsInstall, runInstall } from '@/server/services/install';
+import { assertMaintenanceAccess } from '@/server/services/system-maintenance';
 
 const installSchema = z
   .object({
@@ -25,6 +26,7 @@ export async function installAction(
   let installed = false;
 
   const result = await runAction(async () => {
+    await assertMaintenanceAccess({ isSystemAdmin: false });
     const input = parseOrThrow(installSchema, formDataToObject(formData));
     await runInstall(input);
     installed = true;

@@ -82,6 +82,7 @@ export function ShiftActionDialog({
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(false);
   const submittedRef = useRef(false);
+  const submittedPanelRef = useRef<HTMLElement | null>(null);
   const onPendingChange = useCallback((next: boolean) => {
     // Un efecto inicial de FormStatus no puede desbloquear una acción ya enviada.
     if (!next && (pendingRef.current || submittedRef.current)) return;
@@ -133,6 +134,7 @@ export function ShiftActionDialog({
           return;
         }
         submittedRef.current = true;
+        submittedPanelRef.current = event.currentTarget.closest<HTMLElement>('[role="dialog"]');
         onPendingChange(true);
       }}>
       <ActionForm
@@ -142,6 +144,7 @@ export function ShiftActionDialog({
         onError={() => {
           submittedRef.current = false;
           onPendingChange(false);
+          if (submittedPanelRef.current?.isConnected) submittedPanelRef.current.focus({ preventScroll: true });
         }}
         onSuccess={(state) => {
           submittedRef.current = false;

@@ -9,6 +9,7 @@ import { recordAudit } from '@/server/audit';
 import { runAction, type ActionState } from '@/server/action';
 import { repairSafeDiagnostics } from '@/server/services/diagnostics';
 import { getSettingBool } from '@/server/services/settings';
+import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 
 export async function repairDiagnosticsAction(
   _state: ActionState | null,
@@ -44,6 +45,7 @@ export async function reportRuntimeErrorAction(input: {
   pathname?: string | null;
   stack?: string | null;
 }): Promise<void> {
+  if (await maintenanceBlocksBackground()) return;
   const enabled = await getSettingBool('diagnostics.runtimeCaptureEnabled', true);
   if (!enabled) return;
 

@@ -41,13 +41,18 @@ import {
   PropertyMenu,
 } from '@/components/layout/topbar-menus';
 import { SupportRequestPanel } from '@/components/layout/support-request-panel';
+import { assertMaintenanceAccess, getMaintenanceState, MaintenanceError } from '@/server/services/system-maintenance';
+import { MaintenanceWatcher } from '@/components/operational/maintenance-watcher';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) {
+    if ((await getMaintenanceState()).enabled) redirect('/mantenimiento');
     if (await needsInstall()) redirect('/instalacion');
     redirect('/login');
   }
+  try { await assertMaintenanceAccess(user); }
+  catch (error) { if (error instanceof MaintenanceError) redirect('/mantenimiento'); throw error; }
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
   if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
 
@@ -92,10 +97,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const items = groups.flatMap((group) => group.items);
   const badges = { '/notificaciones': alerts, '/libro': myOpenTasks };
   const frontiVisible = canUseFronti(user, frontiConfig.enabled);
+  const maintenanceActive = user.isSystemAdmin && (await getMaintenanceState()).enabled;
 
   return (
     <div className="min-h-screen bg-[var(--aroh-canvas)]">
       <a href="#contenido-principal" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-petrol-900">Ir al contenido principal</a>
+      {!user.isSystemAdmin && <MaintenanceWatcher />}
+      {maintenanceActive && <div role="status" className="bg-amber-100 px-4 py-3 text-center text-sm text-amber-950">Mantenimiento activo: la operación del personal está pausada. <Link className="font-semibold underline" href="/admin/mantenimiento">Controlar / reabrir</Link></div>}
       <UxJourney/>
       <div className="flex min-h-screen min-w-0">
         <div className="flex min-w-0 flex-1 flex-col">

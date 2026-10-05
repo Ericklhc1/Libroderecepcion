@@ -1,3 +1,4 @@
+import { withMaintenance } from '@/server/api/maintenance';
 import { requireUser } from '@/server/auth/guard';
 import { chatApiError, chatJson } from '@/server/api/chat';
 import type { ChatGifItem } from '@/domain/chat';
@@ -145,7 +146,7 @@ async function searchCommons(q: string): Promise<ChatGifItem[]> {
   return items;
 }
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     await requireUser();
     const url = new URL(request.url);
@@ -163,3 +164,5 @@ export async function GET(request: Request) {
     return chatApiError(error);
   }
 }
+
+export const GET = withMaintenance(GETHandler);

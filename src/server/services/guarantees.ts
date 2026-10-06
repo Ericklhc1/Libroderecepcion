@@ -3,6 +3,7 @@ import 'server-only';
 import {
   AuditAction,
   GuaranteeKind,
+  GuaranteeSettlementKind,
   GuaranteeState,
   GuaranteeStatus,
   Prisma,
@@ -23,6 +24,7 @@ import {
 import { getMyOpenShift } from './shifts';
 import {
   assertGuaranteeCanBeDeleted,
+  insertCashMovement,
   recordGuaranteeChargeOut,
   recordGuaranteeCashIn,
   recordGuaranteeCashOut,
@@ -61,6 +63,11 @@ export const guaranteeInclude = {
   },
   createdBy: { select: { name: true } },
   returnedBy: { select: { name: true } },
+  settlements: {
+    include: { createdBy: { select: { name: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  },
 } satisfies Prisma.GuaranteeInclude;
 
 export type GuaranteeWithContext = Prisma.GuaranteeGetPayload<{
@@ -674,6 +681,253 @@ export async function changeGuaranteeState(
   });
 
   return { id: result.guarantee.id };
+}
+
+export async function settleGuarantee(
+  user: CurrentUser,
+  input: {
+    id: string;
+    requestKey: string;
+    kind: GuaranteeSettlementKind;
+    amount: number;
+    reason: string;
+    notes?: string | null;
+  },
+  expectedRevision?: string,
+): Promise<{
+  id: string;
+  settlementId: string;
+  remaining: number;
+  state: GuaranteeState;
+  eventKey: string;
+  repeated: boolean;
+}> {
+  const reason = input.reason.trim();
+  const notes = input.notes?.trim() || null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestKey)) {
+    throw new RuleError('La referencia de la operación no es válida.');
+  }
+  if (!(input.amount > 0) || !Number.isFinite(input.amount)) {
+    throw new RuleError('El monto debe ser mayor que cero.');
+  }
+  if (reason.length < 3) throw new RuleError('Indica el motivo de la devolución o cobro.');
+
+  const shift = await getMyOpenShift(user.id);
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestKey}))::text`;
+    const previous = await tx.guaranteeSettlement.findUnique({
+      where: { requestKey: input.requestKey },
+      include: { guarantee: true },
+    });
+    if (previous) {
+      const same =
+        previous.guaranteeId === input.id &&
+        previous.createdById === user.id &&
+        previous.kind === input.kind &&
+        previous.amount.toNumber() === input.amount &&
+        previous.reason === reason &&
+        previous.notes === notes;
+      if (!same) {
+        throw new RuleError('Esta operación ya fue guardada con otro contenido. Recarga antes de continuar.');
+      }
+      return {
+        id: previous.guaranteeId,
+        settlementId: previous.id,
+        remaining: outstandingAmount({
+          amount: previous.guarantee.amount.toNumber(),
+          appliedAmount: money(previous.guarantee.appliedAmount),
+          penaltyAmount: money(previous.guarantee.penaltyAmount),
+          returnedAmount: money(previous.guarantee.returnedAmount),
+        }),
+        state: previous.guarantee.state,
+        eventKey: `guarantee-settlement:${previous.id}`,
+        repeated: true,
+      };
+    }
+
+    await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${input.id} FOR UPDATE`;
+    if (expectedRevision) {
+      assertAuthorizedRevision(
+        expectedRevision,
+        await tx.guarantee.findUnique({ where: { id: input.id } }),
+      );
+    }
+    const guarantee = await tx.guarantee.findFirst({
+      where: { id: input.id, deletedAt: null },
+      select: {
+        id: true,
+        kind: true,
+        state: true,
+        amount: true,
+        appliedAmount: true,
+        penaltyAmount: true,
+        returnedAmount: true,
+        currency: true,
+        reservationReferenceId: true,
+        stayId: true,
+        guestName: true,
+        roomNumber: true,
+        reference: true,
+        notes: true,
+        reservationReference: { select: { code: true } },
+      },
+    });
+    if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
+    if (![GuaranteeState.VIGENTE, GuaranteeState.APLICADA_PARCIALMENTE].includes(guarantee.state)) {
+      throw new RuleError('Esa garantía no admite otra devolución o cobro.');
+    }
+
+    const total = guarantee.amount.toNumber();
+    const applied = money(guarantee.appliedAmount) ?? 0;
+    const penalty = money(guarantee.penaltyAmount) ?? 0;
+    const returned = money(guarantee.returnedAmount) ?? 0;
+    const available = outstandingAmount({
+      amount: total,
+      appliedAmount: applied,
+      penaltyAmount: penalty,
+      returnedAmount: returned,
+    });
+    if (input.amount > available) {
+      throw new RuleError(
+        `El monto supera el saldo disponible de la garantía (${guarantee.currency} ${available}).`,
+      );
+    }
+
+    const settlement = await tx.guaranteeSettlement.create({
+      data: {
+        requestKey: input.requestKey,
+        guaranteeId: guarantee.id,
+        kind: input.kind,
+        amount: new Prisma.Decimal(input.amount),
+        currency: guarantee.currency,
+        reason,
+        notes,
+        createdById: user.id,
+        shiftId: shift?.id ?? null,
+      },
+    });
+
+    let cashMovementId: string | null = null;
+    if (guarantee.kind === GuaranteeKind.EFECTIVO) {
+      cashMovementId = await insertCashMovement(tx, {
+        userId: user.id,
+        kind:
+          input.kind === GuaranteeSettlementKind.DEVOLUCION
+            ? 'GARANTIA_DEVOLUCION'
+            : 'GARANTIA_COBRO',
+        direction: 'SALIDA',
+        currency: guarantee.currency,
+        amount: input.amount,
+        shiftId: shift?.id ?? null,
+        stayId: guarantee.stayId,
+        reservationReferenceId: guarantee.reservationReferenceId,
+        guaranteeId: guarantee.id,
+        reference:
+          input.kind === GuaranteeSettlementKind.DEVOLUCION
+            ? `Devolución parcial · ${guaranteeLabel(guarantee)}`
+            : `Cobro parcial · ${reason} · ${guaranteeLabel(guarantee)}`,
+        notes:
+          notes ??
+          (input.kind === GuaranteeSettlementKind.DEVOLUCION
+            ? 'Devolución física parcial o total de garantía.'
+            : 'Cobro parcial o total aplicado desde la garantía.'),
+      });
+      await tx.guaranteeSettlement.update({
+        where: { id: settlement.id },
+        data: { cashMovementId },
+      });
+    }
+
+    const nextReturned =
+      returned + (input.kind === GuaranteeSettlementKind.DEVOLUCION ? input.amount : 0);
+    const nextPenalty =
+      penalty + (input.kind === GuaranteeSettlementKind.COBRO ? input.amount : 0);
+    const remaining = outstandingAmount({
+      amount: total,
+      appliedAmount: applied,
+      penaltyAmount: nextPenalty,
+      returnedAmount: nextReturned,
+    });
+    const nextState =
+      remaining > 0
+        ? GuaranteeState.APLICADA_PARCIALMENTE
+        : input.kind === GuaranteeSettlementKind.DEVOLUCION && applied + nextPenalty === 0
+          ? GuaranteeState.DEVUELTA
+          : GuaranteeState.CERRADA;
+
+    await tx.guarantee.update({
+      where: { id: guarantee.id },
+      data: {
+        state: nextState,
+        returnedAmount: new Prisma.Decimal(nextReturned),
+        penaltyAmount: nextPenalty > 0 ? new Prisma.Decimal(nextPenalty) : null,
+        ...(input.kind === GuaranteeSettlementKind.COBRO ? { applicationReason: reason } : {}),
+        ...(input.kind === GuaranteeSettlementKind.DEVOLUCION
+          ? { returnedAt: new Date(), returnedById: user.id }
+          : {}),
+      },
+    });
+
+    await syncReservationSummary(tx, guarantee.reservationReferenceId);
+
+    const eventKey = `guarantee-settlement:${settlement.id}`;
+    await queueOperationalMail(tx, {
+      eventKey,
+      recipients: [SUPERVISION_BACKUP_EMAIL],
+      subject:
+        `[AROH Central IA] GARANTÍA ${input.kind === GuaranteeSettlementKind.DEVOLUCION ? 'DEVUELTA' : 'COBRADA'} · ` +
+        `${guaranteeLabel(guarantee)} · ${guarantee.currency} ${input.amount}`,
+      text: [
+        input.kind === GuaranteeSettlementKind.DEVOLUCION ? 'DEVOLUCIÓN DE GARANTÍA' : 'COBRO SOBRE GARANTÍA',
+        `Garantía: #${guarantee.id}`,
+        `Operación: ${settlement.id}`,
+        `Fecha/hora: ${operationalMailTimestamp(new Date())}`,
+        `Procesado por: ${user.name} (ID ${user.id})`,
+        `Turno: ${shift?.id ?? 'sin turno asociado'}`,
+        `Moneda: ${guarantee.currency}`,
+        `Monto de esta operación: ${input.amount}`,
+        `Saldo restante: ${remaining}`,
+        `Motivo: ${reason}`,
+        `Referencia: ${guarantee.reference ?? guarantee.reservationReference?.code ?? 'sin referencia'}`,
+        `Huésped: ${guarantee.guestName ?? 'sin huésped'}`,
+        `Habitación: ${guarantee.roomNumber ?? 'sin habitación'}`,
+        `Notas: ${notes ?? 'sin observaciones'}`,
+      ].join('\n'),
+    });
+
+    await recordAudit(
+      {
+        entity: 'GuaranteeSettlement',
+        entityId: settlement.id,
+        action: AuditAction.CREAR,
+        user,
+        summary:
+          `${input.kind === GuaranteeSettlementKind.DEVOLUCION ? 'Devolución' : 'Cobro'} ` +
+          `${guarantee.currency} ${input.amount} sobre ${guaranteeLabel(guarantee)} · saldo ${remaining}`,
+        before: { state: guarantee.state, remaining: available },
+        after: {
+          kind: input.kind,
+          amount: input.amount,
+          currency: guarantee.currency,
+          reason,
+          remaining,
+          state: nextState,
+          cashMovementId,
+        },
+      },
+      tx,
+    );
+
+    return {
+      id: guarantee.id,
+      settlementId: settlement.id,
+      remaining,
+      state: nextState,
+      eventKey,
+      repeated: false,
+    };
+  });
 }
 
 export async function softDeleteGuarantee(

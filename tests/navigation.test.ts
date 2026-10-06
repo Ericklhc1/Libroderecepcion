@@ -40,6 +40,7 @@ describe('menú principal', () => {
     expect(primary.items.map((item) => item.href)).toEqual(['/']);
     expect(NAV_GROUPS.find((group) => group.title === 'Operación')?.items.map((item) => item.href)).toEqual([
       '/coordinacion', // bandeja común con el alcance de cada origen
+      '/jornada', // jornada independiente de jefaturas con permiso explícito
       '/libro?clase=entry', // novedades: núcleo temporal del mesón
       '/novedades/habitacion', // contexto operativo sobre las 89 habitaciones
       '/caja', // centralización financiera
@@ -88,7 +89,10 @@ describe('visibilidad por rol', () => {
   it('Housekeeping tiene navegación de su área sin lectores generales de Recepción',()=>{
     for(const role of [ROLE_KEYS.HK_ATTENDANT,ROLE_KEYS.HK_SUPERVISOR,ROLE_KEYS.HK_MANAGER]){
       const permissions=ROLE_PERMISSIONS[role];const hrefs=visibleNavItems(permissions).map(i=>i.href);
-      expect(hrefs).toEqual(['/coordinacion','/inventario','/notificaciones','/housekeeping','/equipo']);
+      const expected = role === ROLE_KEYS.HK_ATTENDANT
+        ? ['/coordinacion','/inventario','/notificaciones','/housekeeping','/equipo']
+        : ['/coordinacion','/jornada','/inventario','/notificaciones','/housekeeping','/equipo'];
+      expect(hrefs).toEqual(expected);
       expect(visibleNavItems(permissions).filter(i=>i.mobile).map(i=>i.href)).toContain('/housekeeping');
       expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).toEqual(expect.arrayContaining(['/housekeeping','/equipo']));
       expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).not.toContain('/libro?clase=entry');

@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   'schedule.catalog.manage': { group: 'Equipo y horarios', name: 'Gestionar colaboradores, plantillas y cobertura de mis áreas' },
   'schedule.extra.approve': { group: 'Equipo y horarios', name: 'Aprobar y validar extras de mis áreas' },
   'schedule.configure': { group: 'Equipo y horarios', name: 'Administrar alcance por área y feriados' },
+  'workday.manage': { group: 'Mi jornada', name: 'Iniciar y cerrar mi jornada de jefatura en mis áreas' },
   'entry.create': { group: 'Libro operativo', name: 'Crear registros' },
   'entry.edit': { group: 'Libro operativo', name: 'Editar registros' },
   'entry.delete': { group: 'Libro operativo', name: 'Eliminar registros' },
@@ -245,10 +246,11 @@ const OPERATIONAL_BASE: PermissionKey[] = [
 /** Matriz inicial. El administrador también puede participar en la operación. */
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLE_KEYS.HK_ATTENDANT]: ['housekeeping.work', 'housekeeping.request', 'inventory.view', 'inventory.move', 'schedule.self.view'],
-  [ROLE_KEYS.HK_SUPERVISOR]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'inventory.view', 'inventory.move', 'laundry.manage', 'schedule.self.view'],
-  [ROLE_KEYS.HK_MANAGER]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'housekeeping.plan', 'inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage', 'schedule.self.view', 'schedule.view', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve'],
+  [ROLE_KEYS.HK_SUPERVISOR]: ['workday.manage', 'housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'inventory.view', 'inventory.move', 'laundry.manage', 'schedule.self.view'],
+  [ROLE_KEYS.HK_MANAGER]: ['workday.manage', 'housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'housekeeping.plan', 'inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage', 'schedule.self.view', 'schedule.view', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve'],
   [ROLE_KEYS.SYSTEM_ADMIN]: [...ALL_PERMISSIONS],
   [ROLE_KEYS.SUPERVISOR]: [
+    'workday.manage',
     'housekeeping.request',
     'inventory.view',
     'inventory.move',

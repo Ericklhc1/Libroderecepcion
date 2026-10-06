@@ -7,6 +7,7 @@ import { formatDateTime } from '@/lib/format';
 import { readScheduleContext } from './schedule-context';
 import { getCoordinationBoard, coordinationMetrics, type CoordinationView } from '@/server/services/coordination';
 import { getHkWorkday } from '@/server/services/housekeeping-work';
+import { getManagementWorkday } from '@/server/services/management-workday';
 import { listLostFound } from '@/server/services/lost-found';
 import { HK_WORK_LABELS, isHkFocused } from '@/domain/housekeeping-work';
 
@@ -739,6 +740,8 @@ export async function executeFrontiPageContextTool(
     }
     case 'inicio':
       return { ...base, snapshot: await getDashboardData(user) };
+    case 'jornada':
+      return { ...base, snapshot: await getManagementWorkday(user), guidance: 'La jornada de jefatura no abre Caja ni turno de Recepción y no acredita asistencia. Sólo registra el ejercicio de funciones dentro del alcance vigente del usuario.' };
     case 'buscar':
     case 'historial':
       return { ...base, snapshot: await bookSnapshot(page,user) };

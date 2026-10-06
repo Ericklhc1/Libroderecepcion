@@ -2414,6 +2414,29 @@
     "physical": true
   },
   {
+    "module": "management-workday",
+    "name": "startManagementWorkdayAction",
+    "label": "Iniciar mi jornada de jefatura",
+    "fields": [
+      "departmentId"
+    ],
+    "permission": "workday.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
+    "module": "management-workday",
+    "name": "finishManagementWorkdayAction",
+    "label": "Cerrar mi jornada de jefatura",
+    "fields": [
+      "note",
+      "shiftId"
+    ],
+    "permission": "workday.manage",
+    "risk": "normal",
+    "physical": false
+  },
+  {
     "module": "supervision-center",
     "name": "startSupervisionShiftAction",
     "label": "Apertura de Supervisión iniciada. Completa la recepción operacional para activar tu turno",

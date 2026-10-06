@@ -731,6 +731,7 @@ model Department {
   alerts  Alert[]
   inventoryCategories InventoryCategory[]
   inventoryLocations InventoryLocation[]
+  managementJourneys SupervisionShift[]
 }
 
 // Personnel planning is independent of Reception Shift / cash custody.
@@ -1293,6 +1294,9 @@ model SupervisionShift {
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   supervisorId String
   supervisor   User                   @relation("supervisionShiftSupervisor", fields: [supervisorId], references: [id])
+  /// Null conserva la jornada transversal histórica de Supervisión; con área es una jornada de jefatura.
+  departmentId String?
+  department   Department?            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   status       SupervisionShiftStatus @default(ACTIVO)
   priorities   String[]               @default([])
   /// Evidencia estructurada de la apertura: caja, garantías, llaves, informes y pendientes revisados.
@@ -1312,6 +1316,7 @@ model SupervisionShift {
   handover     SupervisionShiftHandover?
 
   @@index([supervisorId, status])
+  @@index([departmentId, status])
   @@index([startedAt])
 }
 

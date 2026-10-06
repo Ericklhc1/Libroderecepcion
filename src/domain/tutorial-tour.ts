@@ -139,11 +139,20 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'equipo', module: 'equipo', title: 'Equipo y horarios', description: 'Calendario de personal por área, colaboradores, glosa, cobertura, cambios y extras. Publicar no acredita asistencia ni cambia el turno operativo.', route: '/equipo', target: ROUTE_TARGET, anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     id: 'inicio',
-    title: 'Mi jornada: tu entrada operativa',
+    title: 'Inicio: tu entrada operativa',
     description:
       'Aquí ves lo urgente, vencido y pendiente y entras al recorrido que corresponde a tu rol. AROH organiza continuidad; FNSrooms sigue siendo el PMS.',
     route: '/',
     target: ROUTE_TARGET,
+  },
+  {
+    id: 'jornada-jefatura',
+    title: 'Mi jornada de jefatura',
+    description:
+      'Inicia y cierra el ejercicio de tu jefatura por área. No abre Caja, no inicia un turno de Recepción y no acredita asistencia. Los pendientes continúan en sus objetos de origen.',
+    route: '/jornada',
+    target: ROUTE_TARGET,
+    anyOf: ['workday.manage'],
   },
   {
     id: 'acciones-modulo',

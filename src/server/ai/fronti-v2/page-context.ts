@@ -321,6 +321,17 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     );
   }
 
+  if (pathname === '/inventario') {
+    return detail('inventario', 'Inventario', 'estado', 'Inventario común', [
+      'consultar_contexto_pantalla',
+    ]);
+  }
+  if (pathname === '/lavanderia') {
+    return detail('lavanderia', 'Inventario', 'lavanderia', 'Lavandería', [
+      'consultar_contexto_pantalla',
+    ]);
+  }
+
   if (pathname === '/indicadores') {
     return detail('indicadores', 'Indicadores', filters.dias ? `${filters.dias}d` : '30d', 'Indicadores operativos', [
       'consultar_contexto_pantalla',

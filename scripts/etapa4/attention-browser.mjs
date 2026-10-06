@@ -58,7 +58,7 @@ try{
         assert.equal(await db.task.count({where:{entryId:source.id}}),0,'No añade motor paralelo');
         const assign=await origin.context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:'/ejecutar '+JSON.stringify([{action:'changeHkWorkAction',fields:{id:work.id,version:String(work.version),action:'ASIGNAR',assignedToId:f.users.maid.id,note:'Atender y devolver resultado al origen'}}]),requestKey:randomUUID()}});
         const assignedBody=await assign.json();assert.equal(assign.status(),200,assignedBody.error);assert.match(assignedBody.reply,/Completado/);
-        const workHref=`http://localhost:3000/admin/housekeeping?area=${area.id}&aviso=${work.humanId}`;
+        const workHref=`http://localhost:3000/housekeeping?area=${area.id}&aviso=${work.humanId}`;
         await maid.page.goto(workHref);
         const maidCard=maid.page.locator(`[data-housekeeping-detail="${work.id}"]`);
         const receiveButton=maidCard.getByRole('button',{name:'Confirmar recepción',exact:true});

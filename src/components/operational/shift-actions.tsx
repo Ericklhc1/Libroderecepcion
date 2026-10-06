@@ -10,6 +10,7 @@ import { ShiftActionDialog } from './shift-action-dialog';
 import {
   addShiftMemberAction,
   cancelHandoverPreparationAction,
+  cancelShiftAction,
   closeShiftAction,
   confirmHandoverReviewStepAction,
   confirmReceptionReviewStepAction,
@@ -470,6 +471,38 @@ export function StartReceptionShiftForm({
         pendingLabel="Iniciando recepción…"
       />
     </ActionForm>
+  );
+}
+
+export function CancelStartedShiftForm({ shiftId }: { shiftId: string }) {
+  return (
+    <ShiftActionDialog
+      action={cancelShiftAction}
+      shiftId={shiftId}
+      trigger="Cancelar inicio"
+      triggerVariant="danger"
+      title="¿Cancelar este inicio de turno?"
+      description="Disponible sólo mientras el turno siga INICIADO. El turno quedará ANULADO, se liberará la participación y, si había una entrega tomada sin custodia confirmada, volverá a quedar disponible para otra persona."
+      backLabel="CONTINUAR RECEPCIÓN"
+      confirmLabel="SÍ, CANCELAR INICIO"
+      pendingLabel="Cancelando inicio…"
+      variant="danger"
+      refreshOnSuccess
+    >
+      <Field
+        label="Motivo"
+        name="reason"
+        hint="Quedará registrado en Auditoría. Mínimo 5 caracteres."
+      >
+        <Textarea
+          name="reason"
+          rows={3}
+          minLength={5}
+          required
+          placeholder="Ej.: recepción iniciada por error"
+        />
+      </Field>
+    </ShiftActionDialog>
   );
 }
 

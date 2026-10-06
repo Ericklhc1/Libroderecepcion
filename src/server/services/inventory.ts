@@ -118,7 +118,10 @@ export async function listInventory(user: CurrentUser, departmentId?: string) {
             ? { OR: [{ departmentId: { in: allowedDepartmentIds } }, { departmentId: null }] }
             : {}),
       },
-      include: { department: { select: { id: true, name: true } } },
+      include: {
+        department: { select: { id: true, name: true } },
+        custodianUser: { select: { id: true, name: true } },
+      },
       orderBy: [{ kind: 'asc' }, { name: 'asc' }],
     }),
     prisma.inventoryItem.findMany({
@@ -289,6 +292,7 @@ export async function saveInventoryLocation(
     id?: string;
     key?: string | null;
     departmentId?: string | null;
+    custodianUserId?: string | null;
     name: string;
     kind: InventoryLocationKind;
     active?: boolean;
@@ -300,6 +304,34 @@ export async function saveInventoryLocation(
   const departmentId = input.departmentId || null;
   if (departmentId && !(await prisma.department.count({ where: { id: departmentId, active: true } }))) {
     throw new RuleError('El departamento de la ubicación no está activo.');
+  }
+  const custodianUserId = input.custodianUserId || null;
+  if (custodianUserId && !departmentId) {
+    throw new RuleError('Una ubicación compartida o externa no puede asignarse como custodia personal.');
+  }
+  if (custodianUserId) {
+    const custodian = await prisma.user.findFirst({
+      where: {
+        id: custodianUserId,
+        active: true,
+        deletedAt: null,
+        hiddenFromSelectors: false,
+        role: { operational: true },
+        OR: [
+          { departmentId },
+          {
+            scheduleCollaborator: {
+              active: true,
+              memberships: { some: { departmentId: departmentId!, active: true } },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!custodian) {
+      throw new RuleError('El custodio debe ser una persona operativa activa perteneciente a ese departamento.');
+    }
   }
 
   const data = {
@@ -558,6 +590,59 @@ export async function createInventoryAsset(
     );
     return asset;
   });
+}
+
+
+/**
+ * Material físicamente asignado a la persona mediante una ubicación en custodia
+ * (por ejemplo, un carro). Lee los mismos saldos de Inventario: no crea reservas
+ * ni copias de stock.
+ */
+export async function listAssignedInventoryMaterial(user: CurrentUser) {
+  requireInventoryPermission(user, 'inventory.view');
+  const locations = await prisma.inventoryLocation.findMany({
+    where: { active: true, custodianUserId: user.id },
+    select: {
+      id: true,
+      name: true,
+      kind: true,
+      balances: {
+        where: { quantity: { gt: 0 } },
+        select: {
+          quantity: true,
+          item: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              unit: true,
+              behavior: true,
+              active: true,
+              category: { select: { active: true } },
+            },
+          },
+        },
+        orderBy: { item: { name: 'asc' } },
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  return locations.map((location) => ({
+    id: location.id,
+    name: location.name,
+    kind: location.kind,
+    items: location.balances
+      .filter((row) => row.item.active && row.item.category.active)
+      .map((row) => ({
+        id: row.item.id,
+        code: row.item.code,
+        name: row.item.name,
+        unit: row.item.unit,
+        behavior: row.item.behavior,
+        quantity: decimal(row.quantity),
+      })),
+  })).filter((location) => location.items.length > 0);
 }
 
 export { InventoryBehavior, InventoryLocationKind, InventoryMovementKind };

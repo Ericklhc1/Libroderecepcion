@@ -137,9 +137,9 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'equipo', module: 'equipo', title: 'Equipo y horarios', description: 'Calendario de personal por área, colaboradores, glosa, cobertura, cambios y extras. Publicar no acredita asistencia ni cambia el turno operativo.', route: '/equipo', target: ROUTE_TARGET, anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     id: 'inicio',
-    title: 'Inicio: tu radar del turno',
+    title: 'Mi jornada: tu entrada operativa',
     description:
-      'Aquí ves lo urgente, vencido y pendiente. AROH organiza la continuidad operativa; FNSrooms sigue siendo el PMS.',
+      'Aquí ves lo urgente, vencido y pendiente y entras al recorrido que corresponde a tu rol. AROH organiza continuidad; FNSrooms sigue siendo el PMS.',
     route: '/',
     target: ROUTE_TARGET,
   },

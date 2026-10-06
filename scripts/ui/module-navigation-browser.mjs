@@ -111,7 +111,7 @@ try {
       // Every approved operation root remains reachable, including shortcut submenus.
       await trigger.click();
       await panel.getByRole('button', { name: 'Vistas de Novedades', exact: true }).click();
-      for (const href of ['/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/housekeeping', '/custodia', '/seguimientos', '/tareas', '/historial']) {
+      for (const href of ['/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/inventario', '/llaves', '/notificaciones', '/housekeeping', '/custodia', '/seguimientos', '/tareas', '/historial']) {
         assert.ok(await panel.locator('a').evaluateAll((links, href) => links.some(link => link.getAttribute('href') === href), href), 'Missing destination: ' + href);
       }
       if (width === 1280) console.log('AROH_VISUAL_EVIDENCE ' + JSON.stringify({ name: 'modules-desktop', width, mime: 'image/jpeg', image: (await page.screenshot({ type: 'jpeg', quality: 40 })).toString('base64') }));

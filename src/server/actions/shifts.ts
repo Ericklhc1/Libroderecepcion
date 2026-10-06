@@ -716,31 +716,120 @@ export async function cancelShiftAction(
       z.object({ shiftId: z.string().min(1), reason: z.string().trim().min(5) }),
       formDataToObject(formData),
     );
-    const shift = await getShiftById(input.shiftId);
-    if (shift.status !== ShiftStatus.PROGRAMADO) {
-      throw new RuleError('Sólo pueden anularse turnos que aún no han iniciado.');
-    }
+
     await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Shift" WHERE id = ${input.shiftId} FOR UPDATE`;
+      const shift = await tx.shift.findUnique({ where: { id: input.shiftId } });
+      if (!shift) throw new NotFoundError('El turno no existe.');
+
+      if (![ShiftStatus.PROGRAMADO, ShiftStatus.INICIADO].includes(shift.status)) {
+        throw new RuleError(
+          shift.status === ShiftStatus.ACTIVO
+            ? 'El turno ya está ACTIVO. Debe cerrarse o regularizarse; no se puede anular como un inicio incompleto.'
+            : 'Sólo pueden anularse turnos programados o que sigan en proceso de inicio.',
+        );
+      }
+
+      const linkedReception =
+        shift.status === ShiftStatus.INICIADO
+          ? await tx.shiftHandover.findFirst({
+              where: { toShiftId: shift.id, receivedAt: null },
+              select: { id: true },
+            })
+          : null;
+
+      if (linkedReception) {
+        await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id = ${linkedReception.id} FOR UPDATE`;
+        const currentHandover = await tx.shiftHandover.findUnique({
+          where: { id: linkedReception.id },
+          select: { id: true, receivedAt: true, status: true },
+        });
+        if (!currentHandover || currentHandover.receivedAt) {
+          throw new RuleError(
+            'La recepción ya cambió de estado. Actualiza la pantalla antes de intentar anular el inicio.',
+          );
+        }
+
+        const [confirmedCash, confirmedCustody] = await Promise.all([
+          tx.cashCount.count({
+            where: { handoverId: currentHandover.id, kind: 'CONFIRMADO' },
+          }),
+          tx.handoverElement.count({
+            where: {
+              handoverId: currentHandover.id,
+              OR: [{ confirmed: true }, { missingApprovedAt: { not: null } }],
+            },
+          }),
+        ]);
+
+        if (confirmedCash > 0 || confirmedCustody > 0) {
+          throw new RuleError(
+            'La recepción ya confirmó Caja o custodia física. Para conservar la trazabilidad, completa o regulariza el relevo en lugar de cancelar el inicio.',
+          );
+        }
+
+        await tx.shiftHandover.update({
+          where: { id: currentHandover.id },
+          data: {
+            toShiftId: null,
+            receiverBriefingReviewedAt: null,
+            receiverCustodyReviewedAt: null,
+            receiverFinalReviewAt: null,
+            receiverUrgentAcknowledgedAt: null,
+            receiverSessionId: null,
+          },
+        });
+
+        await recordAudit(
+          {
+            entity: 'ShiftHandover',
+            entityId: currentHandover.id,
+            action: AuditAction.CAMBIO_ESTADO,
+            summary: `Recepción liberada al anular el inicio del turno por ${user.name}`,
+            user,
+            before: { toShiftId: shift.id, receiving: true },
+            after: { toShiftId: null, receiving: false },
+            reason: input.reason,
+          },
+          tx,
+        );
+      }
+
       const now = new Date();
       await tx.shift.update({
         where: { id: shift.id },
-        data: { status: ShiftStatus.ANULADO, notes: input.reason, actualEnd: shift.actualEnd ?? now },
+        data: {
+          status: ShiftStatus.ANULADO,
+          actualEnd: shift.actualEnd ?? now,
+          notes: [shift.notes, `Anulación de inicio: ${input.reason}`].filter(Boolean).join('\n'),
+        },
       });
       await endShiftParticipation(tx, shift.id, now);
+
+      await recordAudit(
+        {
+          entity: 'Shift',
+          entityId: shift.id,
+          action: AuditAction.CAMBIO_ESTADO,
+          summary:
+            shift.status === ShiftStatus.INICIADO
+              ? `Inicio de turno ${SHIFT_TYPE_LABEL[shift.type]} cancelado por ${user.name}`
+              : `Turno ${SHIFT_TYPE_LABEL[shift.type]} anulado`,
+          user,
+          before: { status: shift.status },
+          after: { status: ShiftStatus.ANULADO },
+          reason: input.reason,
+        },
+        tx,
+      );
     });
-    await recordAudit({
-      entity: 'Shift',
-      entityId: shift.id,
-      action: AuditAction.CAMBIO_ESTADO,
-      summary: `Turno ${SHIFT_TYPE_LABEL[shift.type]} anulado`,
-      user,
-      before: { status: shift.status },
-      after: { status: ShiftStatus.ANULADO },
-      reason: input.reason,
-    });
-    refresh(shift.id);
+
+    refresh(input.shiftId);
     revalidatePath('/admin/turnos');
-    return { ok: true as const, message: 'Turno anulado.' };
+    return {
+      ok: true as const,
+      message: 'Inicio cancelado. El turno quedó anulado y la trazabilidad se conserva.',
+    };
   });
 }
 

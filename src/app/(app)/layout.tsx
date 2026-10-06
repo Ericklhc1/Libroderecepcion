@@ -165,7 +165,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 <summary className="cursor-pointer text-sm font-semibold text-petrol-900">Abrir módulos disponibles</summary>
                 <nav aria-label="Módulos sin JavaScript" className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {groups.map((group, index) => <section key={index}>
-                    <h2 className="text-sm font-semibold text-petrol-900">{group.title || 'Inicio'}</h2>
+                    <h2 className="text-sm font-semibold text-petrol-900">{group.title || 'Mi jornada'}</h2>
                     <ul className="mt-2 space-y-2 text-sm">{[...new Map(group.items.flatMap(item => [{ href: item.href, label: item.label }, ...(item.menu?.flatMap(section => section.items) || [])]).map(link => [link.href, link])).values()].map(link => <li key={link.href}><Link href={link.href} className="underline text-petrol-700">{link.label}</Link></li>)}</ul>
                   </section>)}
                 </nav>

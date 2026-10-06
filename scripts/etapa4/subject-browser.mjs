@@ -57,9 +57,12 @@ try{
     const workerPage=await workerContext.newPage();workerPage.setDefaultTimeout(12000);
     await workerPage.goto(`http://localhost:3000/tareas/${task.id}`);
     await workerPage.getByRole('button',{name:'Confirmar recepción',exact:true}).click();
-    await workerPage.getByRole('button',{name:'Resolver',exact:true}).waitFor();
-    await workerPage.getByRole('button',{name:'Resolver',exact:true}).click();
-    await workerPage.getByRole('link',{name:'Ver historial',exact:true}).waitFor();
+    await workerPage.getByRole('button',{name:'Informar resultado',exact:true}).click();
+    const taskResult=workerPage.getByRole('dialog');
+    await taskResult.locator('textarea[name=evidenceProvided]').fill('Atención comprobada y devuelta al asunto original');
+    await taskResult.getByRole('button',{name:'Informar resultado',exact:true}).click();
+    await taskResult.waitFor({state:'hidden'});
+    await workerPage.getByRole('link',{name:'Ver resultado',exact:true}).waitFor();
     await workerContext.close();
     await page.goto(`http://localhost:3000/libro/${entry.id}`);
     await page.getByText(/Resultado recibido · Completada/).waitFor();

@@ -751,6 +751,7 @@ export function LiveCashAuditDialog({
 
 export function ReturnCashGuaranteeForm({
   guaranteeId,
+  requestKey,
   reference,
   currency,
   amount,
@@ -758,6 +759,7 @@ export function ReturnCashGuaranteeForm({
   roomNumber,
 }: {
   guaranteeId: string;
+  requestKey: string;
   reference?: string | null;
   currency: string;
   amount: number;
@@ -772,11 +774,11 @@ export function ReturnCashGuaranteeForm({
   return (
     <Dialog
       title="Devolver garantía en efectivo"
-      description="Esta acción registra la salida física de dinero y cambia la garantía a devuelta."
+      description="Registra una devolución parcial o total. El saldo restante continúa bajo custodia."
       triggerVariant="secondary"
       triggerSize="sm"
       width="sm"
-      trigger="Devolver garantía"
+      trigger="Devolver"
     >
       <ActionForm
         action={returnCashGuaranteeAction}
@@ -786,22 +788,41 @@ export function ReturnCashGuaranteeForm({
         className="space-y-3"
       >
         <input type="hidden" name="guaranteeId" value={guaranteeId} />
+        <input type="hidden" name="requestKey" value={requestKey} />
         <div className="rounded-xl bg-red-50 px-3 py-3 ring-1 ring-red-200">
           <p className="text-sm font-semibold text-red-950">{label}</p>
-          <p className="mt-1 text-xl font-semibold tabular text-red-950">
+          <p className="mt-1 text-xs text-red-900">Saldo disponible</p>
+          <p className="text-xl font-semibold tabular text-red-950">
             {currency} {amount.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
           </p>
         </div>
+        <Field label="Monto a devolver" name="amount" required hint="Puede ser una parte o el saldo completo.">
+          <Input
+            name="amount"
+            required
+            inputMode="decimal"
+            type="number"
+            min="0.01"
+            max={String(amount)}
+            step="0.01"
+            defaultValue={String(amount)}
+          />
+        </Field>
+        <Field label="Motivo" name="reason" required>
+          <Input name="reason" required minLength={3} maxLength={300} defaultValue="Devolución de garantía" />
+        </Field>
+        <Field label="Observaciones" name="notes">
+          <Textarea name="notes" rows={2} maxLength={1000} />
+        </Field>
         <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
           <input type="checkbox" name="confirmed" value="1" required className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Confirmo que entregué físicamente este efectivo a la persona correspondiente y que el
-            monto mostrado coincide con lo devuelto.
+            Confirmo que entregué físicamente el monto indicado. El saldo no devuelto seguirá vigente.
           </span>
         </label>
         <div className="flex justify-end">
           <SubmitButton variant="danger" pendingLabel="Devolviendo…">
-            CONFIRMAR DEVOLUCIÓN
+            Registrar devolución
           </SubmitButton>
         </div>
       </ActionForm>
@@ -811,6 +832,7 @@ export function ReturnCashGuaranteeForm({
 
 export function ChargeCashGuaranteeForm({
   guaranteeId,
+  requestKey,
   humanId,
   reference,
   currency,
@@ -819,6 +841,7 @@ export function ChargeCashGuaranteeForm({
   roomNumber,
 }: {
   guaranteeId: string;
+  requestKey: string;
   humanId: number;
   reference?: string | null;
   currency: string;
@@ -833,12 +856,12 @@ export function ChargeCashGuaranteeForm({
 
   return (
     <Dialog
-      title="Cobrar garantía en efectivo"
-      description="Registra que la garantía no se devuelve porque se aplica a un cobro. Queda en reportería y deja de formar parte de Caja viva."
+      title="Aplicar cobro a garantía"
+      description="Aplica una parte o todo el saldo a un concepto. Cada cobro queda como hecho independiente."
       triggerVariant="gold"
       triggerSize="sm"
       width="sm"
-      trigger="Cobrar garantía"
+      trigger="Cobrar"
     >
       <ActionForm
         action={chargeCashGuaranteeAction}
@@ -848,12 +871,27 @@ export function ChargeCashGuaranteeForm({
         className="space-y-3"
       >
         <input type="hidden" name="guaranteeId" value={guaranteeId} />
+        <input type="hidden" name="requestKey" value={requestKey} />
         <div className="rounded-xl bg-gold-50 px-3 py-3 ring-1 ring-gold-200">
           <p className="text-sm font-semibold text-petrol-950">{label}</p>
-          <p className="mt-1 text-xl font-semibold tabular text-petrol-950">
+          <p className="mt-1 text-xs text-slate-600">Saldo disponible</p>
+          <p className="text-xl font-semibold tabular text-petrol-950">
             {currency} {amount.toLocaleString('es-CL', { maximumFractionDigits: 2 })}
           </p>
         </div>
+
+        <Field label="Monto a cobrar" name="amount" required hint="Puede ser una parte o el saldo completo.">
+          <Input
+            name="amount"
+            required
+            inputMode="decimal"
+            type="number"
+            min="0.01"
+            max={String(amount)}
+            step="0.01"
+            defaultValue={String(amount)}
+          />
+        </Field>
 
         <Field
           label="Concepto del cobro"
@@ -866,7 +904,7 @@ export function ChargeCashGuaranteeForm({
             required
             minLength={3}
             maxLength={160}
-            placeholder="Indica por qué no se devuelve la garantía"
+            placeholder="Indica por qué se aplica este monto"
           />
         </Field>
 
@@ -875,21 +913,20 @@ export function ChargeCashGuaranteeForm({
             name="notes"
             rows={3}
             maxLength={1000}
-            placeholder="Detalle del daño, autorización, evidencia o cualquier antecedente útil."
+            placeholder="Detalle, autorización, evidencia o antecedente útil."
           />
         </Field>
 
         <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
           <input type="checkbox" name="confirmed" value="1" required className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Confirmo que esta garantía no será devuelta y que el monto se aplicará al concepto indicado.
-            El registro quedará asociado a la garantía y a su habitación.
+            Confirmo el monto y concepto de este cobro. Cualquier saldo restante seguirá bajo custodia.
           </span>
         </label>
 
         <div className="flex justify-end">
           <SubmitButton variant="gold" pendingLabel="Registrando cobro…">
-            CONFIRMAR COBRO
+            Registrar cobro
           </SubmitButton>
         </div>
       </ActionForm>

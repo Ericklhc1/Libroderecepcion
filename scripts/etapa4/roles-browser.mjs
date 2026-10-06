@@ -70,7 +70,7 @@ try{
     const hkWork=await db.housekeepingRequest.create({data:{requestKey:`role-${width}`,title:`PRUEBA AUTOMÁTICO DE IA · ROLE_HK_${width}`,description:'Trabajo propio de hoy',workflowVersion:1,workDate,workKind:'ATENCION',effortMinutes:15,departmentId:hk.id,roomId:room.id,assignedToId:f.users.maid.id,createdById:f.users.admin.id}});
     await maid.goto('http://localhost:3000/');
     await maid.waitForURL(/admin\/housekeeping/);
-    await maid.goto(`http://localhost:3000/admin/housekeeping?q=ROLE_HK_${width}`);
+    await maid.goto(`http://localhost:3000/housekeeping?q=ROLE_HK_${width}`);
     await maid.locator(`#aviso-${hkWork.humanId}`).waitFor();
     await admin.goto(`http://localhost:3000/coordinacion?q=ROLE_${width}&area=${maintenance.id}`);
     const more=admin.getByText('Más filtros',{exact:true});

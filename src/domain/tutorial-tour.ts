@@ -10,6 +10,7 @@ export const TUTORIAL_MODULE_KEYS = [
   'llaves',
   'alertas',
   'housekeeping',
+  'inventario',
   'equipo',
   'supervision',
   'gerencia',
@@ -56,6 +57,7 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
   },
   { key: 'alertas', label: 'Avisos', route: '/notificaciones' },
   { key: 'housekeeping', label: 'Housekeeping', route: '/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
+  { key: 'inventario', label: 'Inventario', route: '/inventario', anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'] },
   { key: 'equipo', label: 'Equipo y horarios', route: '/equipo', anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     key: 'supervision',
@@ -229,6 +231,15 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     route: '/housekeeping', target: ROUTE_TARGET, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS,
   },
   {
+    id: 'inventario',
+    module: 'inventario',
+    title: 'Inventario y lavandería',
+    description: 'Consulta el stock común, sus ubicaciones y movimientos desde una sola fuente. Lavandería utiliza ese mismo inventario y mantiene folios, entregas, recepciones y diferencias trazables.',
+    route: '/inventario',
+    target: ROUTE_TARGET,
+    anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'],
+  },
+  {
     id: 'supervision',
     module: 'supervision',
     title: 'Centro de Supervisión',
@@ -278,6 +289,35 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
 ];
 
 export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = {
+  inventario: [
+    {
+      id: 'mod-inventario-stock',
+      module: 'inventario',
+      title: 'Una sola fuente de existencias',
+      description: 'Artículos, ubicaciones y saldos viven en Inventario. Un carro o material asignado a una persona sigue formando parte del stock común: la asignación cambia la custodia, no crea ni descuenta una copia.',
+      route: '/inventario',
+      target: ROUTE_TARGET,
+      anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'],
+    },
+    {
+      id: 'mod-inventario-movimientos',
+      module: 'inventario',
+      title: 'Mueve material con trazabilidad',
+      description: 'Los traslados registran origen, destino, cantidad y motivo. Quien opera sólo puede mover dentro de su alcance; administrar categorías, artículos, ubicaciones y valorización requiere el permiso específico.',
+      route: '/inventario',
+      target: ROUTE_TARGET,
+      anyOf: ['inventory.move', 'inventory.manage'],
+    },
+    {
+      id: 'mod-inventario-lavanderia',
+      module: 'inventario',
+      title: 'Lavandería reutiliza el inventario',
+      description: 'Los folios de lavandería registran entrega, recepción parcial y diferencias contra las mismas existencias. No existe un segundo stock paralelo.',
+      route: '/lavanderia',
+      target: ROUTE_TARGET,
+      anyOf: ['laundry.manage'],
+    },
+  ],
   equipo: [
     { id: 'mod-equipo-calendario', module: 'equipo', title: 'Planifica por área', description: 'Añade usuarios existentes al área y define su referencia semanal en horas. La jornada se computa completa. Crea una malla y programa por casillas o revisa una carga. Los bloques de ocho días y la semana calendario tienen vistas independientes.', route: '/equipo', target: ROUTE_TARGET },
     { id: 'mod-equipo-cambios', module: 'equipo', title: 'Revisa antes de cambiar', description: 'Mover, reasignar, intercambiar y agregar cobertura tienen efectos distintos. El servidor comprueba pertenencia, solapamientos y descanso configurado. Una asignación anterior permanece en el historial.', route: '/equipo', target: ROUTE_TARGET },

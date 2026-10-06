@@ -22,9 +22,14 @@ describe('Administración: actividades y acceso sin segundo motor', () => {
     expect(activity('cash-guarantees').permissions).not.toContain('cash.approve');
   });
 
-  it('lencería no inventa un permiso provisional', () => {
-    expect(activity('linen-management').available).toBe(false);
-    expect(activity('linen-management').permissions).toEqual([]);
+  it('lencería usa únicamente los permisos canónicos de Inventario y Lavandería', () => {
+    expect(activity('linen-management').available).toBe(true);
+    expect(activity('linen-management').permissions).toEqual([
+      'inventory.view',
+      'inventory.move',
+      'laundry.manage',
+    ]);
+    expect(activity('linen-management').permissions).not.toContain('inventory.manage');
   });
 
   it('la ficha explica acceso efectivo desde fuentes reales y sin suplantar sesión', () => {

@@ -337,6 +337,7 @@ export async function saveInventoryLocation(
   const data = {
     key: input.key?.trim().toUpperCase() || null,
     departmentId,
+    custodianUserId,
     name,
     kind: input.kind,
     active: input.active ?? true,

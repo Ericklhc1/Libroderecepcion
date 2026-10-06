@@ -85,7 +85,7 @@ function detail(
 
 function matchRoute(pathname: string, filters: Record<string, string>): RouteMatch {
   if (pathname === '/') {
-    return detail('inicio', 'Inicio', 'panorama', 'Panorama operativo', [
+    return detail('inicio', 'Mi jornada', 'panorama', 'Panorama operativo', [
       'consultar_contexto_pantalla',
       'consultar_estado_operativo',
       'consultar_prioridades',

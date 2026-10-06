@@ -251,13 +251,6 @@ export async function recordGuaranteeCashOut(
     kind: 'GARANTIA_INGRESO',
   });
   if (!hasIn) return;
-  if (
-    await cashMovementExists(tx, {
-      guaranteeId: params.guaranteeId,
-      kind: 'GARANTIA_DEVOLUCION',
-    })
-  ) return;
-
   const originalContext = await tx.cashMovement.findFirst({
     where: {
       guaranteeId: params.guaranteeId,
@@ -310,13 +303,6 @@ export async function recordGuaranteeChargeOut(
     kind: 'GARANTIA_INGRESO',
   });
   if (!hasIn) return;
-  if (
-    await cashMovementExists(tx, {
-      guaranteeId: params.guaranteeId,
-      kind: 'GARANTIA_COBRO',
-    })
-  ) return;
-
   const originalContext = await tx.cashMovement.findFirst({
     where: {
       guaranteeId: params.guaranteeId,

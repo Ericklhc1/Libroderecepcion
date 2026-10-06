@@ -304,7 +304,7 @@ export async function receiveLaundryShipment(
     });
     if (!shipment) throw new NotFoundError('El folio de lavandería no existe.');
     await assertOriginScope(tx, user, shipment.originLocation);
-    if (![LaundryShipmentStatus.ENTREGADO, LaundryShipmentStatus.PARCIAL, LaundryShipmentStatus.RECIBIDO_DIFERENCIAS].includes(shipment.status)) {
+    if (shipment.status !== LaundryShipmentStatus.ENTREGADO && shipment.status !== LaundryShipmentStatus.PARCIAL && shipment.status !== LaundryShipmentStatus.RECIBIDO_DIFERENCIAS) {
       throw new RuleError('Este folio no admite otra recepción en su estado actual.');
     }
     if (new Set(input.lines.map((line) => line.itemId)).size !== input.lines.length) {

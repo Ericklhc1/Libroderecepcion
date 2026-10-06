@@ -1,6 +1,6 @@
 import type { RawSearchParams } from './search-params';
 
-export type OperationalListPath = '/libro' | '/tareas' | '/coordinacion' | '/admin/housekeeping' | '/novedades/habitacion' | '/custodia' | '/buscar' | '/historial';
+export type OperationalListPath = '/libro' | '/tareas' | '/coordinacion' | '/housekeeping' | '/admin/housekeeping' | '/novedades/habitacion' | '/custodia' | '/buscar' | '/historial';
 
 const ORIGIN = 'https://aroh.invalid';
 const MAX_HREF_LENGTH = 1900;
@@ -12,6 +12,7 @@ const LIST_PARAMS: Record<OperationalListPath, ReadonlySet<string>> = {
   '/libro': ENTRY_TASK_PARAMS,
   '/tareas': ENTRY_TASK_PARAMS,
   '/coordinacion': new Set(['q', 'area', 'mios', 'pagina', 'historial', 'vista', 'estado', 'responsable', 'fecha']),
+  '/housekeeping': new Set(['vista', 'fecha', 'area', 'piso', 'responsable', 'pagina', 'aviso', 'q', 'estado']),
   '/admin/housekeeping': new Set(['vista', 'fecha', 'area', 'piso', 'responsable', 'pagina', 'aviso', 'q', 'estado']),
   '/novedades/habitacion': new Set(['habitacion', 'piso']),
   '/custodia': new Set(['estado', 'q', 'pagina', 'objeto']),
@@ -23,7 +24,7 @@ const ROW_ANCHOR = /^registro-(entry|task|followup|alert|housekeeping|room|custo
 function parseListReturnHref(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > MAX_HREF_LENGTH || /[\\\u0000-\u0020\u007f]/.test(value)) return null;
   const path = value.split(/[?#]/, 1)[0];
-  if (path !== '/libro' && path !== '/tareas' && path !== '/coordinacion' && path !== '/admin/housekeeping' && path !== '/novedades/habitacion' && path !== '/custodia' && path !== '/buscar' && path !== '/historial') return null;
+  if (path !== '/libro' && path !== '/tareas' && path !== '/coordinacion' && path !== '/housekeeping' && path !== '/admin/housekeeping' && path !== '/novedades/habitacion' && path !== '/custodia' && path !== '/buscar' && path !== '/historial') return null;
   try {
     const url = new URL(value, ORIGIN);
     if (url.origin !== ORIGIN || url.pathname !== path) return null;
@@ -95,7 +96,7 @@ export function listReturnLabel(href: string): string {
   if (url.pathname === '/buscar') return 'Volver a resultados';
   if (url.pathname === '/custodia') return 'Volver a custodia';
   if (url.pathname === '/novedades/habitacion') return 'Volver al contexto de habitación';
-  if (url.pathname === '/admin/housekeeping') return 'Volver a Housekeeping';
+  if (url.pathname === '/housekeeping' || url.pathname === '/admin/housekeeping') return 'Volver a Housekeeping';
   if (url.pathname === '/coordinacion') return 'Volver a coordinación';
   if (url.pathname === '/tareas') return 'Volver a tareas';
   if (url.searchParams.get('clase') === 'task') return 'Volver a la lista de tareas';

@@ -230,7 +230,7 @@ const PRIMARY: NavItem[] = [
       },
     ],
   },
-  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', mobile: true, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
+  { href: '/housekeeping', label: 'Housekeeping', icon: 'room', mobile: true, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',
@@ -424,6 +424,6 @@ export function visibleNavGroups(permissions: PermissionKey[], isSystemAdmin = f
         menu: visibleMenu(item.menu, permissions),
       })),
   })).filter((group) => group.items.length > 0);
-  if (isSystemAdmin && !groups.some((group) => group.items.some((item) => item.href === '/admin/housekeeping'))) groups.push({ title: 'Operación', items: [{ href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room' }] });
+  if (isSystemAdmin && !groups.some((group) => group.items.some((item) => item.href === '/housekeeping'))) groups.push({ title: 'Operación', items: [{ href: '/housekeeping', label: 'Housekeeping', icon: 'room' }] });
   return groups;
 }

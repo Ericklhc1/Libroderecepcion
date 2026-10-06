@@ -35,11 +35,18 @@ export default async function InventoryPage({searchParams}:{searchParams:Promise
   const scope=await inventoryDepartmentIds(user);
   const canManage=hasPermission(user,'inventory.manage');
   const canMove=hasPermission(user,'inventory.move');
-  const departments=await prisma.department.findMany({
-    where:{active:true,...(canManage?{}:{id:{in:scope}})},
-    select:{id:true,name:true},
-    orderBy:{order:'asc'},
-  });
+  const [departments,custodians]=await Promise.all([
+    prisma.department.findMany({
+      where:{active:true,...(canManage?{}:{id:{in:scope}})},
+      select:{id:true,name:true},
+      orderBy:{order:'asc'},
+    }),
+    canManage ? prisma.user.findMany({
+      where:{active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true}},
+      select:{id:true,name:true},
+      orderBy:{name:'asc'},
+    }) : Promise.resolve([]),
+  ]);
   const area=departments.some(row=>row.id===requestedArea)?requestedArea:undefined;
   const data=await listInventory(user,area);
   const items=data.items.filter(item=>!query||[

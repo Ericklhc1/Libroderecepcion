@@ -114,7 +114,7 @@ try {
     await context.close();
   }
   const page = await browser.newPage({viewport:{width:390,height:900}});
-  await page.goto(base + '/admin/housekeeping?housekeeping=1');
+  await page.goto(base + '/housekeeping?housekeeping=1');
   await page.getByRole('button',{name:'Más',exact:true}).click();
   const panel = page.getByRole('dialog',{name:'Todo el menú'});
   await panel.getByRole('link',{name:'Equipo y horarios',exact:true}).waitFor();

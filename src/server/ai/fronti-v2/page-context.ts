@@ -429,6 +429,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     '/admin/roles': ['roles', 'Roles y permisos', ['consultar_contexto_pantalla', 'consultar_usuarios']],
     '/admin/soporte': ['soporte', 'Reportes y solicitudes', ['consultar_contexto_pantalla']],
     '/housekeeping': ['housekeeping', 'Housekeeping', ['consultar_contexto_pantalla']],
+    '/admin/housekeeping': ['housekeeping', 'Housekeeping · ruta anterior', ['consultar_contexto_pantalla']],
     '/admin/turnos': ['turnos', 'Historial de turnos', ['consultar_contexto_pantalla', 'consultar_turnos', 'consultar_auditoria']],
     '/admin/usuarios': ['usuarios', 'Usuarios', ['consultar_contexto_pantalla', 'consultar_usuarios']],
   };

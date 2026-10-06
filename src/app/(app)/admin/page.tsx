@@ -188,19 +188,6 @@ export default async function AdminPage() {
           <span className="text-sm text-slate-600">Pausar temporalmente la operación del personal y reabrir al terminar.</span>
         </Link>
       ) : null}
-      {user.isSystemAdmin ? (
-        <DisclosureCard
-          title="Operación especializada"
-          description="Módulos administrativos que no necesitan permanecer abiertos mientras configuras el sistema."
-        >
-          <div className="p-4">
-            <Link href="/admin/housekeeping" className="block rounded-lg border border-amber-200 px-4 py-4 hover:bg-amber-50">
-              <span className="block font-medium text-petrol-900">Housekeeping</span>
-              <span className="block text-sm text-slate-600">Avisos, confirmación y continuidad. Acceso habilitable desde Roles y permisos.</span>
-            </Link>
-          </div>
-        </DisclosureCard>
-      ) : null}
 
       {ADMIN_GROUPS.map((group) => {
         const sections = allowed.filter((section) => group.hrefs.some((href) => href === section.href));

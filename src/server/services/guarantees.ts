@@ -328,9 +328,10 @@ export async function updateGuarantee(
 
     const applied = money(guarantee.appliedAmount) ?? 0;
     const penalty = money(guarantee.penaltyAmount) ?? 0;
-    if (applied + penalty > nextAmount) {
+    const returned = money(guarantee.returnedAmount) ?? 0;
+    if (applied + penalty + returned > nextAmount) {
       throw new RuleError(
-        `El monto editado (${nextAmount}) no puede quedar por debajo de lo ya aplicado o multado (${applied + penalty}).`,
+        `El monto editado (${nextAmount}) no puede quedar por debajo de lo ya aplicado, cobrado o devuelto (${applied + penalty + returned}).`,
       );
     }
 
@@ -356,7 +357,7 @@ export async function updateGuarantee(
     if (
       currencyChanged &&
       guarantee.state === GuaranteeState.APLICADA_PARCIALMENTE &&
-      (applied > 0 || penalty > 0)
+      (applied > 0 || penalty > 0 || returned > 0)
     ) {
       throw new RuleError(
         'No se puede cambiar la moneda después de aplicar parte de la garantía.',
@@ -474,6 +475,7 @@ export async function changeGuaranteeState(
         amount: true,
         appliedAmount: true,
         penaltyAmount: true,
+        returnedAmount: true,
         currency: true,
         reservationReferenceId: true,
         stayId: true,
@@ -517,9 +519,10 @@ export async function changeGuaranteeState(
         ? (input.penaltyAmount ?? 0)
         : (money(guarantee.penaltyAmount) ?? 0);
 
-    if (aplicado + multa > total) {
+    const devuelto = money(guarantee.returnedAmount) ?? 0;
+    if (aplicado + multa + devuelto > total) {
       throw new RuleError(
-        `Lo aplicado y la multa (${aplicado + multa}) superan la garantía tomada (${total}).`,
+        `Lo aplicado, cobrado y devuelto (${aplicado + multa + devuelto}) supera la garantía tomada (${total}).`,
       );
     }
 
@@ -527,6 +530,7 @@ export async function changeGuaranteeState(
       amount: total,
       appliedAmount: aplicado,
       penaltyAmount: multa,
+      returnedAmount: devuelto,
     });
 
     if (

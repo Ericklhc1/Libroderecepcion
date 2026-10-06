@@ -32,6 +32,7 @@ export type NavItem = {
     | 'metrics'
     | 'room'
     | 'key'
+    | 'inventory'
     | 'cash'
     | 'alarm'
     | 'admin';
@@ -185,6 +186,21 @@ const PRIMARY: NavItem[] = [
             description: 'Trazabilidad y regularización autorizada.',
             anyOf: ['shift.manage'],
           },
+        ],
+      },
+    ],
+  },
+  {
+    href: '/inventario',
+    label: 'Inventario',
+    icon: 'inventory',
+    anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'],
+    menu: [
+      {
+        title: 'Inventario común',
+        items: [
+          { href: '/inventario', label: 'Inventario', description: 'Artículos, ubicaciones, disponibilidad y movimientos.', anyOf: ['inventory.view'] },
+          { href: '/lavanderia', label: 'Lavandería', description: 'Folios, entregas, recepciones parciales y diferencias.', anyOf: ['laundry.manage'] },
         ],
       },
     ],

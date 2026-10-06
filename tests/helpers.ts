@@ -92,6 +92,7 @@ export async function resetOperationalData() {
     prisma.taskAssignment.deleteMany(),
     prisma.followUp.deleteMany(),
     prisma.task.deleteMany(),
+    prisma.guaranteeSettlement.deleteMany(),
     prisma.cashMovement.deleteMany(),
     prisma.cashAudit.deleteMany(),
     prisma.gymPass.deleteMany(),
@@ -143,6 +144,7 @@ export async function resetRoomsAndKeys() {
   await prisma.supervisorKey.deleteMany();
   await prisma.keyInventoryCount.deleteMany();
   await prisma.fine.deleteMany();
+  await prisma.guaranteeSettlement.deleteMany();
   await prisma.cashMovement.deleteMany();
   await prisma.gymPass.deleteMany();
   await prisma.keyMovement.deleteMany();

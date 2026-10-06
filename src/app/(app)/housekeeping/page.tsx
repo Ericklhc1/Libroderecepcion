@@ -5,6 +5,7 @@ import { hkNextAction, HK_MAINTENANCE_EVENT_LABELS, maintenanceAllowsContinuatio
 import { randomUUID } from 'node:crypto';
 import { requireHousekeepingPageUser } from '@/server/auth/housekeeping';
 import { getHkWorkday, getHkSources } from '@/server/services/housekeeping-work';
+import { listAssignedInventoryMaterial } from '@/server/services/inventory';
 import { getHousekeepingDestinations, housekeepingSourceChanged } from '@/server/services/housekeeping';
 import { canManageHousekeeping, HOUSEKEEPING_LABELS, housekeepingActions, type HousekeepingStatus } from '@/domain/housekeeping';
 import { HK_WORK_ACTIONS, HK_WORK_LABELS, HK_KIND_LABELS, HK_ACTION_LABELS, HK_ACTION_PERMISSION, type HkWorkKind, type HkWorkAction } from '@/domain/housekeeping-work';
@@ -29,7 +30,11 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
   const view=params.vista??(user.permissions.includes('housekeeping.work')&&!user.permissions.includes('housekeeping.view')?'mios':'');
   const board=await getHkWorkday(user,{date:params.fecha,departmentId:params.area,view,floor:/^[456]$/.test(params.piso??'')?params.piso:undefined,responsible:params.responsable,page:Number(params.pagina??1),q:params.vista==='vincular'?undefined:params.q,state:params.estado,focusId:params.aviso&&/^\d+$/.test(params.aviso)?Number(params.aviso):undefined});
   const legacyManage=canManageHousekeeping(user);
-  const [sources,destinations]=await Promise.all([view==='vincular'&&(board.canAssign||board.canRequest)?getHkSources(user,board.departmentId,params.q):Promise.resolve([]),legacyManage?getHousekeepingDestinations(user):Promise.resolve({departments:[],users:[]})]);
+  const [sources,destinations,assignedMaterial]=await Promise.all([
+    view==='vincular'&&(board.canAssign||board.canRequest)?getHkSources(user,board.departmentId,params.q):Promise.resolve([]),
+    legacyManage?getHousekeepingDestinations(user):Promise.resolve({departments:[],users:[]}),
+    user.permissions.includes('inventory.view')||user.isSystemAdmin?listAssignedInventoryMaterial(user):Promise.resolve([]),
+  ]);
   const title=board.canPlan?'Estado de Housekeeping':board.canAssign?'Coordinar y revisar':board.canWork?'Mi trabajo de hoy':board.teamVisible?'Estado de Housekeeping':'Solicitudes a Housekeeping';
   const href=(next:string,page=1)=>operationalListHref('/housekeeping',{fecha:board.date,area:board.departmentId,vista:next,pagina:String(page),...(params.q?{q:params.q}:{}),...(params.estado?{estado:params.estado}:{}),...(params.piso?{piso:params.piso}:{}),...(params.responsable?{responsable:params.responsable}:{})});
   const allowed=(action:HkWorkAction,assignedToId:string|null)=>{
@@ -89,6 +94,17 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
     </ListFilterBar>
     <p className="text-xs text-slate-500">Los indicadores resumen el día y su continuidad dentro de tu acceso; buscar o filtrar sólo cambia la lista de trabajos.</p>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><StatTile label="Por asignar" value={board.counts.unassigned}/><StatTile label="Por revisar" value={board.counts.review}/><StatTile label="Con impedimento" value={board.counts.blocked}/><StatTile label="Terminados del día" value={board.counts.completed}/></div>
+    {board.canWork&&<section className="rounded-xl border border-slate-200 bg-white p-4" aria-label="Material asignado">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 className="font-semibold text-petrol-900">Material asignado</h2><p className="mt-1 text-xs text-slate-600">Lee el stock real de las ubicaciones bajo tu custodia. Verlo no reserva ni descuenta existencias.</p></div>
+        {user.permissions.includes('inventory.view')&&<Link href="/inventario" className="text-sm font-medium text-petrol-700 underline">Abrir Inventario</Link>}
+      </div>
+      {!assignedMaterial.length?<p className="mt-3 text-sm text-slate-500">No tienes un carro u otra ubicación de inventario asignada.</p>:
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">{assignedMaterial.map(location=><article key={location.id} className="rounded-lg bg-slate-50 p-3">
+          <h3 className="text-sm font-semibold text-petrol-900">{location.name}</h3>
+          <ul className="mt-2 space-y-1 text-sm text-slate-700">{location.items.map(item=><li key={item.id} className="flex justify-between gap-3"><span>{item.code} · {item.name}</span><strong className="tabular">{item.quantity.toLocaleString('es-CL')} {item.unit}</strong></li>)}</ul>
+        </article>)}</div>}
+    </section>}
     {(board.counts.overdue>0||board.counts.carryover>0)&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{board.counts.overdue} trabajos con plazo vencido · {board.counts.carryover} pendientes de días anteriores. Conservan su responsable y su historial.</p>}
     <Link className="inline-block rounded-lg bg-petrol-800 px-3 py-2 text-sm font-semibold text-white" href={`/coordinacion/areas?area=${board.departmentId}`}>Bandeja de áreas · Por revisar</Link>
     <nav aria-label="Trabajo de Housekeeping" className="flex flex-wrap gap-2 text-sm">{tabs.filter(([key])=>board.teamVisible||!['revision','continuidad'].includes(key)).map(([key,label])=><Link key={key} href={href(key)} aria-current={view===key?'page':undefined} className={`rounded-lg border px-3 py-2 ${view===key?'border-petrol-800 bg-petrol-800 text-white':'border-slate-200 bg-white text-petrol-800'}`}>{label}</Link>)}{(board.canAssign||board.canRequest)&&<Link href={href('vincular')} className="rounded-lg border border-slate-200 px-3 py-2">Vincular novedad</Link>}</nav>

@@ -9,7 +9,7 @@ describe('Coordinación compacta conserva navegación y prioridad del trabajo',(
     expect(page).not.toContain('observados." defaultOpen');
   });
   it('conserva todos los módulos, herramientas, filtros y vínculos al contexto',()=>{
-    for(const href of ['/coordinacion/areas','/coordinacion/indicadores','/libro','/admin/housekeeping','/turno','/caja','/llaves','/custodia','/fronti/procedimientos','/coordinacion/automatizaciones']) expect(page).toContain(href);
+    for(const href of ['/coordinacion/areas','/coordinacion/indicadores','/libro','/housekeeping','/turno','/caja','/llaves','/custodia','/fronti/procedimientos','/coordinacion/automatizaciones']) expect(page).toContain(href);
     expect(page).toContain('operationalListHref');expect(page).toContain('detailHrefWithListContext');expect(page).toContain('Más vistas');expect(page).toContain('Más filtros');
   });
 });

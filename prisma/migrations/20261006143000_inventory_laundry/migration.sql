@@ -108,6 +108,16 @@ CREATE TABLE "LaundryShipment" (
   CONSTRAINT "LaundryShipment_locations_check" CHECK ("originLocationId" <> "laundryLocationId")
 );
 
+CREATE TABLE "LaundryReceipt" (
+  "id" TEXT NOT NULL,
+  "requestKey" TEXT NOT NULL,
+  "shipmentId" TEXT NOT NULL,
+  "receivedById" TEXT NOT NULL,
+  "payload" JSONB NOT NULL,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "LaundryReceipt_pkey" PRIMARY KEY ("id")
+);
+
 CREATE TABLE "LaundryShipmentLine" (
   "id" TEXT NOT NULL,
   "shipmentId" TEXT NOT NULL,
@@ -184,6 +194,8 @@ CREATE UNIQUE INDEX "LaundryShipment_differenceEntryId_key" ON "LaundryShipment"
 CREATE INDEX "LaundryShipment_status_createdAt_idx" ON "LaundryShipment"("status","createdAt");
 CREATE INDEX "LaundryShipment_originLocationId_createdAt_idx" ON "LaundryShipment"("originLocationId","createdAt");
 CREATE INDEX "LaundryShipment_laundryLocationId_createdAt_idx" ON "LaundryShipment"("laundryLocationId","createdAt");
+CREATE UNIQUE INDEX "LaundryReceipt_requestKey_key" ON "LaundryReceipt"("requestKey");
+CREATE INDEX "LaundryReceipt_shipmentId_createdAt_idx" ON "LaundryReceipt"("shipmentId","createdAt");
 CREATE UNIQUE INDEX "LaundryShipmentLine_shipmentId_itemId_key" ON "LaundryShipmentLine"("shipmentId","itemId");
 CREATE INDEX "LaundryShipmentLine_itemId_idx" ON "LaundryShipmentLine"("itemId");
 
@@ -219,6 +231,10 @@ ALTER TABLE "LaundryShipment" ADD CONSTRAINT "LaundryShipment_receivedById_fkey"
   FOREIGN KEY ("receivedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "LaundryShipment" ADD CONSTRAINT "LaundryShipment_differenceEntryId_fkey"
   FOREIGN KEY ("differenceEntryId") REFERENCES "OperationalEntry"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LaundryReceipt" ADD CONSTRAINT "LaundryReceipt_shipmentId_fkey"
+  FOREIGN KEY ("shipmentId") REFERENCES "LaundryShipment"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "LaundryReceipt" ADD CONSTRAINT "LaundryReceipt_receivedById_fkey"
+  FOREIGN KEY ("receivedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "LaundryShipmentLine" ADD CONSTRAINT "LaundryShipmentLine_shipmentId_fkey"
   FOREIGN KEY ("shipmentId") REFERENCES "LaundryShipment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "LaundryShipmentLine" ADD CONSTRAINT "LaundryShipmentLine_itemId_fkey"

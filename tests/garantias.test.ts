@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { GuaranteeState, GuaranteeStatus, RoomStayStatus } from '@prisma/client';
+import { GuaranteeSettlementKind, GuaranteeState, GuaranteeStatus, RoomStayStatus } from '@prisma/client';
 import {
   ROLE_KEYS,
   createUser,
@@ -12,6 +13,7 @@ import {
   changeGuaranteeState,
   createGuarantee,
   listOpenGuarantees,
+  settleGuarantee,
   softDeleteGuarantee,
   updateGuarantee,
 } from '@/server/services/guarantees';
@@ -486,6 +488,134 @@ describe('garantías', () => {
       orderBy: { createdAt: 'desc' },
     });
     expect(JSON.stringify(audit.after)).toContain('Daño en habitación');
+  });
+
+  it('admite devoluciones y cobros parciales sucesivos con saldo e historial', async () => {
+    await prisma.cashFund.create({ data: { currency: 'CLP', amount: 100_000 } });
+    const { id } = await createGuarantee(user, {
+      guestName: 'Huésped parcial sucesivo',
+      roomNumber: '517',
+      kind: 'EFECTIVO',
+      amount: 100_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    const returned = await settleGuarantee(user, {
+      id,
+      requestKey: randomUUID(),
+      kind: GuaranteeSettlementKind.DEVOLUCION,
+      amount: 30_000,
+      reason: 'Devolución parcial solicitada al huésped',
+    });
+    expect(returned.remaining).toBe(70_000);
+    expect(returned.state).toBe(GuaranteeState.APLICADA_PARCIALMENTE);
+
+    const charged = await settleGuarantee(user, {
+      id,
+      requestKey: randomUUID(),
+      kind: GuaranteeSettlementKind.COBRO,
+      amount: 20_000,
+      reason: 'Daño documentado en habitación',
+      notes: 'Validado por Supervisión',
+    });
+    expect(charged.remaining).toBe(50_000);
+    expect(charged.state).toBe(GuaranteeState.APLICADA_PARCIALMENTE);
+
+    const guarantee = await prisma.guarantee.findUniqueOrThrow({ where: { id } });
+    expect(guarantee.returnedAmount.toNumber()).toBe(30_000);
+    expect(guarantee.penaltyAmount?.toNumber()).toBe(20_000);
+
+    const settlements = await prisma.guaranteeSettlement.findMany({
+      where: { guaranteeId: id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(settlements.map((row) => [row.kind, row.amount.toNumber()])).toEqual([
+      [GuaranteeSettlementKind.DEVOLUCION, 30_000],
+      [GuaranteeSettlementKind.COBRO, 20_000],
+    ]);
+
+    const live = await getLiveCashState();
+    const active = live.cashGuarantees.find((row) => row.id === id);
+    expect(active?.amount).toBe(50_000);
+    expect(active?.returnedAmount).toBe(30_000);
+    expect(active?.settlements).toHaveLength(2);
+
+    const movements = await prisma.cashMovement.findMany({
+      where: { guaranteeId: id, voidedAt: null },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(movements.map((row) => [row.kind, row.amount.toNumber()])).toEqual([
+      ['GARANTIA_INGRESO', 100_000],
+      ['GARANTIA_DEVOLUCION', 30_000],
+      ['GARANTIA_COBRO', 20_000],
+    ]);
+  });
+
+  it('reintenta una liquidación con el mismo requestKey sin duplicar hechos', async () => {
+    const { id } = await createGuarantee(user, {
+      guestName: 'Huésped idempotencia',
+      kind: 'EFECTIVO',
+      amount: 80_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+    const requestKey = randomUUID();
+    const input = {
+      id,
+      requestKey,
+      kind: GuaranteeSettlementKind.DEVOLUCION,
+      amount: 15_000,
+      reason: 'Devolución parcial',
+    } as const;
+
+    const first = await settleGuarantee(user, input);
+    const second = await settleGuarantee(user, input);
+
+    expect(first.settlementId).toBe(second.settlementId);
+    expect(second.repeated).toBe(true);
+    expect(await prisma.guaranteeSettlement.count({ where: { guaranteeId: id } })).toBe(1);
+    expect(await prisma.cashMovement.count({
+      where: { guaranteeId: id, kind: 'GARANTIA_DEVOLUCION', voidedAt: null },
+    })).toBe(1);
+  });
+
+  it('serializa liquidaciones concurrentes y evita consumir más saldo del disponible', async () => {
+    const { id } = await createGuarantee(user, {
+      guestName: 'Huésped concurrencia',
+      kind: 'EFECTIVO',
+      amount: 100_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    const results = await Promise.allSettled([
+      settleGuarantee(user, {
+        id,
+        requestKey: randomUUID(),
+        kind: GuaranteeSettlementKind.DEVOLUCION,
+        amount: 70_000,
+        reason: 'Primera solicitud concurrente',
+      }),
+      settleGuarantee(user, {
+        id,
+        requestKey: randomUUID(),
+        kind: GuaranteeSettlementKind.COBRO,
+        amount: 70_000,
+        reason: 'Segunda solicitud concurrente',
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(await prisma.guaranteeSettlement.count({ where: { guaranteeId: id } })).toBe(1);
+
+    const guarantee = await prisma.guarantee.findUniqueOrThrow({ where: { id } });
+    const consumed =
+      Number(guarantee.returnedAmount) +
+      Number(guarantee.penaltyAmount ?? 0) +
+      Number(guarantee.appliedAmount ?? 0);
+    expect(consumed).toBe(70_000);
   });
 
   it('no se puede aplicar ni multar más de lo tomado', async () => {

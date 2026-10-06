@@ -10,7 +10,6 @@ import {
   EntryType,
   GuaranteeKind,
   GuaranteeSettlementKind,
-  GuaranteeState,
   NotificationType,
   Priority,
 } from '@prisma/client';
@@ -28,7 +27,7 @@ import {
   markCashMovementAsRegularization,
   saveLiveCashAudit,
 } from '@/server/services/live-cash';
-import { changeGuaranteeState, settleGuarantee } from '@/server/services/guarantees';
+import { settleGuarantee } from '@/server/services/guarantees';
 import { createGymPass, createParkingPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 import { assertReceptionCashGuaranteeReturn, assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';

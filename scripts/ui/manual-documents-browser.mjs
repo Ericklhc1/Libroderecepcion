@@ -142,11 +142,12 @@ try {
   await other.context.close();
   const forbidden = await actor('maid');
   await forbidden.page.goto(target);
-  assert.equal(new URL(forbidden.page.url()).pathname, '/sin-permisos', 'A role without Supervisión access is denied');
+  await forbidden.page.waitForURL(`${origin}/sin-permisos`);
+  await forbidden.page.getByRole('heading', { name: 'No tienes acceso a esta sección', exact: true }).waitFor();
   await forbidden.context.close();
   const anonymous = await actor(null);
   await anonymous.page.goto(target);
-  assert.equal(new URL(anonymous.page.url()).pathname, '/login');
+  await anonymous.page.waitForURL(`${origin}/login`);
   await anonymous.context.close();
   page.once('dialog', dialog => dialog.accept()); await page.getByRole('button', { name: 'Cerrar borradores locales', exact: true }).click();
   assert.equal(await page.getByRole('navigation', { name: 'Documentos locales abiertos' }).count(), 0);

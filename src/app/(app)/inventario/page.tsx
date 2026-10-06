@@ -110,13 +110,25 @@ export default async function InventoryPage({searchParams}:{searchParams:Promise
     {canManage?<details className="rounded-xl border border-slate-200 bg-white">
       <summary className="cursor-pointer px-4 py-3 font-semibold text-petrol-900">Configurar catálogo y ubicaciones</summary>
       <div className="grid gap-4 border-t border-slate-200 p-4 lg:grid-cols-3">
-        <section><h2 className="font-semibold text-petrol-900">Nueva categoría</h2>
-          <p className="mt-1 text-xs text-slate-500">La categoría organiza; no define cómo se mueve el artículo.</p>
+        <section><h2 className="font-semibold text-petrol-900">Categorías</h2>
+          <p className="mt-1 text-xs text-slate-500">La categoría organiza; renombrarla o archivarla conserva artículos, movimientos e historial.</p>
           <ActionForm action={saveInventoryCategoryAction} refreshOnSuccess className="mt-3">
             <Field label="Departamento" name="departmentId" required><Select name="departmentId" required options={departments.map(row=>({value:row.id,label:row.name}))}/></Field>
             <Field label="Nombre" name="name" required><Input name="name" required maxLength={100}/></Field>
             <SubmitButton>Crear categoría</SubmitButton>
           </ActionForm>
+          <div className="mt-4 space-y-2">
+            {data.categories.map(category=><details key={category.id} className="rounded-lg border border-slate-200 p-2">
+              <summary className="cursor-pointer text-sm font-medium">{category.department.name} · {category.name}</summary>
+              <ActionForm action={saveInventoryCategoryAction} refreshOnSuccess className="mt-3">
+                <input type="hidden" name="id" value={category.id}/>
+                <Field label="Departamento" name="departmentId" required><Select name="departmentId" required defaultValue={category.departmentId} options={departments.map(row=>({value:row.id,label:row.name}))}/></Field>
+                <Field label="Nombre" name="name" required><Input name="name" required maxLength={100} defaultValue={category.name}/></Field>
+                <Field label="Estado" name="active"><Select name="active" defaultValue="true" options={[{value:'true',label:'Activa'},{value:'false',label:'Archivar'}]}/></Field>
+                <SubmitButton size="sm">Guardar categoría</SubmitButton>
+              </ActionForm>
+            </details>)}
+          </div>
         </section>
         <section><h2 className="font-semibold text-petrol-900">Nuevo artículo</h2>
           <ActionForm action={saveInventoryItemAction} refreshOnSuccess className="mt-3">

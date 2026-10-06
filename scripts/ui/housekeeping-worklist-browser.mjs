@@ -29,7 +29,7 @@ try {
     const marker = `HK_CONTEXT_${width}_${randomUUID().slice(0, 6)}`;
     const source = await db.operationalEntry.create({ data: { type: 'NOVEDAD', title: marker, description: 'Contexto sintético completo sin copia ni cambio de origen', createdById: fixture.users.admin.id, ownerId: fixture.users.admin.id, departmentId: area.id } });
     const work = await db.housekeepingRequest.create({ data: { requestKey: randomUUID(), workflowVersion: 1, workKind: 'ATENCION', workDate: day, departmentId: area.id, createdById: fixture.users.admin.id, assignedToId: fixture.users.maid.id, sourceEntryId: source.id, sourceVersion: source.updatedAt, status: 'PENDIENTE', effortMinutes: 15 } });
-    const list = `/admin/housekeeping?${new URLSearchParams({ area: area.id, fecha: day, q: marker })}`;
+    const list = `/housekeeping?${new URLSearchParams({ area: area.id, fecha: day, q: marker })}`;
     const maid = await session('maid', width);
     await maid.page.goto(base + list);
     const rowId = `registro-housekeeping-${work.id}`;
@@ -65,7 +65,7 @@ try {
     const back = admin.page.locator('[data-list-return]');
     await back.waitFor();
     const returnHref = new URL(await back.getAttribute('href'), base);
-    assert.equal(returnHref.pathname, '/admin/housekeeping');
+    assert.equal(returnHref.pathname, '/housekeeping');
     assert.equal(returnHref.searchParams.get('q'), marker);
     assert.equal(returnHref.hash, '#' + rowId);
     await back.click();
@@ -95,7 +95,7 @@ try {
     // server narrows the result to one authorized human folio.
     const archiveMarker = `HK_ARCHIVE_${width}_${randomUUID().slice(0, 6)}`;
     await db.housekeepingRequest.createMany({ data: Array.from({ length: 35 }, (_, index) => ({ requestKey: randomUUID(), workflowVersion: 1, workKind: 'ATENCION', workDate: day, departmentId: area.id, createdById: fixture.users.admin.id, assignedToId: fixture.users.maid.id, title: `${archiveMarker} ${index}`, description: 'Trabajo sintético archivado', status: 'RESUELTO', resolution: index % 2 ? 'Resultado sintético conservado' : null, createdAt: new Date(Date.now() - index * 1000), effortMinutes: 15 })) });
-    const archiveList = '/admin/housekeeping?' + new URLSearchParams({ area: area.id, fecha: day, vista: 'historial', q: archiveMarker, pagina: '2' });
+    const archiveList = '/housekeeping?' + new URLSearchParams({ area: area.id, fecha: day, vista: 'historial', q: archiveMarker, pagina: '2' });
     await admin.page.goto(base + archiveList);
     const archiveRow = admin.page.locator('[data-list-item][aria-haspopup="dialog"]').first();
     await archiveRow.waitFor();

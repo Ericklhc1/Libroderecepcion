@@ -70,7 +70,7 @@ try {
       assert.ok(await focused(panel.locator('a').first()));
       await page.keyboard.press('End'); assert.ok(await focused(panel.locator('a').last()));
       await page.keyboard.press('Home'); assert.ok(await focused(panel.locator('a').first()));
-      assert.equal(await panel.locator('a').count(),8);
+      assert.equal(await panel.locator('a').count(),9);
       assert.ok((await panel.boundingBox()).height < 480, 'Root catalogue is compact');
     } else {
       assert.equal(await page.locator('[data-module-navigation="mobile"] button').count(),0);

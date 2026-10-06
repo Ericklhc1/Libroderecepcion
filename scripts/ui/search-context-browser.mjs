@@ -59,12 +59,16 @@ async function closeContext(context) {
 async function returned(page, list, anchor, scrollY) {
   const selected = page.locator(`[data-list-item="${anchor}"]`);
   await selected.waitFor();
-  await page.waitForFunction(({ anchor, scrollY, scope }) =>
-    sessionStorage.getItem(`aroh:list-return:${scope}`) === null &&
-    document.activeElement?.id === anchor &&
-    document.getElementById(anchor)?.getAttribute('aria-current') === 'true' &&
-    Math.abs(window.scrollY - scrollY) <= 2,
-  { anchor, scrollY, scope: fixture.users.admin.id });
+  await page.waitForFunction(scope => sessionStorage.getItem(`aroh:list-return:${scope}`) === null, fixture.users.admin.id);
+  await page.waitForFunction(anchor => document.getElementById(anchor)?.getAttribute('aria-current') === 'true', anchor);
+  await page.waitForFunction(anchor => document.activeElement?.id === anchor, anchor);
+  await page.waitForFunction(scrollY => Math.abs(window.scrollY - scrollY) <= 2, scrollY);
+  const restored = await page.evaluate(({ anchor, scrollY }) => ({
+    focused: document.activeElement?.id === anchor,
+    selected: document.getElementById(anchor)?.getAttribute('aria-current') === 'true',
+    scroll: Math.abs(window.scrollY - scrollY) <= 2,
+  }), { anchor, scrollY });
+  assert.deepEqual(restored, { focused: true, selected: true, scroll: true }, 'Search return restores focus, selection and exact scroll');
   const url = new URL(page.url());
   assert.equal(url.pathname + url.search, list);
   assert.equal(url.hash, '#' + anchor);

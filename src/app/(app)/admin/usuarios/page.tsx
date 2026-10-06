@@ -79,8 +79,8 @@ export default async function UsersPage({
       user.role.name,
       user.department?.name,
       ...(user.scheduleCollaborator?.memberships.map((membership) => membership.department.name) ?? []),
-      ...user.scheduleAreaGrants.map((grant) => grant.department.name),
-      ...user.hkDelegationsReceived.map((delegation) => delegation.department.name),
+      ...(user.scheduleAreaGrants ?? []).map((grant) => grant.department.name),
+      ...(user.hkDelegationsReceived ?? []).map((delegation) => delegation.department.name),
       user.email,
       user.phone,
     ]
@@ -146,25 +146,25 @@ export default async function UsersPage({
           <CardScroll>
             <ul className="divide-y divide-slate-100">
             {visibleUsers.map((user) => {
-              const permissions = user.role.permissions.map((row) => row.permission.key as PermissionKey);
+              const permissions = (user.role.permissions ?? []).map((row) => row.permission.key as PermissionKey);
               const access = { roleKey: user.role.key, permissions };
               const activeMemberships = user.scheduleCollaborator?.active
                 ? user.scheduleCollaborator.memberships.filter((membership) => membership.active && membership.department.active)
                 : [];
               const workAreas = Array.from(new Map([
-                ...(user.department?.active ? [[user.department.id, user.department.name] as const] : []),
+                ...(user.department && user.department.active !== false ? [[user.department.id, user.department.name] as const] : []),
                 ...activeMemberships.map((membership) => [membership.department.id, membership.department.name] as const),
               ]).values());
               const scheduleScope = user.role.key === 'ADMINISTRADOR_SISTEMA' || permissions.includes('schedule.configure')
                 ? ['Todas las áreas activas']
                 : Array.from(new Set([
-                    ...(user.department?.active ? [user.department.name] : []),
-                    ...user.scheduleAreaGrants.filter((grant) => grant.department.active).map((grant) => grant.department.name),
+                    ...(user.department && user.department.active !== false ? [user.department.name] : []),
+                    ...(user.scheduleAreaGrants ?? []).filter((grant) => grant.department.active).map((grant) => grant.department.name),
                   ]));
-              const activeDelegations = user.hkDelegationsReceived.filter((delegation) =>
+              const activeDelegations = (user.hkDelegationsReceived ?? []).filter((delegation) =>
                 delegation.startsAt <= now && delegation.grantedBy.active && !delegation.grantedBy.deletedAt && delegation.department.active,
               );
-              const futureDelegations = user.hkDelegationsReceived.filter((delegation) => delegation.startsAt > now);
+              const futureDelegations = (user.hkDelegationsReceived ?? []).filter((delegation) => delegation.startsAt > now);
               const housekeepingVisible = HOUSEKEEPING_ACCESS_PERMISSIONS.some((permission) => hkHas(access, permission));
               const canRequestHousekeeping = hkHas(access, 'housekeeping.request') || hkHas(access, 'housekeeping.assign');
               const canWorkHousekeeping = hkHas(access, 'housekeeping.work');

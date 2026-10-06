@@ -143,14 +143,30 @@ export default async function InventoryPage({searchParams}:{searchParams:Promise
             <SubmitButton disabled={!data.categories.length}>Crear artículo</SubmitButton>
           </ActionForm>
         </section>
-        <section><h2 className="font-semibold text-petrol-900">Nueva ubicación</h2>
+        <section><h2 className="font-semibold text-petrol-900">Ubicaciones y custodia</h2>
           <ActionForm action={saveInventoryLocationAction} refreshOnSuccess className="mt-3">
             <Field label="Nombre" name="name" required><Input name="name" required maxLength={120}/></Field>
             <Field label="Código interno" name="key"><Input name="key" maxLength={80}/></Field>
             <Field label="Tipo" name="kind" required><Select name="kind" required options={Object.values(InventoryLocationKind).map(value=>({value,label:LOCATION_LABEL[value]??value}))}/></Field>
             <Field label="Departamento" name="departmentId" hint="Vacío sólo para destinos compartidos, como lavandería externa."><Select name="departmentId" placeholder="Compartida / externa" options={departments.map(row=>({value:row.id,label:row.name}))}/></Field>
+            <Field label="Custodio" name="custodianUserId" hint="Opcional: carro u otra ubicación entregada a una persona."><Select name="custodianUserId" placeholder="Sin custodio" options={custodians.map(person=>({value:person.id,label:person.name}))}/></Field>
             <SubmitButton>Crear ubicación</SubmitButton>
           </ActionForm>
+          <div className="mt-4 space-y-2">
+            {data.locations.map(location=><details key={location.id} className="rounded-lg border border-slate-200 p-2">
+              <summary className="cursor-pointer text-sm font-medium">{location.name}{location.custodianUser?` · ${location.custodianUser.name}`:''}</summary>
+              <ActionForm action={saveInventoryLocationAction} refreshOnSuccess className="mt-3">
+                <input type="hidden" name="id" value={location.id}/>
+                <Field label="Nombre" name="name" required><Input name="name" required maxLength={120} defaultValue={location.name}/></Field>
+                <Field label="Código interno" name="key"><Input name="key" maxLength={80} defaultValue={location.key??''}/></Field>
+                <Field label="Tipo" name="kind" required><Select name="kind" required defaultValue={location.kind} options={Object.values(InventoryLocationKind).map(value=>({value,label:LOCATION_LABEL[value]??value}))}/></Field>
+                <Field label="Departamento" name="departmentId"><Select name="departmentId" placeholder="Compartida / externa" defaultValue={location.departmentId??''} options={departments.map(row=>({value:row.id,label:row.name}))}/></Field>
+                <Field label="Custodio" name="custodianUserId"><Select name="custodianUserId" placeholder="Sin custodio" defaultValue={location.custodianUserId??''} options={custodians.map(person=>({value:person.id,label:person.name}))}/></Field>
+                <Field label="Estado" name="active"><Select name="active" defaultValue="true" options={[{value:'true',label:'Activa'},{value:'false',label:'Desactivar'}]}/></Field>
+                <SubmitButton size="sm">Guardar ubicación</SubmitButton>
+              </ActionForm>
+            </details>)}
+          </div>
         </section>
       </div>
     </details>:null}

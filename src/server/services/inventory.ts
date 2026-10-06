@@ -267,7 +267,7 @@ export async function saveInventoryItem(
     accountingValue:
       input.accountingValue == null ? null : new Prisma.Decimal(input.accountingValue),
     accountingCurrency: normalizeCurrency(input.accountingCurrency),
-  } satisfies Prisma.InventoryItemUncheckedCreateInput;
+  };
 
   const row = input.id
     ? await prisma.inventoryItem.update({ where: { id: input.id }, data })
@@ -368,7 +368,7 @@ export async function applyInventoryMovement(
 ) {
   const permission = options.permission ?? 'inventory.move';
   requireInventoryPermission(user, permission);
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestKey)) {
+  if (!/^[A-Za-z0-9:_-]{8,180}$/.test(input.requestKey)) {
     throw new RuleError('La referencia del movimiento no es válida.');
   }
   if (!(input.quantity > 0) || !Number.isFinite(input.quantity)) {

@@ -791,7 +791,7 @@ export async function settleGuarantee(
       },
     });
     if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
-    if (![GuaranteeState.VIGENTE, GuaranteeState.APLICADA_PARCIALMENTE].includes(guarantee.state)) {
+    if (guarantee.state !== GuaranteeState.VIGENTE && guarantee.state !== GuaranteeState.APLICADA_PARCIALMENTE) {
       throw new RuleError('Esa garantía no admite otra devolución o cobro.');
     }
 

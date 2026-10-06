@@ -37,7 +37,7 @@ describe('cabecera persistente y contexto de módulos', () => {
       if (!allowed.some(group => group.title === 'Administración')) expect(html).not.toContain('aria-label="Administración"');
     }
     const hk = visibleNavGroups(ROLE_PERMISSIONS[ROLE_KEYS.HK_ATTENDANT]);
-    expect(navigationContext(hk, '/admin/housekeeping', '').item?.label).toBe('Housekeeping');
+    expect(navigationContext(hk, '/housekeeping', '').item?.label).toBe('Housekeeping');
     expect(navigationContext(hk, '/libro', 'clase=entry').item).toBeUndefined();
   });
 
@@ -68,7 +68,7 @@ describe('cabecera persistente y contexto de módulos', () => {
 
   it('las rutas secundarias y profundas permanecen en su módulo real', () => {
     for (const [path, root] of [
-      ['/alertas', '/notificaciones'], ['/admin/housekeeping', '/admin/housekeeping'],
+      ['/alertas', '/notificaciones'], ['/housekeeping', '/housekeeping'],
       ['/admin/auditoria', '/admin/auditoria'], ['/admin/turnos', '/turno'],
       ['/admin/usuarios/ejemplo', '/admin'], ['/tareas/ejemplo', '/libro?clase=entry'],
     ]) expect(activeModule(groups, path!)).toBe(root);

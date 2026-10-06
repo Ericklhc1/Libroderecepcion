@@ -574,6 +574,7 @@ model User {
   inventoryItemsCreated            InventoryItem[]            @relation("inventoryItemCreatedBy")
   inventoryMovementsCreated        InventoryMovement[]        @relation("inventoryMovementCreatedBy")
   inventoryAssetsCustody           InventoryAsset[]           @relation("inventoryAssetCustodian")
+  inventoryLocationsCustody        InventoryLocation[]        @relation("inventoryLocationCustodian")
   laundryPrepared                  LaundryShipment[]          @relation("laundryPreparedBy")
   laundryDelivered                 LaundryShipment[]          @relation("laundryDeliveredBy")
   laundryReceived                  LaundryShipment[]          @relation("laundryReceivedBy")
@@ -978,6 +979,9 @@ model InventoryLocation {
   key          String?               @unique
   departmentId String?
   department   Department?           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  /// Custodio operativo opcional de la ubicación (por ejemplo, un carro). No cambia la propiedad del stock.
+  custodianUserId String?
+  custodianUser   User?                 @relation("inventoryLocationCustodian", fields: [custodianUserId], references: [id], onDelete: Restrict)
   name         String
   kind         InventoryLocationKind
   active       Boolean               @default(true)
@@ -991,6 +995,7 @@ model InventoryLocation {
   laundryDestinations LaundryShipment[] @relation("laundryDestination")
 
   @@index([departmentId, active])
+  @@index([custodianUserId, active])
   @@index([kind, active])
 }
 

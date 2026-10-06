@@ -101,16 +101,14 @@ export default async function IncidentsPage({
           Incidencias
         </h1>
         <p className="mt-0.5 text-sm text-slate-600">
-          Registros del libro con estructura ampliada: gravedad, impacto, acción inmediata, causa y
-          resolución.
+          Incidencias son asuntos de Novedades con estructura ampliada: gravedad, impacto, acción inmediata, causa y resolución.
         </p>
         <p className="mt-1 text-xs text-slate-500">
-          Vista especializada. Para ver las incidencias junto al resto de la operación,
-          abre el{' '}
-          <Link href="/libro?clase=entry&tipo=INCIDENCIA" className="font-medium text-petrol-600 hover:underline">
-            libro operativo
+          Esta vista filtra únicamente incidencias; no crea un módulo ni una copia distinta. Para priorizarlas junto con tareas, seguimientos y trabajos de área, abre{' '}
+          <Link href="/coordinacion" className="font-medium text-petrol-600 hover:underline">
+            Coordinación
           </Link>
-          .
+          . La novedad/incidencia original sigue siendo la fuente de verdad.
         </p>
       </header>
 

@@ -55,6 +55,20 @@ export type HelpTopic = {
 
 export const HELP_TOPICS: HelpTopic[] = [
   {
+    id: 'fuente-verdad-operativa',
+    question: '¿Dónde debo registrar cada información para no duplicarla?',
+    steps: [
+      'Registra el hecho una sola vez en su fuente: una novedad o incidencia en Novedades; dinero, garantías y arqueos en Caja; llaves en Llaves; existencias en Inventario; ejecución de limpieza en Housekeeping; horarios en Equipo y horarios.',
+      'Usa Coordinación para priorizar, asignar, confirmar recepción, dejar la siguiente acción y revisar resultados entre áreas. Coordinación enlaza al trabajo real: no crea una copia para darle visibilidad.',
+      'Usa Tareas y Seguimientos como vistas especializadas cuando necesites gestionar ese tipo concreto de objeto. Incidencia es un tipo de Novedad, no un módulo independiente.',
+      'Usa Avisos para enterarte o programar atención. Una notificación sólo avisa y una alerta/recordatorio llama la atención; leerlas no resuelve el asunto original.',
+      'Novedades / habitación, Mi jornada, Supervisión y Gerencia son superficies de contexto o control: abre siempre el registro enlazado cuando necesites modificar la información de origen.',
+    ],
+    caveat: 'No copies el mismo problema entre módulos. Si un registro antiguo no tiene área, responsable, habitación, plazo o siguiente acción, no inventes el dato: complétalo sólo si sigue abierto y puedes acreditarlo.',
+    route: '/coordinacion',
+    keywords: ['duplicado', 'duplicar', 'dónde', 'donde', 'fuente', 'origen', 'coordinación', 'tarea', 'seguimiento', 'incidencia', 'alerta', 'notificación', 'redundante'],
+  },
+  {
     id: 'equipo-horarios', question: '¿Cómo preparo y publico los horarios de un área?',
     steps: ['En Equipo y horarios selecciona el área. Registra colaboradores con un código único; vincula una cuenta sólo cuando corresponda a esa misma persona.', 'Configura las plantillas y colaciones, y define la cobertura mínima por función y franja. RD01, RD02 y RN01 están precargados sólo para Recepción.', 'Crea una malla de hasta 63 días. Pulsa las casillas para asignar turnos, libres, vacaciones o ausencias. También puedes cargar PDF, XLSX, CSV o TSV y revisar coincidencias antes de incorporarlas.', 'Revisa las brechas y publica con motivo. Las cuentas vinculadas y habilitadas reciben un aviso y pueden confirmar la recepción de su horario.'],
     caveat: 'Una malla no acredita asistencia ni modifica Mi turno o Caja. Los otros roles quedan deshabilitados por defecto; sus acciones y alcance por área se habilitan expresamente.', route: '/equipo', anyOf: ['schedule.manage', 'schedule.publish', 'schedule.catalog.manage'], keywords: ['equipo', 'horarios', 'malla', 'calendario', 'colaboradores', 'área', 'carga', 'glosa'],

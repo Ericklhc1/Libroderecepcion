@@ -92,12 +92,11 @@ export default async function FollowUpsPage({
             Asuntos que decidiste mantener en tu radar. El sistema conserva la trazabilidad y avisa si vence la revisión.
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Vista especializada. Para ver los seguimientos junto al resto de la operación,
-            abre el{' '}
-            <Link href="/libro?clase=followup" className="font-medium text-petrol-600 hover:underline">
-              libro operativo
+            Esta es una vista especializada de continuidad. Para priorizar responsables, recepción y siguientes acciones junto con el resto de la operación, abre{' '}
+            <Link href="/coordinacion" className="font-medium text-petrol-600 hover:underline">
+              Coordinación
             </Link>
-            .
+            . El seguimiento conserva su vínculo con el registro o tarea que lo originó.
           </p>
         </div>
         <div className="flex gap-2 no-print">

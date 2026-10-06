@@ -92,12 +92,11 @@ export default async function TasksPage({
             Lo que hay que hacer, con responsable y fecha límite.
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Vista especializada. Para ver las tareas junto al resto de la operación,
-            abre el{' '}
-            <Link href="/libro?clase=task" className="font-medium text-petrol-600 hover:underline">
-              libro operativo
+            Esta es una vista especializada del trabajo ejecutable. Para priorizar, asignar y revisar continuidad junto con el resto de la operación, abre{' '}
+            <Link href="/coordinacion" className="font-medium text-petrol-600 hover:underline">
+              Coordinación
             </Link>
-            .
+            . El detalle de cada tarea sigue siendo su fuente de verdad.
           </p>
         </div>
         <div className="flex gap-2">

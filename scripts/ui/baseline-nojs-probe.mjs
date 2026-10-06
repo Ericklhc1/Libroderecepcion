@@ -9,7 +9,7 @@ const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 const browser = await chromium.launch({ headless: true });
 try {
-  for (const path of ['/coordinacion', '/admin/housekeeping']) {
+  for (const path of ['/coordinacion', '/housekeeping']) {
     for (const javaScriptEnabled of [true, false]) {
       const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, javaScriptEnabled });
       try {

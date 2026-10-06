@@ -12,7 +12,7 @@ import { formatDateTime } from '@/lib/format';
 import { StatTile } from '@/components/ui/card';
 import {ListFilterBar} from '@/components/ui/list-controls';
 import { Button } from '@/components/ui/button';
-import { HousekeepingChangeForm } from '@/components/housekeeping-forms';
+import { HousekeepingChangeForm } from '@/components/admin/housekeeping-forms';
 import { ReleasePilotSourceForm, AcceptHandoverForm, NewWorkForm, WorkActionCluster, WorkActionForm, PrepareDayForm, RoutineForm, AvailabilityForm, HandoverForm, ReceiveHandoverForm, DelegationForm, RevokeDelegationForm, OrganizeLegacyForm } from '@/components/housekeeping/work-forms';
 import type { Prisma } from '@prisma/client';
 

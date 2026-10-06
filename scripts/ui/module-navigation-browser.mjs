@@ -111,7 +111,7 @@ try {
       // Every approved operation root remains reachable, including shortcut submenus.
       await trigger.click();
       await panel.getByRole('button', { name: 'Vistas de Novedades', exact: true }).click();
-      for (const href of ['/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/admin/housekeeping', '/custodia', '/seguimientos', '/tareas', '/historial']) {
+      for (const href of ['/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/housekeeping', '/custodia', '/seguimientos', '/tareas', '/historial']) {
         assert.ok(await panel.locator('a').evaluateAll((links, href) => links.some(link => link.getAttribute('href') === href), href), 'Missing destination: ' + href);
       }
       if (width === 1280) console.log('AROH_VISUAL_EVIDENCE ' + JSON.stringify({ name: 'modules-desktop', width, mime: 'image/jpeg', image: (await page.screenshot({ type: 'jpeg', quality: 40 })).toString('base64') }));
@@ -184,13 +184,13 @@ try {
     await context.addCookies([{ name: 'lor_session', value: fixture.users[key].token, domain: 'localhost', path: '/', httpOnly: true, sameSite: 'Lax' }]);
     await context.route('**/*', route => new URL(route.request().url()).hostname === 'localhost' ? route.continue() : route.abort());
     const page = await context.newPage();
-    await page.goto(base + (key === 'admin' ? '/libro' : '/admin/housekeeping'));
+    await page.goto(base + (key === 'admin' ? '/libro' : '/housekeeping'));
     const nativeSummary = page.locator('noscript details > summary');
     assert.equal(await nativeSummary.textContent(), 'Abrir módulos disponibles');
     await nativeSummary.click();
     const fallback = page.getByRole('navigation', { name: 'Módulos sin JavaScript', exact: true });
     await fallback.waitFor();
-    assert.ok(await fallback.locator('a[href="/admin/housekeeping"]').count() > 0);
+    assert.ok(await fallback.locator('a[href="/housekeeping"]').count() > 0);
     if (key === 'admin') {
       await fallback.locator('a[href="/caja"]').click();
       assert.equal(new URL(page.url()).pathname, '/caja');

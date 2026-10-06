@@ -577,6 +577,7 @@ model User {
   laundryPrepared                  LaundryShipment[]          @relation("laundryPreparedBy")
   laundryDelivered                 LaundryShipment[]          @relation("laundryDeliveredBy")
   laundryReceived                  LaundryShipment[]          @relation("laundryReceivedBy")
+  laundryReceipts                  LaundryReceipt[]            @relation("laundryReceiptBy")
   guaranteesDeleted               Guarantee[]                @relation("guaranteeDeletedBy")
   cashCounted                     CashCount[]                @relation("cashCountBy")
   cashTransfers                   CashTransfer[]             @relation("cashTransferBy")
@@ -1079,10 +1080,24 @@ model LaundryShipment {
   updatedAt             DateTime               @updatedAt
   lines                 LaundryShipmentLine[]
   movements             InventoryMovement[]
+  receipts              LaundryReceipt[]
 
   @@index([status, createdAt])
   @@index([originLocationId, createdAt])
   @@index([laundryLocationId, createdAt])
+}
+
+model LaundryReceipt {
+  id           String          @id @default(cuid())
+  requestKey   String          @unique
+  shipmentId   String
+  shipment     LaundryShipment @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  receivedById String
+  receivedBy   User            @relation("laundryReceiptBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  payload      Json
+  createdAt    DateTime        @default(now())
+
+  @@index([shipmentId, createdAt])
 }
 
 model LaundryShipmentLine {

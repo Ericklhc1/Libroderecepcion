@@ -40,22 +40,22 @@ const SECTIONS: Array<{
 }> = [
   {
     href: '/admin/usuarios',
-    title: 'Usuarios',
-    description: 'Crear, editar, desactivar y restablecer contraseñas.',
+    title: 'Personas y acceso',
+    description: 'Cuentas, acceso efectivo, áreas y estado global de cada persona.',
     permission: 'user.manage',
     icon: Users,
   },
   {
     href: '/admin/roles',
-    title: 'Roles y permisos',
-    description: 'Matriz de permisos por rol, aplicada en el servidor.',
+    title: 'Roles y reglas de acceso',
+    description: 'Permisos reales por rol y configuración guiada por actividad.',
     permission: 'role.manage',
     icon: ShieldCheck,
   },
   {
     href: '/admin/areas',
-    title: 'Áreas',
-    description: 'Departamentos operativos del hotel.',
+    title: 'Departamentos',
+    description: 'Estructura operativa configurable del hotel.',
     permission: 'system.configure',
     icon: Building2,
   },
@@ -126,22 +126,28 @@ const SECTIONS: Array<{
 
 const ADMIN_GROUPS = [
   {
+    id: 'departamentos',
+    title: 'Departamentos',
+    description: 'Estructura del hotel. Configurar aquí no ejecuta trabajo diario.',
+    hrefs: ['/admin/areas'],
+  },
+  {
     id: 'personas',
-    title: 'Personas, roles y estructura',
-    description: 'Usuarios, permisos y áreas del hotel.',
-    hrefs: ['/admin/usuarios', '/admin/roles', '/admin/areas'],
+    title: 'Personas y acceso',
+    description: 'Cuentas, roles, permisos, alcance y excepciones.',
+    hrefs: ['/admin/usuarios', '/admin/roles'],
   },
   {
-    id: 'sistema',
-    title: 'Sistema, Fronti y comunicaciones',
-    description: 'Configuración, IA, diagnóstico y correo.',
-    hrefs: ['/admin/fronti', '/admin/parametros', '/admin/diagnostico', '/admin/correo'],
+    id: 'reglas',
+    title: 'Reglas de trabajo',
+    description: 'Parámetros, comunicaciones y comportamiento de Fronti.',
+    hrefs: ['/admin/parametros', '/admin/correo', '/admin/fronti'],
   },
   {
-    id: 'control',
-    title: 'Control, trazabilidad y soporte',
-    description: 'Turnos, auditoría, soporte, eliminados y puesta en cero.',
-    hrefs: ['/admin/soporte', '/admin/turnos', '/admin/auditoria', '/admin/eliminados', '/admin/puesta-en-cero'],
+    id: 'estado',
+    title: 'Estado operativo',
+    description: 'Diagnóstico, soporte y trazabilidad del sistema.',
+    hrefs: ['/admin/diagnostico', '/admin/soporte', '/admin/turnos', '/admin/auditoria', '/admin/eliminados', '/admin/puesta-en-cero'],
   },
 ] as const;
 

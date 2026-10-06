@@ -60,7 +60,7 @@ try {
     assert.equal((await db.guarantee.findUniqueOrThrow({where:{id:returnGuarantee.id}})).state,'DEVUELTA');
     await page.getByRole('link',{name:'Volver al cierre',exact:true}).click();
     await page.waitForURL(url=>url.pathname===`/turno/entrega/${handover.id}`&&url.searchParams.get('paso')==='1');
-    await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();
+    await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),false,'Returning another guarantee must not restore an unsent physical validation');
     await page.goto(otherUrl);await quantity().waitFor();
     assert.equal(await quantity().inputValue(),'','Another handover must not inherit quantities');

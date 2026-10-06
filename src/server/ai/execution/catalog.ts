@@ -124,6 +124,8 @@ const handlers: Record<string, () => Promise<Handler>> = {
   reinstateKeyAction: async () => (await import('@/server/actions/rooms')).reinstateKeyAction,
   createKeyAction: async () => (await import('@/server/actions/rooms')).createKeyAction,
   reconcileKeysAction: async () => (await import('@/server/actions/rooms')).reconcileKeysAction,
+  startManagementWorkdayAction: async () => (await import('@/server/actions/management-workday')).startManagementWorkdayAction,
+  finishManagementWorkdayAction: async () => (await import('@/server/actions/management-workday')).finishManagementWorkdayAction,
   startSupervisionShiftAction: async () => (await import('@/server/actions/supervision-center')).startSupervisionShiftAction,
   completeSupervisionOpeningAction: async () => (await import('@/server/actions/supervision-center')).completeSupervisionOpeningAction,
   deliverSupervisionShiftAction: async () => (await import('@/server/actions/supervision-center')).deliverSupervisionShiftAction,

@@ -11,9 +11,9 @@ describe('Housekeeping privado: decisiones operativas', () => {
       expect(canAccessHousekeeping({ roleKey: role, permissions: ['housekeeping.view'] })).toBe(true);
       expect(canAccessHousekeeping({ roleKey: role, permissions: ['housekeeping.manage'] })).toBe(true);
     }
-    expect(visibleNavGroups([]).flatMap((g) => g.items).some((i) => i.href === '/admin/housekeeping')).toBe(false);
-    expect(visibleNavGroups(['housekeeping.view']).flatMap((g) => g.items).some((i) => i.href === '/admin/housekeeping')).toBe(true);
-    expect(visibleNavGroups(ALL_PERMISSIONS, true).flatMap((g) => g.items).filter((i) => i.href === '/admin/housekeeping')).toHaveLength(1);
+    expect(visibleNavGroups([]).flatMap((g) => g.items).some((i) => i.href === '/housekeeping')).toBe(false);
+    expect(visibleNavGroups(['housekeeping.view']).flatMap((g) => g.items).some((i) => i.href === '/housekeeping')).toBe(true);
+    expect(visibleNavGroups(ALL_PERMISSIONS, true).flatMap((g) => g.items).filter((i) => i.href === '/housekeeping')).toHaveLength(1);
   });
   it('confirmar recepción no resuelve ni inicia la tarea', () => {
     expect(housekeepingTransition('PENDIENTE', 'CONFIRMAR', false)).toBe('RECIBIDO');

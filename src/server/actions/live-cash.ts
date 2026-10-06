@@ -9,6 +9,7 @@ import {
   EntryStatus,
   EntryType,
   GuaranteeKind,
+  GuaranteeSettlementKind,
   GuaranteeState,
   NotificationType,
   Priority,
@@ -27,7 +28,7 @@ import {
   markCashMovementAsRegularization,
   saveLiveCashAudit,
 } from '@/server/services/live-cash';
-import { changeGuaranteeState } from '@/server/services/guarantees';
+import { changeGuaranteeState, settleGuarantee } from '@/server/services/guarantees';
 import { createGymPass, createParkingPass, voidGymPass } from '@/server/services/gym-pass';
 import { getCurrentShift, getMyOpenShift } from '@/server/services/shifts';
 import { assertReceptionCashGuaranteeReturn, assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
@@ -492,6 +493,10 @@ export async function markCashMovementAsRegularizationAction(
 
 const returnGuaranteeSchema = z.object({
   guaranteeId: z.string().min(1),
+  requestKey: z.string().uuid(),
+  amount: z.coerce.number().positive('El monto debe ser mayor que cero').finite(),
+  reason: z.string().trim().min(3, 'Indica el motivo de la devolución.').max(300),
+  notes: z.string().trim().max(1000).optional().transform((value) => value || null),
   confirmed: z
     .string()
     .optional()
@@ -511,11 +516,15 @@ export async function returnCashGuaranteeAction(
     await assertReceptionCashGuaranteeReturn(user);
     const input = parseOrThrow(returnGuaranteeSchema, formDataToObject(formData));
 
-    await changeGuaranteeState(user, {
+    const result = await settleGuarantee(user, {
       id: input.guaranteeId,
-      state: GuaranteeState.DEVUELTA,
+      requestKey: input.requestKey,
+      kind: GuaranteeSettlementKind.DEVOLUCION,
+      amount: input.amount,
+      reason: input.reason,
+      notes: input.notes,
     }, revisionFromForm(formData));
-    await tryDeliverOperationalMail(`guarantee-return:${input.guaranteeId}:DEVUELTA`);
+    await tryDeliverOperationalMail(result.eventKey);
 
     revalidatePath('/caja');
     revalidatePath('/turno');
@@ -523,13 +532,19 @@ export async function returnCashGuaranteeAction(
 
     return {
       ok: true as const,
-      message: 'Garantía devuelta. El efectivo salió de Caja y quedó registrado con trazabilidad.',
+      id: result.settlementId,
+      message:
+        result.remaining > 0
+          ? `Devolución registrada. Quedan ${result.remaining.toLocaleString('es-CL')} por resolver en la garantía.`
+          : 'Garantía devuelta por completo. El efectivo salió de Caja con trazabilidad.',
     };
   });
 }
 
 const chargeGuaranteeSchema = z.object({
   guaranteeId: z.string().min(1),
+  requestKey: z.string().uuid(),
+  amount: z.coerce.number().positive('El monto debe ser mayor que cero').finite(),
   concept: z
     .string()
     .trim()
@@ -540,7 +555,7 @@ const chargeGuaranteeSchema = z.object({
     .string()
     .optional()
     .transform((value) => value === '1' || value === 'true' || value === 'on')
-    .refine(Boolean, 'Confirma que la garantía no será devuelta y se aplicará al concepto indicado.'),
+    .refine(Boolean, 'Confirma el monto que se aplicará al concepto indicado.'),
 });
 
 export async function chargeCashGuaranteeAction(
@@ -549,48 +564,27 @@ export async function chargeCashGuaranteeAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('cash.guarantee_out');
+    await assertReceptionOperationPermission(user, 'cash.guarantee_out');
     const input = parseOrThrow(chargeGuaranteeSchema, formDataToObject(formData));
 
     const guarantee = await prisma.guarantee.findFirst({
       where: { id: input.guaranteeId, deletedAt: null },
-      select: {
-        id: true,
-        kind: true,
-        state: true,
-        amount: true,
-        appliedAmount: true,
-        currency: true,
-        roomNumber: true,
-      },
+      select: { id: true, kind: true, currency: true, roomNumber: true },
     });
     if (!guarantee) throw new RuleError('Esa garantía ya no existe.');
     if (guarantee.kind !== GuaranteeKind.EFECTIVO) {
       throw new RuleError('Este flujo de cobro corresponde únicamente a garantías en efectivo.');
     }
-    if (
-      guarantee.state !== GuaranteeState.VIGENTE &&
-      guarantee.state !== GuaranteeState.APLICADA_PARCIALMENTE
-    ) {
-      throw new RuleError('Esa garantía ya no está vigente para cobro.');
-    }
 
-    const total = Number(guarantee.amount);
-    const applied = Number(guarantee.appliedAmount ?? 0);
-    const penaltyAmount = Math.max(0, total - applied);
-    if (!(penaltyAmount > 0)) {
-      throw new RuleError('La garantía no tiene saldo pendiente para cobrar.');
-    }
-
-    await changeGuaranteeState(user, {
+    const result = await settleGuarantee(user, {
       id: guarantee.id,
-      state: GuaranteeState.MULTA,
-      penaltyAmount,
-      applicationReason: input.concept,
-      settlementConcept: input.concept,
+      requestKey: input.requestKey,
+      kind: GuaranteeSettlementKind.COBRO,
+      amount: input.amount,
+      reason: input.concept,
       notes: input.notes,
-      removeSettledCash: true,
     }, revisionFromForm(formData));
-    await tryDeliverOperationalMail(`guarantee-charge:${guarantee.id}:MULTA`);
+    await tryDeliverOperationalMail(result.eventKey);
 
     revalidatePath('/caja');
     revalidatePath('/turno');
@@ -600,9 +594,11 @@ export async function chargeCashGuaranteeAction(
 
     return {
       ok: true as const,
+      id: result.settlementId,
       message:
-        `Garantía cobrada: ${guarantee.currency} ${total.toLocaleString('es-CL')}` +
-        `${guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}. Queda en reportería y deja de formar parte de Caja viva.`,
+        result.remaining > 0
+          ? `Cobro parcial registrado por ${guarantee.currency} ${input.amount.toLocaleString('es-CL')}. Quedan ${guarantee.currency} ${result.remaining.toLocaleString('es-CL')} por resolver.`
+          : `Garantía resuelta con cobro por ${guarantee.currency} ${input.amount.toLocaleString('es-CL')}${guarantee.roomNumber ? ` · Hab. ${guarantee.roomNumber}` : ''}.`,
     };
   });
 }

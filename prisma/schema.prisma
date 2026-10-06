@@ -1044,6 +1044,7 @@ model InventoryMovement {
   createdById    String
   createdBy      User                  @relation("inventoryMovementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
   laundryShipmentId String?
+  laundryShipment   LaundryShipment? @relation(fields: [laundryShipmentId], references: [id], onDelete: Restrict)
   createdAt      DateTime              @default(now())
 
   @@index([itemId, createdAt])
@@ -1077,6 +1078,7 @@ model LaundryShipment {
   createdAt             DateTime               @default(now())
   updatedAt             DateTime               @updatedAt
   lines                 LaundryShipmentLine[]
+  movements             InventoryMovement[]
 
   @@index([status, createdAt])
   @@index([originLocationId, createdAt])

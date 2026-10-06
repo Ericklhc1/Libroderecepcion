@@ -3,6 +3,13 @@ import { describe, expect, it } from 'vitest';
 
 const page = readFileSync('src/app/(app)/housekeeping/page.tsx', 'utf8');
 describe('bandeja contextual de Housekeeping sobre contratos nativos', () => {
+  it('muestra material asignado desde Inventario sin copiar existencias', () => {
+    expect(page).toContain('listAssignedInventoryMaterial');
+    expect(page).toContain('Material asignado');
+    expect(page).toContain('Verlo no reserva ni descuenta existencias');
+    expect(page).toContain('href="/inventario"');
+  });
+
   it('conserva guardia y lector del área antes de proyectar filas', () => {
     expect(page).toContain('await requireHousekeepingPageUser()');
     expect(page).toContain('await getHkWorkday(user,');

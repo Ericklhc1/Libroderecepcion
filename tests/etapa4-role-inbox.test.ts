@@ -18,7 +18,7 @@ describe('AROH Simple · trabajo relevante por rol y excepción',()=>{
     expect(operationalLanding(manager)).toBe('/gerencia');
     expect(operationalLanding(supervisor)).toContain('/supervision');
     expect(operationalLanding(supervisor,'MANTENIMIENTO')).toBe('/coordinacion?vista=unreceived');
-    expect(operationalLanding(maid)).toBe('/admin/housekeeping');
+    expect(operationalLanding(maid)).toBe('/housekeeping');
     expect(operationalLanding({...manager,permissions:[]})).toBeNull();
   });
   it('buscar y filtrar abre el trabajo vinculado real sin duplicar la novedad sin responsable',async()=>{

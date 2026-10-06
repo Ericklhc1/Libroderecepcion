@@ -17,6 +17,10 @@ import { formatDateTime } from '@/lib/format';
 import { displayUsername } from '@/domain/username';
 import { credentialsRecipient } from '@/server/mail';
 import { ongoingOrFutureScheduleSlots } from '@/server/services/schedule-admin-safety';
+import { HOUSEKEEPING_ACCESS_PERMISSIONS } from '@/domain/housekeeping';
+import { hkHas } from '@/domain/housekeeping-work';
+import { isReceptionDeskRole, type PermissionKey } from '@/lib/permissions';
+import { subjectDistributionEnabled } from '@/server/services/subject-distribution-gate';
 
 export const metadata = { title: 'Usuarios' };
 export const dynamic = 'force-dynamic';
@@ -31,19 +35,27 @@ export default async function UsersPage({
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const estado = typeof params.estado === 'string' ? params.estado : '';
   const rol = typeof params.rol === 'string' ? params.rol : '';
+  const now = new Date();
+  const distributionEnabled = subjectDistributionEnabled();
 
   // La casilla de credenciales ahora sale de la base, así que entra en el
   // mismo Promise.all en vez de encadenar una espera más.
   const [users, roles, departments, credentialsMailTo] = await Promise.all([
     prisma.user.findMany({
       include: {
-        role: true,
-        department: { select: { name: true } },
+        role: { include: { permissions: { include: { permission: true } } } },
+        department: { select: { id: true, name: true, active: true } },
         scheduleCollaborator: { select: {
           active: true,
           memberships: { select: { active: true, department: { select: { id: true, name: true, active: true } } }, orderBy: { department: { name: 'asc' } } },
           _count: { select: { slots: { where: ongoingOrFutureScheduleSlots() } } },
         } },
+        scheduleAreaGrants: { include: { department: { select: { id: true, name: true, active: true } } } },
+        hkDelegationsReceived: {
+          where: { revokedAt: null, endsAt: { gt: now } },
+          include: { department: { select: { id: true, name: true, active: true } }, grantedBy: { select: { name: true, active: true, deletedAt: true } } },
+          orderBy: { endsAt: 'asc' },
+        },
       },
       orderBy: [{ deletedAt: 'asc' }, { role: { level: 'desc' } }, { name: 'asc' }],
     }),
@@ -67,6 +79,8 @@ export default async function UsersPage({
       user.role.name,
       user.department?.name,
       ...(user.scheduleCollaborator?.memberships.map((membership) => membership.department.name) ?? []),
+      ...user.scheduleAreaGrants.map((grant) => grant.department.name),
+      ...user.hkDelegationsReceived.map((delegation) => delegation.department.name),
       user.email,
       user.phone,
     ]
@@ -131,7 +145,37 @@ export default async function UsersPage({
         ) : (
           <CardScroll>
             <ul className="divide-y divide-slate-100">
-            {visibleUsers.map((user) => (
+            {visibleUsers.map((user) => {
+              const permissions = user.role.permissions.map((row) => row.permission.key as PermissionKey);
+              const access = { roleKey: user.role.key, permissions };
+              const activeMemberships = user.scheduleCollaborator?.active
+                ? user.scheduleCollaborator.memberships.filter((membership) => membership.active && membership.department.active)
+                : [];
+              const workAreas = Array.from(new Map([
+                ...(user.department?.active ? [[user.department.id, user.department.name] as const] : []),
+                ...activeMemberships.map((membership) => [membership.department.id, membership.department.name] as const),
+              ]).values());
+              const scheduleScope = user.role.key === 'ADMINISTRADOR_SISTEMA' || permissions.includes('schedule.configure')
+                ? ['Todas las áreas activas']
+                : Array.from(new Set([
+                    ...(user.department?.active ? [user.department.name] : []),
+                    ...user.scheduleAreaGrants.filter((grant) => grant.department.active).map((grant) => grant.department.name),
+                  ]));
+              const activeDelegations = user.hkDelegationsReceived.filter((delegation) =>
+                delegation.startsAt <= now && delegation.grantedBy.active && !delegation.grantedBy.deletedAt && delegation.department.active,
+              );
+              const futureDelegations = user.hkDelegationsReceived.filter((delegation) => delegation.startsAt > now);
+              const housekeepingVisible = HOUSEKEEPING_ACCESS_PERMISSIONS.some((permission) => hkHas(access, permission));
+              const canRequestHousekeeping = hkHas(access, 'housekeeping.request') || hkHas(access, 'housekeeping.assign');
+              const canWorkHousekeeping = hkHas(access, 'housekeeping.work');
+              const canInspectHousekeeping = hkHas(access, 'housekeeping.inspect') ||
+                activeDelegations.some((delegation) => delegation.permission === 'housekeeping.inspect');
+              const assignmentReady = user.active && !user.deletedAt && user.role.operational &&
+                !user.hiddenFromSelectors && workAreas.length > 0;
+              const guaranteePermissions = permissions.filter((permission) =>
+                ['cash.view', 'cash.guarantee_in', 'cash.guarantee_out'].includes(permission),
+              );
+              return (
               <li
                 key={user.id}
                 className={`flex flex-wrap items-start justify-between gap-3 px-4 py-3 ${
@@ -178,6 +222,50 @@ export default async function UsersPage({
                       Motivo de eliminación: {user.deletionReason}
                     </p>
                   ) : null}
+                  <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs">
+                    <summary className="cursor-pointer font-semibold text-petrol-900">Acceso efectivo</summary>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <section>
+                        <h3 className="font-semibold text-slate-700">Qué puede hacer</h3>
+                        <ul className="mt-1 space-y-1 text-slate-600">
+                          <li>Housekeeping: {housekeepingVisible ? 'módulo visible por rol' : 'sin permisos del módulo'}.</li>
+                          <li>Solicitar atención: {canRequestHousekeeping ? 'sí' : 'falta housekeeping.request'}.</li>
+                          <li>Ejecutar trabajo: {canWorkHousekeeping ? 'sí, si está asignado' : 'falta housekeeping.work'}.</li>
+                          <li>Inspeccionar: {canInspectHousekeeping ? 'sí dentro del alcance; nunca el propio trabajo' : 'falta permiso o cobertura vigente'}.</li>
+                          <li>Garantías: {guaranteePermissions.length === 3 ? 'consulta, ingreso y devolución habilitados' : `configuración parcial (${guaranteePermissions.length}/3)`}.</li>
+                        </ul>
+                      </section>
+                      <section>
+                        <h3 className="font-semibold text-slate-700">Dónde y por qué</h3>
+                        <p className="mt-1 text-slate-600">Área principal / pertenencias de trabajo: {workAreas.join(', ') || 'ninguna'}.</p>
+                        <p className="mt-1 text-slate-600">Alcance adicional de horarios: {scheduleScope.join(', ') || 'ninguno'}.</p>
+                        <p className="mt-1 text-slate-600">Permisos heredados del rol: {user.role.name} ({permissions.length}).</p>
+                      </section>
+                      <section>
+                        <h3 className="font-semibold text-slate-700">Cuándo</h3>
+                        <p className="mt-1 text-slate-600">
+                          Coberturas HK vigentes: {activeDelegations.length
+                            ? activeDelegations.map((delegation) => `${delegation.department.name}: ${delegation.permission} hasta ${formatDateTime(delegation.endsAt)} · ${delegation.reason}`).join(' / ')
+                            : 'ninguna'}.
+                        </p>
+                        {futureDelegations.length ? <p className="mt-1 text-slate-600">Coberturas futuras: {futureDelegations.length}; todavía no conceden acceso.</p> : null}
+                        {isReceptionDeskRole(user.role.key) ? (
+                          <p className="mt-1 text-slate-600">Recepción: la jornada, relevo y cierre se validan en el servidor al ejecutar; esta previsualización no suplanta una sesión real.</p>
+                        ) : null}
+                      </section>
+                      <section>
+                        <h3 className="font-semibold text-slate-700">Qué condición falta</h3>
+                        <ul className="mt-1 space-y-1 text-slate-600">
+                          {!user.active || user.deletedAt ? <li>La cuenta no está operativa.</li> : null}
+                          {!user.role.operational ? <li>El rol está marcado fuera de operación.</li> : null}
+                          {user.hiddenFromSelectors ? <li>La cuenta está oculta: no es elegible para nuevas asignaciones.</li> : null}
+                          {canWorkHousekeeping && !workAreas.length ? <li>Falta área principal o pertenencia activa para recibir trabajo de Housekeeping.</li> : null}
+                          {canWorkHousekeeping && workAreas.length > 0 && !assignmentReady ? <li>La configuración existe, pero la cuenta no cumple una condición de elegibilidad global.</li> : null}
+                          <li>Distribución simultánea entre áreas: {distributionEnabled ? 'habilitada globalmente' : 'desactivada globalmente; la atención nativa sigue disponible'}.</li>
+                        </ul>
+                      </section>
+                    </div>
+                  </details>
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 no-print">
@@ -210,7 +298,8 @@ export default async function UsersPage({
                   )}
                 </div>
               </li>
-            ))}
+              );
+            })}
             </ul>
           </CardScroll>
         )}

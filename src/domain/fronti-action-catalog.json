@@ -437,6 +437,10 @@
     "label": "Registrar devolución de garantía",
     "fields": [
       "guaranteeId",
+      "requestKey",
+      "amount",
+      "reason",
+      "notes",
       "confirmed"
     ],
     "permission": "cash.guarantee_out",
@@ -449,11 +453,13 @@
     "label": "Aplicar garantía",
     "fields": [
       "guaranteeId",
+      "requestKey",
+      "amount",
       "concept",
       "notes",
       "confirmed"
     ],
-    "permission": "",
+    "permission": "cash.guarantee_out",
     "risk": "high",
     "physical": true
   },

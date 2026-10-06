@@ -296,6 +296,48 @@ enum GuaranteeKind {
   OTRO
 }
 
+enum GuaranteeSettlementKind {
+  DEVOLUCION
+  COBRO
+}
+
+enum InventoryBehavior {
+  CONSUMIBLE
+  PRESTAMO
+  LAVABLE
+  ACTIVO
+}
+
+enum InventoryMovementKind {
+  ENTRADA
+  TRASLADO
+  DEVOLUCION
+  USO
+  REPARACION
+  REPROCESO
+  BAJA
+  CORRECCION
+}
+
+enum InventoryLocationKind {
+  BODEGA
+  CARRO
+  AREA
+  HABITACION
+  LAVANDERIA
+  REPARACION
+  OTRO
+}
+
+enum LaundryShipmentStatus {
+  PREPARADO
+  ENTREGADO
+  PARCIAL
+  RECIBIDO_DIFERENCIAS
+  RECIBIDO
+  CERRADO
+}
+
 enum ReservationStatus {
   PENDIENTE
   CONFIRMADA
@@ -527,6 +569,16 @@ model User {
   batchesApplied                  PmsImportBatch[]           @relation("batchAppliedBy")
   guaranteesCreated               Guarantee[]                @relation("guaranteeCreatedBy")
   guaranteesReturned              Guarantee[]                @relation("guaranteeReturnedBy")
+  guaranteeSettlements            GuaranteeSettlement[]      @relation("guaranteeSettlementCreatedBy")
+  inventoryCategoriesCreated       InventoryCategory[]        @relation("inventoryCategoryCreatedBy")
+  inventoryItemsCreated            InventoryItem[]            @relation("inventoryItemCreatedBy")
+  inventoryMovementsCreated        InventoryMovement[]        @relation("inventoryMovementCreatedBy")
+  inventoryAssetsCustody           InventoryAsset[]           @relation("inventoryAssetCustodian")
+  inventoryLocationsCustody        InventoryLocation[]        @relation("inventoryLocationCustodian")
+  laundryPrepared                  LaundryShipment[]          @relation("laundryPreparedBy")
+  laundryDelivered                 LaundryShipment[]          @relation("laundryDeliveredBy")
+  laundryReceived                  LaundryShipment[]          @relation("laundryReceivedBy")
+  laundryReceipts                  LaundryReceipt[]            @relation("laundryReceiptBy")
   guaranteesDeleted               Guarantee[]                @relation("guaranteeDeletedBy")
   cashCounted                     CashCount[]                @relation("cashCountBy")
   cashTransfers                   CashTransfer[]             @relation("cashTransferBy")
@@ -677,6 +729,8 @@ model Department {
   entries OperationalEntry[]
   tasks   Task[]
   alerts  Alert[]
+  inventoryCategories InventoryCategory[]
+  inventoryLocations InventoryLocation[]
 }
 
 // Personnel planning is independent of Reception Shift / cash custody.
@@ -865,6 +919,208 @@ model ScheduleHoliday {
   active Boolean  @default(true)
 
   @@index([date, active])
+}
+
+// ========================== INVENTARIO Y LAVANDERÍA ==========================
+
+model InventoryCategory {
+  id           String     @id @default(cuid())
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  name         String
+  active       Boolean    @default(true)
+  archivedAt   DateTime?
+  createdById  String
+  createdBy    User       @relation("inventoryCategoryCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  items        InventoryItem[]
+
+  @@unique([departmentId, name])
+  @@index([departmentId, active])
+}
+
+model InventoryItem {
+  id                  String            @id @default(cuid())
+  humanId             Int               @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
+  categoryId          String
+  category            InventoryCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  code                String            @unique
+  name                String
+  behavior            InventoryBehavior
+  unit                String            @default("pieza")
+  presentation        String?
+  trackIndividually   Boolean           @default(false)
+  active              Boolean           @default(true)
+  archivedAt          DateTime?
+  cost                Decimal?          @db.Decimal(12, 2)
+  costCurrency        String?           @db.VarChar(3)
+  replacementEstimate Decimal?          @db.Decimal(12, 2)
+  replacementCurrency String?           @db.VarChar(3)
+  replacementSource   String?
+  replacementDate     DateTime?         @db.Date
+  accountingValue     Decimal?          @db.Decimal(12, 2)
+  accountingCurrency  String?           @db.VarChar(3)
+  createdById         String
+  createdBy           User              @relation("inventoryItemCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  balances            InventoryBalance[]
+  movements           InventoryMovement[]
+  assets              InventoryAsset[]
+  laundryLines        LaundryShipmentLine[]
+
+  @@index([categoryId, active])
+  @@index([behavior, active])
+}
+
+model InventoryLocation {
+  id           String                @id @default(cuid())
+  key          String?               @unique
+  departmentId String?
+  department   Department?           @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  /// Custodio operativo opcional de la ubicación (por ejemplo, un carro). No cambia la propiedad del stock.
+  custodianUserId String?
+  custodianUser   User?                 @relation("inventoryLocationCustodian", fields: [custodianUserId], references: [id], onDelete: Restrict)
+  name         String
+  kind         InventoryLocationKind
+  active       Boolean               @default(true)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  balances     InventoryBalance[]
+  assets       InventoryAsset[]
+  movementsFrom InventoryMovement[]  @relation("inventoryMovementFrom")
+  movementsTo   InventoryMovement[]  @relation("inventoryMovementTo")
+  laundryOrigins LaundryShipment[]   @relation("laundryOrigin")
+  laundryDestinations LaundryShipment[] @relation("laundryDestination")
+
+  @@index([departmentId, active])
+  @@index([custodianUserId, active])
+  @@index([kind, active])
+}
+
+model InventoryBalance {
+  itemId     String
+  item       InventoryItem     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  locationId String
+  location   InventoryLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  quantity   Decimal           @default(0) @db.Decimal(12, 3)
+  updatedAt  DateTime          @updatedAt
+
+  @@id([itemId, locationId])
+  @@index([locationId])
+}
+
+model InventoryAsset {
+  id                String            @id @default(cuid())
+  itemId            String
+  item              InventoryItem     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  internalCode      String            @unique
+  currentLocationId String?
+  currentLocation   InventoryLocation? @relation(fields: [currentLocationId], references: [id], onDelete: Restrict)
+  custodianUserId   String?
+  custodianUser     User?             @relation("inventoryAssetCustodian", fields: [custodianUserId], references: [id], onDelete: Restrict)
+  condition         String            @default("OPERATIVO")
+  active            Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  movements         InventoryMovement[]
+
+  @@index([itemId, active])
+  @@index([currentLocationId])
+  @@index([custodianUserId])
+}
+
+model InventoryMovement {
+  id             String                @id @default(cuid())
+  humanId        Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
+  requestKey     String                @unique
+  itemId         String
+  item           InventoryItem         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  assetId        String?
+  asset          InventoryAsset?       @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  kind           InventoryMovementKind
+  quantity       Decimal               @db.Decimal(12, 3)
+  fromLocationId String?
+  fromLocation   InventoryLocation?    @relation("inventoryMovementFrom", fields: [fromLocationId], references: [id], onDelete: Restrict)
+  toLocationId   String?
+  toLocation     InventoryLocation?    @relation("inventoryMovementTo", fields: [toLocationId], references: [id], onDelete: Restrict)
+  reason         String
+  notes          String?
+  createdById    String
+  createdBy      User                  @relation("inventoryMovementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  laundryShipmentId String?
+  laundryShipment   LaundryShipment? @relation(fields: [laundryShipmentId], references: [id], onDelete: Restrict)
+  createdAt      DateTime              @default(now())
+
+  @@index([itemId, createdAt])
+  @@index([fromLocationId, createdAt])
+  @@index([toLocationId, createdAt])
+  @@index([laundryShipmentId])
+}
+
+model LaundryShipment {
+  id                    String                @id @default(cuid())
+  humanId               Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
+  folio                 Int                   @unique @default(autoincrement())
+  requestKey            String                @unique
+  status                LaundryShipmentStatus @default(PREPARADO)
+  originLocationId      String
+  originLocation        InventoryLocation     @relation("laundryOrigin", fields: [originLocationId], references: [id], onDelete: Restrict)
+  laundryLocationId     String
+  laundryLocation       InventoryLocation     @relation("laundryDestination", fields: [laundryLocationId], references: [id], onDelete: Restrict)
+  preparedById          String
+  preparedBy            User                  @relation("laundryPreparedBy", fields: [preparedById], references: [id], onDelete: Restrict)
+  preparedAt            DateTime              @default(now())
+  deliveredById         String?
+  deliveredBy           User?                 @relation("laundryDeliveredBy", fields: [deliveredById], references: [id], onDelete: Restrict)
+  deliveredAt           DateTime?
+  receivedById          String?
+  receivedBy            User?                 @relation("laundryReceivedBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  receivedAt            DateTime?
+  differenceEntryId     String?                @unique
+  differenceEntry       OperationalEntry?      @relation("laundryDifference", fields: [differenceEntryId], references: [id], onDelete: Restrict)
+  notes                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  lines                 LaundryShipmentLine[]
+  movements             InventoryMovement[]
+  receipts              LaundryReceipt[]
+
+  @@index([status, createdAt])
+  @@index([originLocationId, createdAt])
+  @@index([laundryLocationId, createdAt])
+}
+
+model LaundryReceipt {
+  id           String          @id @default(cuid())
+  requestKey   String          @unique
+  shipmentId   String
+  shipment     LaundryShipment @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  receivedById String
+  receivedBy   User            @relation("laundryReceiptBy", fields: [receivedById], references: [id], onDelete: Restrict)
+  payload      Json
+  createdAt    DateTime        @default(now())
+
+  @@index([shipmentId, createdAt])
+}
+
+model LaundryShipmentLine {
+  id                String          @id @default(cuid())
+  shipmentId        String
+  shipment          LaundryShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  itemId            String
+  item              InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  sentQuantity      Int
+  receivedQuantity  Int             @default(0)
+  conformingQuantity Int            @default(0)
+  reprocessQuantity Int             @default(0)
+  weightSentKg      Decimal?        @db.Decimal(10, 3)
+  weightReceivedKg  Decimal?        @db.Decimal(10, 3)
+  notes             String?
+
+  @@unique([shipmentId, itemId])
+  @@index([itemId])
 }
 
 // ================================= TURNOS =================================
@@ -1203,6 +1459,7 @@ model OperationalEntry {
   checklistItems ChecklistRunItem[]
   /// El folio de gimnasio nace como registro del libro: uno por registro.
   gymPass        GymPass?
+  laundryDifferenceShipment LaundryShipment? @relation("laundryDifference")
 
   @@index([type, status])
   @@index([status, priority])
@@ -2464,8 +2721,10 @@ model Guarantee {
   /// Monto efectivamente aplicado al consumo o a daños.
   appliedAmount     Decimal?  @db.Decimal(12, 2)
   applicationReason String?
-  /// Multa cobrada, distinta de lo aplicado al consumo.
+  /// Multa/cobro acumulado, distinta de lo aplicado al consumo.
   penaltyAmount     Decimal?  @db.Decimal(12, 2)
+  /// Devoluciones parciales o totales acumuladas. Los históricos anteriores quedan en cero.
+  returnedAmount    Decimal   @default(0) @db.Decimal(12, 2)
   returnedAt        DateTime?
   returnedById      String?
   returnedBy        User?     @relation("guaranteeReturnedBy", fields: [returnedById], references: [id])
@@ -2487,6 +2746,7 @@ model Guarantee {
   alerts        Alert[]
   fines         Fine[]
   cashMovements CashMovement[]
+  settlements   GuaranteeSettlement[]
 
   @@index([reservationReferenceId])
   @@index([stayId])
@@ -2494,6 +2754,26 @@ model Guarantee {
   @@index([state])
   @@index([dueAt])
   @@index([deletedAt])
+}
+
+model GuaranteeSettlement {
+  id             String                  @id @default(cuid())
+  requestKey     String                  @unique
+  guaranteeId    String
+  guarantee      Guarantee               @relation(fields: [guaranteeId], references: [id], onDelete: Restrict)
+  kind           GuaranteeSettlementKind
+  amount         Decimal                 @db.Decimal(12, 2)
+  currency       String                  @db.VarChar(3)
+  reason         String
+  notes          String?
+  createdById    String
+  createdBy      User                    @relation("guaranteeSettlementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  shiftId        String?
+  cashMovementId String?                 @unique
+  createdAt      DateTime                @default(now())
+
+  @@index([guaranteeId, createdAt])
+  @@index([createdById, createdAt])
 }
 
 // ============================ CAJA Y ELEMENTOS =============================

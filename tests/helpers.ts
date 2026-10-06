@@ -48,6 +48,15 @@ export async function resetOperationalData() {
     prisma.housekeepingEvent.deleteMany(),
     prisma.housekeepingRequest.deleteMany(),
     prisma.housekeepingRoutine.deleteMany(),
+    prisma.inventoryMovement.deleteMany(),
+    prisma.laundryReceipt.deleteMany(),
+    prisma.laundryShipmentLine.deleteMany(),
+    prisma.laundryShipment.deleteMany(),
+    prisma.inventoryAsset.deleteMany(),
+    prisma.inventoryBalance.deleteMany(),
+    prisma.inventoryItem.deleteMany(),
+    prisma.inventoryCategory.deleteMany(),
+    prisma.inventoryLocation.deleteMany(),
     prisma.operationalMetricEvent.deleteMany(),
     prisma.keyStaffLoanItem.deleteMany(),
     prisma.keyStaffLoan.deleteMany(),
@@ -92,6 +101,7 @@ export async function resetOperationalData() {
     prisma.taskAssignment.deleteMany(),
     prisma.followUp.deleteMany(),
     prisma.task.deleteMany(),
+    prisma.guaranteeSettlement.deleteMany(),
     prisma.cashMovement.deleteMany(),
     prisma.cashAudit.deleteMany(),
     prisma.gymPass.deleteMany(),
@@ -137,12 +147,22 @@ export async function resetOperationalData() {
 export async function resetRoomsAndKeys() {
   await prisma.housekeepingRequest.deleteMany();
   await prisma.housekeepingRoutine.deleteMany();
+  await prisma.inventoryMovement.deleteMany();
+  await prisma.laundryReceipt.deleteMany();
+  await prisma.laundryShipmentLine.deleteMany();
+  await prisma.laundryShipment.deleteMany();
+  await prisma.inventoryAsset.deleteMany();
+  await prisma.inventoryBalance.deleteMany();
+  await prisma.inventoryItem.deleteMany();
+  await prisma.inventoryCategory.deleteMany();
+  await prisma.inventoryLocation.deleteMany();
   await prisma.keyStaffLoanItem.deleteMany();
   await prisma.keyStaffLoan.deleteMany();
   await prisma.supervisorKeyMovement.deleteMany();
   await prisma.supervisorKey.deleteMany();
   await prisma.keyInventoryCount.deleteMany();
   await prisma.fine.deleteMany();
+  await prisma.guaranteeSettlement.deleteMany();
   await prisma.cashMovement.deleteMany();
   await prisma.gymPass.deleteMany();
   await prisma.keyMovement.deleteMany();

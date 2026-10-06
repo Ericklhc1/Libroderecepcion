@@ -70,8 +70,8 @@ try {
       assert.ok(await focused(panel.locator('a').first()));
       await page.keyboard.press('End'); assert.ok(await focused(panel.locator('a').last()));
       await page.keyboard.press('Home'); assert.ok(await focused(panel.locator('a').first()));
-      assert.equal(await panel.locator('a').count(),8);
-      assert.ok((await panel.boundingBox()).height < 480, 'Root catalogue is compact');
+      assert.equal(await panel.locator('a').count(),9);
+      assert.ok((await panel.boundingBox()).height < 560, 'Root catalogue is compact with the current nine-module inventory');
     } else {
       assert.equal(await page.locator('[data-module-navigation="mobile"] button').count(),0);
       assert.ok(await focused(panel.getByRole('button',{name:'Cerrar',exact:true})));
@@ -114,7 +114,7 @@ try {
     await context.close();
   }
   const page = await browser.newPage({viewport:{width:390,height:900}});
-  await page.goto(base + '/admin/housekeeping?housekeeping=1');
+  await page.goto(base + '/housekeeping?housekeeping=1');
   await page.getByRole('button',{name:'Más',exact:true}).click();
   const panel = page.getByRole('dialog',{name:'Todo el menú'});
   await panel.getByRole('link',{name:'Equipo y horarios',exact:true}).waitFor();

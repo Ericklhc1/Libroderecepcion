@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {SubjectActions} from '@/components/operational/subject-surface';
 import Link from 'next/link';
 import { Banknote, Download, PlusCircle, Printer, ShieldCheck, Ticket } from 'lucide-react';
@@ -430,6 +431,31 @@ export default async function LiveCashPage({
                               Vigencia / fecha objetivo: {formatDateTime(guarantee.dueAt)}
                             </p>
                           ) : null}
+                          <p className="mt-1 text-xs text-slate-600">
+                            Original {amount(guarantee.currency, guarantee.originalAmount)}
+                            {' · '}aplicado/cobrado {amount(guarantee.currency, guarantee.appliedAmount + guarantee.penaltyAmount)}
+                            {' · '}devuelto {amount(guarantee.currency, guarantee.returnedAmount)}
+                            {' · '}saldo {amount(guarantee.currency, guarantee.amount)}
+                          </p>
+                          {guarantee.settlements.length ? (
+                            <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                              <summary className="cursor-pointer text-xs font-semibold text-petrol-800">
+                                Historial de liquidaciones ({guarantee.settlements.length})
+                              </summary>
+                              <ul className="mt-2 space-y-2 text-xs text-slate-600">
+                                {guarantee.settlements.map((settlement) => (
+                                  <li key={settlement.id} className="rounded-md bg-white px-2 py-2 ring-1 ring-slate-200">
+                                    <p className="font-medium text-petrol-900">
+                                      {settlement.kind === 'DEVOLUCION' ? 'Devolución' : 'Cobro'} · {amount(settlement.currency, settlement.amount)}
+                                    </p>
+                                    <p>{settlement.reason}</p>
+                                    <p className="text-slate-500">{settlement.createdByName} · {formatDateTime(settlement.createdAt)}</p>
+                                    {settlement.notes ? <p className="mt-1 whitespace-pre-wrap">{settlement.notes}</p> : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          ) : null}
                         </div>
                         <div className="flex flex-col items-end gap-2 text-right">
                           <div>
@@ -456,6 +482,7 @@ export default async function LiveCashPage({
                               {canChargeGuarantee ? (
                                 <ChargeCashGuaranteeForm
                                   guaranteeId={guarantee.id}
+                                  requestKey={randomUUID()}
                                   humanId={guarantee.humanId}
                                   reference={guarantee.reference ?? guarantee.guestName}
                                   currency={guarantee.currency}
@@ -467,6 +494,7 @@ export default async function LiveCashPage({
                               {canReturnGuarantee ? (
                                 <ReturnCashGuaranteeForm
                                   guaranteeId={guarantee.id}
+                                  requestKey={randomUUID()}
                                   reference={guarantee.reference ?? guarantee.guestName}
                                   currency={guarantee.currency}
                                   amount={guarantee.amount}

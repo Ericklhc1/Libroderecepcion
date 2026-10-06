@@ -20,6 +20,7 @@ import { scheduleShiftAction } from '@/server/actions/shifts';
 import type { Option } from '@/server/services/options';
 import { suggestUsername } from '@/domain/username';
 import { CASH_APPROVAL_CAPABLE_PERMISSIONS } from '@/lib/permissions';
+import { WORK_ACTIVITY_PRESETS } from '@/domain/work-activities';
 
 export function RunMaintenanceForm() {
   return (
@@ -281,6 +282,7 @@ export function RolePermissionsForm({
   granted,
   approvalRequired,
   locked,
+  affectedUsers,
 }: {
   roleId: string;
   roleName: string;
@@ -288,10 +290,98 @@ export function RolePermissionsForm({
   granted: string[];
   approvalRequired: string[];
   locked: boolean;
+  affectedUsers: number;
 }) {
+  const [selectedPermissions, setSelectedPermissions] = useState(() => new Set(granted));
+  const [selectedApprovals, setSelectedApprovals] = useState(() => new Set(approvalRequired));
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const preview = WORK_ACTIVITY_PRESETS.find((activity) => activity.key === previewKey) ?? null;
+  const missing = preview?.permissions.filter((permission) => !selectedPermissions.has(permission)) ?? [];
+
+  function setPermission(key: string, checked: boolean) {
+    setSelectedPermissions((current) => {
+      const next = new Set(current);
+      if (checked) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+    if (!checked) {
+      setSelectedApprovals((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
+  function addPreparedActivity() {
+    if (!preview?.available) return;
+    setSelectedPermissions((current) => {
+      const next = new Set(current);
+      for (const permission of preview.permissions) next.add(permission);
+      return next;
+    });
+  }
+
   return (
     <ActionForm action={updateRolePermissionsAction}>
       <input type="hidden" name="roleId" value={roleId} />
+      {!locked ? (
+        <section className="mb-5 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3" aria-label="Configurar por actividad">
+          <div>
+            <h3 className="text-sm font-semibold text-petrol-900">Configurar por actividad</h3>
+            <p className="mt-1 text-xs text-slate-600">
+              Estas ayudas sólo preparan permisos del rol. No guardan nada hasta usar «Guardar permisos»
+              y no sustituyen alcance por área, coberturas ni condiciones del proceso.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {WORK_ACTIVITY_PRESETS.map((activity) => (
+              <button
+                key={activity.key}
+                type="button"
+                onClick={() => setPreviewKey(activity.key)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-xs font-medium text-petrol-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-petrol-600"
+              >
+                {activity.label}{activity.available ? '' : ' · pendiente'}
+              </button>
+            ))}
+          </div>
+          {preview ? (
+            <div className="rounded-lg border border-petrol-100 bg-white p-3 text-xs">
+              <p className="font-semibold text-petrol-900">{preview.label}</p>
+              <p className="mt-1 text-slate-600">{preview.description}</p>
+              <p className="mt-2 text-slate-700">
+                <strong>Personas afectadas al guardar:</strong> {affectedUsers} cuenta(s) que usan el rol {roleName}.
+              </p>
+              <p className="mt-1 text-slate-700">
+                <strong>Cambio concreto:</strong>{' '}
+                {preview.available
+                  ? missing.length
+                    ? `añadir ${missing.join(', ')} a la propuesta actual.`
+                    : 'los permisos necesarios ya están seleccionados.'
+                  : 'ninguno; esta actividad todavía no tiene un permiso canónico que pueda habilitarse.'}
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-4 text-slate-600">
+                {preview.dependencies.map((dependency) => <li key={dependency}>{dependency}</li>)}
+              </ul>
+              {preview.available && missing.length ? (
+                <button
+                  type="button"
+                  onClick={addPreparedActivity}
+                  className="mt-3 rounded-lg bg-petrol-800 px-3 py-2 font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-petrol-600"
+                >
+                  Añadir a la propuesta
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <p className="text-xs text-slate-500">
+            Una excepción individual no modifica esta plantilla global. Usa el alcance de área existente
+            o una cobertura temporal de Housekeeping cuando corresponda.
+          </p>
+        </section>
+      ) : null}
       <div className="space-y-4">
         {groups.map((group) => (
           <fieldset key={group.group}>
@@ -303,6 +393,7 @@ export function RolePermissionsForm({
                 const canRequireApproval = CASH_APPROVAL_CAPABLE_PERMISSIONS.includes(
                   permission.key as (typeof CASH_APPROVAL_CAPABLE_PERMISSIONS)[number],
                 );
+                const checked = selectedPermissions.has(permission.key);
                 return (
                   <div
                     key={permission.key}
@@ -313,7 +404,8 @@ export function RolePermissionsForm({
                         type="checkbox"
                         name="permissions"
                         value={permission.key}
-                        defaultChecked={granted.includes(permission.key)}
+                        checked={checked}
+                        onChange={(event) => setPermission(permission.key, event.target.checked)}
                         className="mt-0.5 h-4 w-4 rounded border-slate-300 text-petrol-700"
                       />
                       <span>
@@ -327,7 +419,14 @@ export function RolePermissionsForm({
                           type="checkbox"
                           name="approvalRequired"
                           value={permission.key}
-                          defaultChecked={approvalRequired.includes(permission.key)}
+                          checked={checked && selectedApprovals.has(permission.key)}
+                          disabled={!checked}
+                          onChange={(event) => setSelectedApprovals((current) => {
+                            const next = new Set(current);
+                            if (event.target.checked) next.add(permission.key);
+                            else next.delete(permission.key);
+                            return next;
+                          })}
                           className="h-3.5 w-3.5 rounded border-slate-300 text-petrol-700"
                         />
                         Requiere autorización previa

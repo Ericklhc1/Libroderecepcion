@@ -59,12 +59,16 @@ async function closeContext(context) {
 async function returned(page, list, anchor, scrollY) {
   const selected = page.locator(`[data-list-item="${anchor}"]`);
   await selected.waitFor();
-  await page.waitForFunction(({ anchor, scrollY, scope }) =>
-    sessionStorage.getItem(`aroh:list-return:${scope}`) === null &&
-    document.activeElement?.id === anchor &&
-    document.getElementById(anchor)?.getAttribute('aria-current') === 'true' &&
-    Math.abs(window.scrollY - scrollY) <= 2,
-  { anchor, scrollY, scope: fixture.users.admin.id });
+  await page.waitForFunction(scope => sessionStorage.getItem(`aroh:list-return:${scope}`) === null, fixture.users.admin.id);
+  await page.waitForFunction(anchor => document.getElementById(anchor)?.getAttribute('aria-current') === 'true', anchor);
+  await page.waitForFunction(anchor => document.activeElement?.id === anchor, anchor);
+  await page.waitForFunction(scrollY => Math.abs(window.scrollY - scrollY) <= 2, scrollY);
+  const restored = await page.evaluate(({ anchor, scrollY }) => ({
+    focused: document.activeElement?.id === anchor,
+    selected: document.getElementById(anchor)?.getAttribute('aria-current') === 'true',
+    scroll: Math.abs(window.scrollY - scrollY) <= 2,
+  }), { anchor, scrollY });
+  assert.deepEqual(restored, { focused: true, selected: true, scroll: true }, 'Search return restores focus, selection and exact scroll');
   const url = new URL(page.url());
   assert.equal(url.pathname + url.search, list);
   assert.equal(url.hash, '#' + anchor);
@@ -234,7 +238,7 @@ try {
       const html = await page.content();
       for (const hidden of [entryQuery, taskQuery, privateTitle, hkHiddenTitle, hkDemoTitle]) assert.ok(!html.includes(hidden), 'Search retains native permission and privacy filtering');
       const href = new URL(await page.locator('[data-list-item]').getAttribute('href'), base);
-      assert.equal(href.pathname, '/admin/housekeeping');
+      assert.equal(href.pathname, '/housekeeping');
       assert.equal(href.searchParams.has('desdeLista'), false);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       results.push({ width, areaOnlyScopePreserved: true, otherWorkAndDemoHidden: true });

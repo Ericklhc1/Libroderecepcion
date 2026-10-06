@@ -5,7 +5,7 @@ vi.mock('@/server/auth/housekeeping',()=>({requireHousekeepingPageUser:async()=>
 vi.mock('@/server/services/housekeeping-work',()=>({getHkWorkday:mocks.board,getHkSources:mocks.sources}));
 vi.mock('next/link',()=>({default:'a'}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
-import HousekeepingPage from '@/app/(app)/admin/housekeeping/page';
+import HousekeepingPage from '@/app/(app)/housekeeping/page';
 const request=(id:string,assignedToId:string,status:string)=>({id,humanId:1001,version:1,workflowVersion:1,workKind:'LIMPIEZA',workDate:'2026-10-01',title:'Limpieza 512',description:'Limpiar y reponer',location:'512',priority:'MEDIA',requiresInspection:true,effortMinutes:35,status,assignedToId,assignedTo:{id:assignedToId,name:assignedToId},createdBy:{id:'recepcion',name:'Recepción'},room:{id:'room',number:'512',floor:5},sourceEntry:null,dueAt:null,acknowledgedAt:null,blockReason:null,resolution:null,inspectedBy:null,maintenanceEntry:null,events:[],isDemo:false});
 function board(overrides:Record<string,unknown>={}){return{date:'2026-10-01',departmentId:'hk',requests:[],total:0,page:1,counts:{active:0,unassigned:0,review:0,blocked:0,overdue:0,completed:0,carryover:0},areas:[{id:'hk',name:'Housekeeping',key:'HOUSEKEEPING'}],rooms:[],zones:[],workload:[],routines:[],handovers:[],delegations:[],loans:[],suggestions:[],canAssign:false,canInspect:false,canPlan:false,canWork:true,canRequest:false,teamVisible:false,...overrides};}
 async function html(){return renderToStaticMarkup(await HousekeepingPage({searchParams:Promise.resolve({})}));}

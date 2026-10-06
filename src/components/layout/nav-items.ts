@@ -32,6 +32,7 @@ export type NavItem = {
     | 'metrics'
     | 'room'
     | 'key'
+    | 'inventory'
     | 'cash'
     | 'alarm'
     | 'admin';
@@ -45,7 +46,7 @@ export type NavGroup = { title: string | null; items: NavItem[] };
 
 const PRIMARY: NavItem[] = [
   { href: '/coordinacion', label: 'Coordinación', icon: 'book' },
-  { href: '/', label: 'Inicio', icon: 'home', mobile: true },
+  { href: '/', label: 'Mi jornada', mobileLabel: 'Jornada', icon: 'home', mobile: true },
   {
     href: '/libro?clase=entry',
     label: 'Novedades',
@@ -190,6 +191,21 @@ const PRIMARY: NavItem[] = [
     ],
   },
   {
+    href: '/inventario',
+    label: 'Inventario',
+    icon: 'inventory',
+    anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'],
+    menu: [
+      {
+        title: 'Inventario común',
+        items: [
+          { href: '/inventario', label: 'Inventario', description: 'Artículos, ubicaciones, disponibilidad y movimientos.', anyOf: ['inventory.view'] },
+          { href: '/lavanderia', label: 'Lavandería', description: 'Folios, entregas, recepciones parciales y diferencias.', anyOf: ['laundry.manage'] },
+        ],
+      },
+    ],
+  },
+  {
     href: '/llaves',
     label: 'Llaves',
     icon: 'key',
@@ -230,7 +246,7 @@ const PRIMARY: NavItem[] = [
       },
     ],
   },
-  { href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room', mobile: true, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
+  { href: '/housekeeping', label: 'Housekeeping', icon: 'room', mobile: true, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
   {
     href: '/supervision',
     label: 'Centro de Supervisión',
@@ -424,6 +440,6 @@ export function visibleNavGroups(permissions: PermissionKey[], isSystemAdmin = f
         menu: visibleMenu(item.menu, permissions),
       })),
   })).filter((group) => group.items.length > 0);
-  if (isSystemAdmin && !groups.some((group) => group.items.some((item) => item.href === '/admin/housekeeping'))) groups.push({ title: 'Operación', items: [{ href: '/admin/housekeeping', label: 'Housekeeping', icon: 'room' }] });
+  if (isSystemAdmin && !groups.some((group) => group.items.some((item) => item.href === '/housekeeping'))) groups.push({ title: 'Operación', items: [{ href: '/housekeeping', label: 'Housekeeping', icon: 'room' }] });
   return groups;
 }

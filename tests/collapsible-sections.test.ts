@@ -62,9 +62,10 @@ describe('secciones desplegables del sistema',()=>{
   it('agrupa Administración y no vuelve a cargar todos los accesos como una lista abierta',()=>{
     const source=read('src/app/(app)/admin/page.tsx');
     expect(source).toContain('ADMIN_GROUPS');
-    expect(source).toContain('Personas, roles y estructura');
-    expect(source).toContain('Sistema, Fronti y comunicaciones');
-    expect(source).toContain('Control, trazabilidad y soporte');
+    expect(source).toContain("title: 'Departamentos'");
+    expect(source).toContain("title: 'Personas y acceso'");
+    expect(source).toContain("title: 'Reglas de trabajo'");
+    expect(source).toContain("title: 'Estado operativo'");
     expect(source).not.toContain('className="grid gap-3 sm:grid-cols-2">\n        {allowed.map');
   });
 });

@@ -91,6 +91,12 @@ export const PERMISSIONS = {
   'key.assign': { group: 'Llaves', name: 'Entregar y recibir llaves físicas' },
   'key.inventory': { group: 'Llaves', name: 'Realizar inventarios físicos por piso' },
   'key.stock': { group: 'Llaves', name: 'Administrar el stock físico de llaves' },
+
+  'inventory.view': { group: 'Inventario', name: 'Consultar inventario común y disponibilidad' },
+  'inventory.move': { group: 'Inventario', name: 'Registrar movimientos físicos dentro de mi alcance' },
+  'inventory.manage': { group: 'Inventario', name: 'Administrar categorías, artículos, ubicaciones y valorización' },
+  'laundry.manage': { group: 'Inventario', name: 'Preparar, entregar y recibir folios de lavandería' },
+
   'pms.import': { group: 'Habitaciones y llaves', name: 'Importar informes del PMS' },
   /*
     Reparación, no operación: elimina lógicamente una estadía incoherente para
@@ -238,12 +244,16 @@ const OPERATIONAL_BASE: PermissionKey[] = [
 
 /** Matriz inicial. El administrador también puede participar en la operación. */
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
-  [ROLE_KEYS.HK_ATTENDANT]: ['housekeeping.work', 'housekeeping.request', 'schedule.self.view'],
-  [ROLE_KEYS.HK_SUPERVISOR]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'schedule.self.view'],
-  [ROLE_KEYS.HK_MANAGER]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'housekeeping.plan', 'schedule.self.view', 'schedule.view', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve'],
+  [ROLE_KEYS.HK_ATTENDANT]: ['housekeeping.work', 'housekeeping.request', 'inventory.view', 'inventory.move', 'schedule.self.view'],
+  [ROLE_KEYS.HK_SUPERVISOR]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'inventory.view', 'inventory.move', 'laundry.manage', 'schedule.self.view'],
+  [ROLE_KEYS.HK_MANAGER]: ['housekeeping.view', 'housekeeping.work', 'housekeeping.request', 'housekeeping.assign', 'housekeeping.inspect', 'housekeeping.plan', 'inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage', 'schedule.self.view', 'schedule.view', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve'],
   [ROLE_KEYS.SYSTEM_ADMIN]: [...ALL_PERMISSIONS],
   [ROLE_KEYS.SUPERVISOR]: [
     'housekeeping.request',
+    'inventory.view',
+    'inventory.move',
+    'inventory.manage',
+    'laundry.manage',
     ...OPERATIONAL_BASE,
     'entry.reopen',
     'entry.delete',
@@ -274,7 +284,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'cash.reopen',
     'cash.approve',
   ],
-  [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE, 'housekeeping.request'],
+  [ROLE_KEYS.RECEPTIONIST]: [...OPERATIONAL_BASE, 'housekeeping.request', 'inventory.view'],
   /*
     El Auditor nocturno es un perfil DE RECEPCIÓN, y por eso NO lleva
     `supervision.view`. Lo llevaba, y con eso le aparecía la pestaña de
@@ -286,6 +296,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   */
   [ROLE_KEYS.NIGHT_AUDITOR]: [
     'housekeeping.request',
+    'inventory.view',
     ...OPERATIONAL_BASE,
     'incident.manage',
     'nightaudit.run',
@@ -324,6 +335,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLE_KEYS.MANAGEMENT]: [
     'custody.view',
     'housekeeping.view.all',
+    'inventory.view',
     'guest.view',
     'supervision.view',
     'supervision.center.view',

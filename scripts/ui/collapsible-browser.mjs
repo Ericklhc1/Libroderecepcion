@@ -20,7 +20,7 @@ try{
     await page.getByRole('heading',{name:'Administración',exact:true}).waitFor();
     const summaries=page.locator('[data-disclosure-summary]');
     assert.ok(await summaries.count()>=4,'Administración debe exponer grupos plegables');
-    const peopleSummary=summaries.filter({hasText:'Personas, roles y estructura'}).first();
+    const peopleSummary=summaries.filter({hasText:'Personas y acceso'}).first();
     const peopleDetails=peopleSummary.locator('xpath=..');
     assert.equal(await peopleDetails.evaluate(el=>el.open),false,'Los grupos secundarios no deben iniciar todos abiertos');
     const closedHeight=(await peopleDetails.boundingBox())?.height??0;

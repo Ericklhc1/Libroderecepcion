@@ -105,7 +105,7 @@ export async function requirePageUser(
     if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
   }
 
-  if (!options.allowIncompleteAccess && !options.allowAreaOperation && isHkFocused(user)) redirect('/admin/housekeeping');
+  if (!options.allowIncompleteAccess && !options.allowAreaOperation && isHkFocused(user)) redirect('/housekeeping');
   return user;
 }
 

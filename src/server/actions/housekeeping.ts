@@ -26,7 +26,7 @@ export async function createHousekeepingAction(_state: ActionState | null, formD
     const user = await requireHousekeepingUser();
     const input = parseOrThrow(createSchema, formDataToObject(formData));
     const request = await createHousekeepingRequest(user, input);
-    revalidatePath('/admin/housekeeping');
+    revalidatePath('/housekeeping');
     return { ok: true as const, message: `Aviso #${request.humanId} guardado.`, id: request.id };
   });
 }
@@ -36,7 +36,7 @@ export async function changeHousekeepingAction(_state: ActionState | null, formD
     const user = await requireHousekeepingUser();
     const input = parseOrThrow(changeSchema, formDataToObject(formData));
     const request = await changeHousekeepingRequest(user, input);
-    revalidatePath('/admin/housekeeping');
+    revalidatePath('/housekeeping');
     return { ok: true as const, message: `Aviso #${request.humanId} actualizado.`, id: request.id };
   });
 }

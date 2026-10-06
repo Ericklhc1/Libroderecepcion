@@ -145,7 +145,7 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
   });
   it('Fronti respeta el alcance, expone propuestas verificadas y no lee reserva privada de llaves',async()=>{
     const r=await createHkWork(supervisor,{...input(),assignedToId:maid.id});await prisma.supervisorKey.create({data:{ownerId:supervisor.id,code:'PRIVADA-HK',destination:'Reserva personal'}});
-    const response=await executeFrontiPageContextTool(maid,resolveFrontiPageContext({pathname:'/admin/housekeeping',search:`?fecha=${date()}&area=${area}`,title:'Housekeeping'}));
+    const response=await executeFrontiPageContextTool(maid,resolveFrontiPageContext({pathname:'/housekeeping',search:`?fecha=${date()}&area=${area}`,title:'Housekeeping'}));
     const json=JSON.stringify(response);expect(json).toContain(String(r.humanId));expect(json).not.toContain('PRIVADA-HK');expect(json).not.toContain(other.name);
     await expect(executeFrontiPageContextTool(maid,resolveFrontiPageContext({pathname:'/libro'}))).rejects.toThrow('limitado');
   });

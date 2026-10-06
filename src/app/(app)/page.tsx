@@ -27,7 +27,7 @@ import {
   OpenShiftForm,
 } from '@/components/operational/shift-actions';
 
-export const metadata = { title: 'Inicio' };
+export const metadata = { title: 'Mi jornada' };
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
@@ -47,6 +47,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
+      <header><h1 className="text-xl font-semibold text-petrol-900">Mi jornada</h1><p className="mt-1 text-sm text-slate-600">Tu entrada operativa. Horario, turno y Caja conservan sus reglas propias; aquí ves qué necesita atención y cuál es el siguiente paso.</p></header>
       <Link href="/turno/cambios" className="block rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-petrol-800 underline">Qué cambió desde mi último turno</Link>
       <details className="group rounded-md border border-slate-200 bg-white">
         <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium text-petrol-800">Ver coordinación</summary>
@@ -66,9 +67,9 @@ export default async function DashboardPage() {
             </p>
             {shift ? (
               <>
-                <h1 className="mt-1 text-xl font-semibold text-petrol-900">
+                <h2 className="mt-1 text-xl font-semibold text-petrol-900">
                   {SHIFT_TYPE_LABEL[shift.type]} · {formatCalendarDate(shift.date)}
-                </h1>
+                </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                   <Badge
                     tone={
@@ -99,9 +100,9 @@ export default async function DashboardPage() {
               </>
             ) : (
               <>
-                <h1 className="mt-1 text-xl font-semibold text-petrol-900">
+                <h2 className="mt-1 text-xl font-semibold text-petrol-900">
                   No tienes un turno abierto
-                </h1>
+                </h2>
                 <p className="mt-1 text-sm text-slate-600">
                   {!user.roleOperational
                     ? 'Tu rol está fuera de la operación de turnos. Puedes supervisar y administrar desde el menú.'

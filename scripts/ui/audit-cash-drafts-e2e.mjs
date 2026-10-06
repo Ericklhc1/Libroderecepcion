@@ -54,23 +54,23 @@ try {
     await page.waitForURL(url=>url.pathname==='/caja');
     assert.equal(await page.getByRole('button',{name:'Cobrar garantía',exact:true}).count(),0,'Charging a guarantee remains blocked during closing');
     const returnRow=page.locator('li').filter({hasText:`#${returnGuarantee.humanId}`});
-    await returnRow.getByRole('button',{name:'Devolver garantía',exact:true}).click();
-    const returnForm=page.locator('form').filter({has:page.getByRole('button',{name:'CONFIRMAR DEVOLUCIÓN',exact:true})});
-    await returnForm.locator('input[name=confirmed]').check();await submit(returnForm,'CONFIRMAR DEVOLUCIÓN');
+    await returnRow.getByRole('button',{name:'Devolver',exact:true}).click();
+    const returnForm=page.locator('form').filter({has:page.getByRole('button',{name:'Registrar devolución',exact:true})});
+    await returnForm.locator('input[name=confirmed]').check();await submit(returnForm,'Registrar devolución');
     assert.equal((await db.guarantee.findUniqueOrThrow({where:{id:returnGuarantee.id}})).state,'DEVUELTA');
     await page.getByRole('link',{name:'Volver al cierre',exact:true}).click();
     await page.waitForURL(url=>url.pathname===`/turno/entrega/${handover.id}`&&url.searchParams.get('paso')==='1');
-    await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();
+    await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),false,'Returning another guarantee must not restore an unsent physical validation');
     await page.goto(otherUrl);await quantity().waitFor();
     assert.equal(await quantity().inputValue(),'','Another handover must not inherit quantities');
     assert.equal(await form().locator('textarea[name=notes]').inputValue(),'');assert.equal(await check().isChecked(),false);
     await quantity().fill('4');await form().locator('textarea[name=notes]').fill('SYNTHETIC segundo relevo');
     await page.goto(url);
-    await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();
+    await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),false,'A draft must not restore an unsent physical validation');
     await page.goBack();await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();assert.equal(await quantity().inputValue(),'4');assert.equal(await check().isChecked(),false);
-    await page.goForward();await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();assert.equal(await quantity().inputValue(),'5');assert.equal(await check().isChecked(),false);
+    await page.goForward();await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();assert.equal(await quantity().inputValue(),'5');assert.equal(await check().isChecked(),false);
     // Switch between two authenticated synthetic participants in this same tab.
     // The renderer regression separately exercises reuse without a document load.
     await context.addCookies([{name:'lor_session',value:f.users.worker.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);

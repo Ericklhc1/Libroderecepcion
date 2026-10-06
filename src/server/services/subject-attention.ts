@@ -44,7 +44,7 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     if(reopening && reopening.after && typeof reopening.after==='object' && !Array.isArray(reopening.after) && typeof reopening.after.housekeepingId==='string'){
       const work=await tx.housekeepingRequest.findFirst({where:{id:reopening.after.housekeepingId,AND:[await hkWorkVisibility(user,tx)]}});
       if(!work)throw new NotFoundError();
-      return {kind:'housekeeping' as const,id:work.id,href:`/admin/housekeeping?area=${work.departmentId}&aviso=${work.humanId}`,existing:true};
+      return {kind:'housekeeping' as const,id:work.id,href:`/housekeeping?area=${work.departmentId}&aviso=${work.humanId}`,existing:true};
     }
     const repeatedTask=await tx.task.findFirst({where:{procedureOccurrenceKey:{startsWith:prefix}}});
     const repeatedHk=await tx.housekeepingRequest.findFirst({where:{requestKey:{startsWith:prefix}}});
@@ -58,7 +58,7 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
     if(repeatedHk){
       if(repeatedHk.requestKey!==occurrenceKey)throw new RuleError('El reintento pertenece a otra solicitud.');
       if(!await tx.housekeepingRequest.count({where:{id:repeatedHk.id,AND:[await hkWorkVisibility(user,tx)]}}))throw new NotFoundError();
-      return {kind:'housekeeping' as const,id:repeatedHk.id,href:`/admin/housekeeping?area=${repeatedHk.departmentId}&aviso=${repeatedHk.humanId}`,existing:true};
+      return {kind:'housekeeping' as const,id:repeatedHk.id,href:`/housekeeping?area=${repeatedHk.departmentId}&aviso=${repeatedHk.humanId}`,existing:true};
     }
     const enabled=subjectDistributionEnabled();
     const existingHk=await tx.housekeepingRequest.findFirst({where:{sourceEntryId:source.id,...(enabled?{OR:[{departmentId:input.departmentId},{departmentId:null}]}:{})}});
@@ -77,7 +77,7 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
       const visible=await tx.housekeepingRequest.count({where:{id:existingHk.id,AND:[await hkWorkVisibility(user,tx)]}});
       if(!visible)throw new RuleError('Este asunto ya tiene atención. Consulta el resultado en el origen.');
       if(existingHk.departmentId!==input.departmentId)throw new RuleError('El asunto ya tiene trabajo de otra área. Abre ese trabajo y deriva desde su contexto para conservar la continuidad.');
-      return {kind:'housekeeping' as const,id:existingHk.id,href:`/admin/housekeeping?area=${existingHk.departmentId}&aviso=${existingHk.humanId}`,existing:true};
+      return {kind:'housekeeping' as const,id:existingHk.id,href:`/housekeeping?area=${existingHk.departmentId}&aviso=${existingHk.humanId}`,existing:true};
     }
     if(existingTask){
       if(!await tx.task.count({where:{id:existingTask.id,AND:[coordinationTasks(user)]}}))throw new RuleError('Este asunto ya tiene atención. Consulta el resultado en el origen.');
@@ -100,11 +100,11 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
       let result=await changeHkWork(user,{id:existingHk.id,version:existingHk.version,action:'REABRIR',note:`Nueva atención solicitada desde el asunto #${source.humanId}.`},tx,notificationOptions.internalOnly);
       if(input.assigneeId&&input.assigneeId!==existingHk.assignedToId)result=await changeHkWork(user,{id:result.id,version:result.version,action:'ASIGNAR',assignedToId:input.assigneeId,note:`Responsable para la nueva atención del asunto #${source.humanId}.`},tx,notificationOptions.internalOnly);
       await tx.auditLog.create({data:{entity:'SubjectAttention',entityId:occurrenceKey,userId:user.id,sessionId:user.sessionId,action:'REABRIR',summary:`Atención reabierta para el asunto #${source.humanId}`,after:{housekeepingId:result.id}}});
-      return {kind:'housekeeping' as const,id:result.id,href:`/admin/housekeeping?area=${result.departmentId}&aviso=${result.humanId}`,existing:false};
+      return {kind:'housekeeping' as const,id:result.id,href:`/housekeeping?area=${result.departmentId}&aviso=${result.humanId}`,existing:false};
     }
     if(specialized){
       const result=await createHkWork(user,{requestKey:occurrenceKey,sourceEntryId:source.id,title:source.title,description:source.description,departmentId:input.departmentId,roomId:source.roomId??undefined,location:source.roomId?undefined:input.location,priority:source.priority,dueAt:source.dueAt,workDate:hotelDateKey(new Date()),workKind:'ATENCION',effortMinutes:20,requiresInspection:false,assignedToId:input.assigneeId},tx,notificationOptions.internalOnly);
-      return {kind:'housekeeping' as const,id:result.id,href:`/admin/housekeeping?area=${result.departmentId}&aviso=${result.humanId}`,existing:false};
+      return {kind:'housekeeping' as const,id:result.id,href:`/housekeeping?area=${result.departmentId}&aviso=${result.humanId}`,existing:false};
     }
     if(input.assigneeId&&!await tx.user.count({where:{id:input.assigneeId,active:true,deletedAt:null,hiddenFromSelectors:false,role:{operational:true},OR:[{departmentId:input.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:input.departmentId,active:true}}}}]}}))throw new RuleError('El responsable debe estar habilitado en el área solicitada.');
     const result=await createTask(user,{internalOnly:notificationOptions.internalOnly,procedureOccurrenceKey:occurrenceKey,title:source.title,description:source.description,entryId:source.id,departmentId:input.departmentId,assigneeId:input.assigneeId,roomId:source.roomId,priority:source.priority,dueAt:source.dueAt,tags:source.tags,checklist:[]},tx);

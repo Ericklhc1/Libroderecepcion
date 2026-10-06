@@ -52,11 +52,11 @@ describe('bandeja contextual sin un motor operativo nuevo', () => {
   });
 
   it('Housekeeping admite sólo sus filtros vigentes y el ID de ancla del trabajo', () => {
-    const list = operationalListHref('/admin/housekeeping', { vista: 'mios', fecha: '2026-10-05', area: 'hk', piso: '5', responsable: 'persona', pagina: '2', aviso: '512', q: 'ropa', estado: 'RECIBIDO', next: '/admin', historial: '1', mios: '1' });
+    const list = operationalListHref('/housekeeping', { vista: 'mios', fecha: '2026-10-05', area: 'hk', piso: '5', responsable: 'persona', pagina: '2', aviso: '512', q: 'ropa', estado: 'RECIBIDO', next: '/admin', historial: '1', mios: '1' });
     expect(new URL(list, 'https://aroh.invalid').searchParams.size).toBe(9);
     expect(safeListReturnHref(`${list}#registro-housekeeping-real`, '/libro')).toBe(`${list}#registro-housekeeping-real`);
     expect(listReturnLabel(list)).toBe('Volver a Housekeeping');
-    expect(safeListReturnHref('/admin/housekeeping/otro', '/libro')).toBe('/libro');
+    expect(safeListReturnHref('/housekeeping/otro', '/libro')).toBe('/libro');
     expect(safeListReturnHref('/libro?mios=1&vista=blocked&fecha=2026-10-05&tipo=INCIDENCIA', '/libro')).toBe('/libro?tipo=INCIDENCIA');
   });
 
@@ -93,7 +93,7 @@ describe('bandeja contextual sin un motor operativo nuevo', () => {
   });
 
   it('un enlace profundo abre sólo el contexto presente en la respuesta de servidor', () => {
-    const render = (initialOpenId: string) => renderToStaticMarkup(<ContextWorklist href="/admin/housekeeping?aviso=512" scope={scope} label="Avisos" initialOpenId={initialOpenId} rows={[{ id: 'registro-housekeeping-real', title: 'Aviso #512', href: '/admin/housekeeping?aviso=512', summary: 'Aviso real', children: 'Detalle autorizado' }]} />);
+    const render = (initialOpenId: string) => renderToStaticMarkup(<ContextWorklist href="/housekeeping?aviso=512" scope={scope} label="Avisos" initialOpenId={initialOpenId} rows={[{ id: 'registro-housekeeping-real', title: 'Aviso #512', href: '/housekeeping?aviso=512', summary: 'Aviso real', children: 'Detalle autorizado' }]} />);
     expect(render('registro-housekeeping-real')).toContain('<details open=""');
     expect(render('registro-housekeeping-ajeno')).not.toContain('<details open=""');
     expect(render('registro-housekeeping-ajeno')).not.toContain('Detalle ajeno');
@@ -119,7 +119,7 @@ describe('bandeja contextual sin un motor operativo nuevo', () => {
 
 describe('identidad de la lista solicitada', () => {
   it('normaliza orden, filtros vacíos y campos ajenos sin inventar defaults', () => {
-    expect(sameOperationalList('/admin/housekeeping?area=hsk&vista=&q=limpieza', '/admin/housekeeping?q=limpieza&area=hsk')).toBe(true);
+    expect(sameOperationalList('/housekeeping?area=hsk&vista=&q=limpieza', '/housekeeping?q=limpieza&area=hsk')).toBe(true);
     expect(sameOperationalList('/coordinacion?extra=1', '/coordinacion')).toBe(true);
     expect(sameOperationalList('/coordinacion?pagina=2', '/coordinacion')).toBe(false);
     expect(sameOperationalList('/custodia?q=A', '/custodia?q=B')).toBe(false);
@@ -128,9 +128,9 @@ describe('identidad de la lista solicitada', () => {
   });
   it('no usa filtros añadidos del tablero como identidad de la URL original', () => {
     const coordination = readFileSync('src/app/(app)/coordinacion/page.tsx', 'utf8');
-    const housekeeping = readFileSync('src/app/(app)/admin/housekeeping/page.tsx', 'utf8');
+    const housekeeping = readFileSync('src/app/(app)/housekeeping/page.tsx', 'utf8');
     expect(coordination).toContain("const listHref=operationalListHref('/coordinacion',p)");
-    expect(housekeeping).toContain("const currentListHref = operationalListHref('/admin/housekeeping', params)");
-    expect(housekeeping).toContain("href: operationalListHref('/admin/housekeeping', { ...params, pagina: '1', aviso: String(r.humanId) })");
+    expect(housekeeping).toContain("const currentListHref = operationalListHref('/housekeeping', params)");
+    expect(housekeeping).toContain("href: operationalListHref('/housekeeping', { ...params, pagina: '1', aviso: String(r.humanId) })");
   });
 });

@@ -85,7 +85,7 @@ function detail(
 
 function matchRoute(pathname: string, filters: Record<string, string>): RouteMatch {
   if (pathname === '/') {
-    return detail('inicio', 'Inicio', 'panorama', 'Panorama operativo', [
+    return detail('inicio', 'Mi jornada', 'panorama', 'Panorama operativo', [
       'consultar_contexto_pantalla',
       'consultar_estado_operativo',
       'consultar_prioridades',
@@ -321,6 +321,17 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     );
   }
 
+  if (pathname === '/inventario') {
+    return detail('inventario', 'Inventario', 'estado', 'Inventario común', [
+      'consultar_contexto_pantalla',
+    ]);
+  }
+  if (pathname === '/lavanderia') {
+    return detail('lavanderia', 'Inventario', 'lavanderia', 'Lavandería', [
+      'consultar_contexto_pantalla',
+    ]);
+  }
+
   if (pathname === '/indicadores') {
     return detail('indicadores', 'Indicadores', filters.dias ? `${filters.dias}d` : '30d', 'Indicadores operativos', [
       'consultar_contexto_pantalla',
@@ -428,7 +439,8 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     '/admin/puesta-en-cero': ['puesta-en-cero', 'Puesta en cero', ['consultar_contexto_pantalla']],
     '/admin/roles': ['roles', 'Roles y permisos', ['consultar_contexto_pantalla', 'consultar_usuarios']],
     '/admin/soporte': ['soporte', 'Reportes y solicitudes', ['consultar_contexto_pantalla']],
-    '/admin/housekeeping': ['housekeeping', 'Housekeeping', ['consultar_contexto_pantalla']],
+    '/housekeeping': ['housekeeping', 'Housekeeping', ['consultar_contexto_pantalla']],
+    '/admin/housekeeping': ['housekeeping', 'Housekeeping · ruta anterior', ['consultar_contexto_pantalla']],
     '/admin/turnos': ['turnos', 'Historial de turnos', ['consultar_contexto_pantalla', 'consultar_turnos', 'consultar_auditoria']],
     '/admin/usuarios': ['usuarios', 'Usuarios', ['consultar_contexto_pantalla', 'consultar_usuarios']],
   };

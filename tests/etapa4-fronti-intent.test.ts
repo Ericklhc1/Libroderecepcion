@@ -112,7 +112,7 @@ describe('AROH Simple · intención a procedimiento nativo de Fronti',()=>{
     const task=await prisma.task.create({data:{title:'SECRETO_NO_FRONTI',followUpId:f.id,createdById:owner.id}});
     const result=await prepareSubjectIntent(actor,[message('Manda esto a Mantenimiento')],resolveFrontiPageContext({pathname:`/tareas/${task.id}`}));
     expect(result?.confirmations).toHaveLength(0);expect(JSON.stringify(result)).not.toContain('SECRETO_NO_FRONTI');
-    expect(await prepareSubjectIntent(actor,[message('Manda esto a Mantenimiento')],resolveFrontiPageContext({pathname:'/admin/housekeeping'}))).toBeNull();
+    expect(await prepareSubjectIntent(actor,[message('Manda esto a Mantenimiento')],resolveFrontiPageContext({pathname:'/housekeeping'}))).toBeNull();
     expect(await prisma.frontiExecution.count()).toBe(0);
   });
 });

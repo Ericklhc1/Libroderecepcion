@@ -64,7 +64,7 @@ export async function searchHousekeepingRecords(user: CurrentUser, query: string
   const visible = await hkWorkVisibility(user);
   const legacy = canManageHousekeeping(user) || user.permissions.includes('housekeeping.view');
   const records = await prisma.housekeepingRequest.findMany({ where: { AND: [{ OR: [{ workflowVersion: 1, AND: [visible] }, ...(legacy ? [{ workflowVersion: 0, ...housekeepingVisibility(user) }] : [{ workflowVersion: 0, createdById: user.id, isDemo: false }])] }, { OR: [...(Number.isSafeInteger(Number(text)) ? [{humanId:Number(text)}] : []), {title:{contains:text,mode:'insensitive'}},{description:{contains:text,mode:'insensitive'}},{location:{contains:text,mode:'insensitive'}},{sourceEntry:{title:{contains:text,mode:'insensitive'}}}] }] }, include:{sourceEntry:{select:{title:true,description:true}},assignedTo:{select:{name:true}}},orderBy:{createdAt:'desc'},take:Math.min(100,Math.max(1,limit)) });
-  return records.map(h=>({humanId:h.humanId,entityType:'HousekeepingRequest',entityId:h.id,kind:'Housekeeping',title:h.sourceEntry?.title??h.title??'Trabajo',summary:h.sourceEntry?.description??h.description,status:h.status,roomNumber:h.location,guestName:null,responsible:h.assignedTo?.name??null,category:h.isDemo?'Prueba administrativa':'Operación',createdAt:h.createdAt,href:`/admin/housekeeping?area=${h.departmentId??''}&vista=${isHousekeepingClosed(h.status as HousekeepingStatus)?'historial':'pendientes'}&aviso=${h.humanId}#aviso-${h.humanId}`}));
+  return records.map(h=>({humanId:h.humanId,entityType:'HousekeepingRequest',entityId:h.id,kind:'Housekeeping',title:h.sourceEntry?.title??h.title??'Trabajo',summary:h.sourceEntry?.description??h.description,status:h.status,roomNumber:h.location,guestName:null,responsible:h.assignedTo?.name??null,category:h.isDemo?'Prueba administrativa':'Operación',createdAt:h.createdAt,href:`/housekeeping?area=${h.departmentId??''}&vista=${isHousekeepingClosed(h.status as HousekeepingStatus)?'historial':'pendientes'}&aviso=${h.humanId}#aviso-${h.humanId}`}));
 }
 
 export async function getHousekeepingSources(user: CurrentUser, query = '') {
@@ -203,7 +203,7 @@ async function notifyHousekeeping(tx: Prisma.TransactionClient, request: { id: s
       ...(escalation ? [{ role: { key: { in: ['ADMINISTRADOR_SISTEMA', 'SUPERVISOR_RECEPCION'] } } }] : []),
     ],
   }, select: { id: true } });
-  await notify(users.map(u => ({ userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${title}`, link: `/admin/housekeeping?aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
+  await notify(users.map(u => ({ userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${title}`, link: `/housekeeping?aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
 }
 /** Cron durable: one escalation per revision; no fake receipt or automatic closure. */
 export async function escalateHousekeepingRequests(now = new Date(), usePolicyOverrides = true) {

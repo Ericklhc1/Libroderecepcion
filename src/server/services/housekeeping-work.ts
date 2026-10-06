@@ -85,10 +85,10 @@ export async function notifyHkWork(tx: Tx, request: { id: string; humanId: numbe
     const reader={id:candidate.id,roleKey:candidate.role.key,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)} as CurrentUser;
     if (canAccessHousekeeping(reader) && await tx.housekeepingRequest.count({where:{id:request.id,AND:[await hkWorkVisibility(reader,tx)]}})) active.push({id:candidate.id});
   }
-  await notify(active.map(u => ({ internalOnly, userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${message}`, link: `/admin/housekeeping?area=${request.departmentId}&aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
+  await notify(active.map(u => ({ internalOnly, userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${message}`, link: `/housekeeping?area=${request.departmentId}&aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
   if(previousAssigneeId&&previousAssigneeId!==request.assignedToId&&previousAssigneeId!==actorId&&!active.some(u=>u.id===previousAssigneeId)&&await tx.user.count({where:{id:previousAssigneeId,...membership(request.departmentId),...worker}})){
     // Outgoing staff lose access to the work. Notify only their own ended responsibility.
-    await notify({internalOnly:true,userId:previousAssigneeId,type:'RESPONSABLE_CAMBIADO',title:`Tu asignación Housekeeping #${request.humanId} terminó por relevo`,body:'No continúes ejecutando esta asignación. Consulta a la jefatura si necesitas aclaración.',link:'/admin/housekeeping',entity:'HousekeepingRequest',entityId:request.id},tx);
+    await notify({internalOnly:true,userId:previousAssigneeId,type:'RESPONSABLE_CAMBIADO',title:`Tu asignación Housekeeping #${request.humanId} terminó por relevo`,body:'No continúes ejecutando esta asignación. Consulta a la jefatura si necesitas aclaración.',link:'/housekeeping',entity:'HousekeepingRequest',entityId:request.id},tx);
   }
 }
 export type HkCreateInput = { requestKey: string; title: string; description: string; workKind: HkWorkKind; workDate: string; departmentId: string; roomId?: string; zoneId?: string; location?: string; priority: Priority; dueAt?: Date | null; effortMinutes: number; requiresInspection?: boolean; assignedToId?: string; sourceEntryId?: string };
@@ -262,7 +262,7 @@ export async function prepareHkDay(user: CurrentUser, departmentId:string, date:
     const created=await tx.housekeepingRequest.findMany({where:{id:{in:missing.map(r=>`hk_routine_${r.id}_${date}`)},events:{none:{}}},select:{id:true,humanId:true}});
     if(created.length){await tx.housekeepingEvent.createMany({data:created.map(r=>({requestId:r.id,actorId:user.id,action:'CREAR',toStatus:'PENDIENTE',note:'Rutina incorporada al día tras confirmación del supervisor.'}))});await tx.auditLog.createMany({data:created.map(r=>({entity:'HousekeepingWork',entityId:r.id,action:'CREAR' as const,userId:user.id,sessionId:user.sessionId,summary:`Housekeeping #${r.humanId}: rutina del día`} ))});
     const team=await coordinatingTeam(tx, departmentId, ['housekeeping.assign','housekeeping.plan','housekeeping.manage']);
-    await notify(team.filter(u=>u.id!==user.id).map(u=>({userId:u.id,type:'ACTUALIZACION_OPERATIVA' as const,title:`Housekeeping: ${result.count} rutinas preparadas para ${date}`,link:`/admin/housekeeping?area=${departmentId}&fecha=${date}`,entity:'HousekeepingWork',entityId:batchKey})),tx);}
+    await notify(team.filter(u=>u.id!==user.id).map(u=>({userId:u.id,type:'ACTUALIZACION_OPERATIVA' as const,title:`Housekeeping: ${result.count} rutinas preparadas para ${date}`,link:`/housekeeping?area=${departmentId}&fecha=${date}`,entity:'HousekeepingWork',entityId:batchKey})),tx);}
     return{created:result.count};
   },{timeout:15000});
 }
@@ -280,7 +280,7 @@ export async function saveHkHandover(user:CurrentUser,input:{requestKey:string;d
     const snapshot=JSON.parse(JSON.stringify({work,loans})) as Prisma.InputJsonValue;
     const row=await tx.housekeepingHandover.create({data:{...input,note:input.note.trim(),snapshot,createdById:user.id}});
     const receivers=await coordinatingTeam(tx, input.departmentId, ['housekeeping.assign','housekeeping.plan','housekeeping.manage']);
-    await notify(receivers.filter(u=>u.id!==user.id).map(u=>({userId:u.id,type:'ACTUALIZACION_OPERATIVA' as const,title:'Housekeeping: relevo del área por recibir',link:`/admin/housekeeping?area=${input.departmentId}&vista=continuidad`,entity:'HousekeepingHandover',entityId:row.id})),tx);await record(tx,user,row.id,null,'ENTREGAR_CONTINUIDAD',input.note);return row;
+    await notify(receivers.filter(u=>u.id!==user.id).map(u=>({userId:u.id,type:'ACTUALIZACION_OPERATIVA' as const,title:'Housekeeping: relevo del área por recibir',link:`/housekeeping?area=${input.departmentId}&vista=continuidad`,entity:'HousekeepingHandover',entityId:row.id})),tx);await record(tx,user,row.id,null,'ENTREGAR_CONTINUIDAD',input.note);return row;
   });
 }
 export async function receiveHkHandover(user:CurrentUser,id:string){

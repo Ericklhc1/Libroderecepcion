@@ -96,9 +96,20 @@ export type LiveCashState = {
     originalAmount: number;
     appliedAmount: number;
     penaltyAmount: number;
+    returnedAmount: number;
     state: string;
     notes: string | null;
     createdAt: Date;
+    settlements: Array<{
+      id: string;
+      kind: 'DEVOLUCION' | 'COBRO';
+      amount: number;
+      currency: string;
+      reason: string;
+      notes: string | null;
+      createdByName: string;
+      createdAt: Date;
+    }>;
   }>;
   audits: CashAuditRow[];
   movementTotal: number;
@@ -240,13 +251,6 @@ export async function recordGuaranteeCashOut(
     kind: 'GARANTIA_INGRESO',
   });
   if (!hasIn) return;
-  if (
-    await cashMovementExists(tx, {
-      guaranteeId: params.guaranteeId,
-      kind: 'GARANTIA_DEVOLUCION',
-    })
-  ) return;
-
   const originalContext = await tx.cashMovement.findFirst({
     where: {
       guaranteeId: params.guaranteeId,
@@ -299,13 +303,6 @@ export async function recordGuaranteeChargeOut(
     kind: 'GARANTIA_INGRESO',
   });
   if (!hasIn) return;
-  if (
-    await cashMovementExists(tx, {
-      guaranteeId: params.guaranteeId,
-      kind: 'GARANTIA_COBRO',
-    })
-  ) return;
-
   const originalContext = await tx.cashMovement.findFirst({
     where: {
       guaranteeId: params.guaranteeId,
@@ -343,14 +340,18 @@ export async function recordGuaranteeChargeOut(
 }
 
 export async function assertGuaranteeCanBeDeleted(guaranteeId: string): Promise<void> {
-  const hasIn = await cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_INGRESO' });
-  const [hasReturn, hasCharge] = await Promise.all([
-    cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_DEVOLUCION' }),
-    cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_COBRO' }),
-  ]);
-  if (hasIn && !hasReturn && !hasCharge) {
+  const movements = await prisma.cashMovement.findMany({
+    where: { guaranteeId, voidedAt: null },
+    select: { direction: true, amount: true },
+  });
+  const net = movements.reduce(
+    (total, movement) =>
+      total + (movement.direction === 'ENTRADA' ? decimal(movement.amount) : -decimal(movement.amount)),
+    0,
+  );
+  if (net > 0.000001) {
     throw new RuleError(
-      'Esta garantía tiene efectivo en caja. Devuélvela o resuélvela antes de eliminarla.',
+      `Esta garantía todavía mantiene ${net} en efectivo bajo custodia. Devuelve o resuelve el saldo antes de eliminarla.`,
     );
   }
 }
@@ -442,6 +443,7 @@ export async function saveLiveCashAudit(
       amount: decimal(row.amount),
       appliedAmount: decimal(row.appliedAmount),
       penaltyAmount: decimal(row.penaltyAmount),
+      returnedAmount: decimal(row.returnedAmount),
     }),
     state: row.state,
     reference: row.reference ?? null,
@@ -609,6 +611,13 @@ export async function getLiveCashState(
           ],
         },
       },
+      include: {
+        settlements: {
+          include: { createdBy: { select: { name: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+        },
+      },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.cashAudit.findMany({
@@ -640,6 +649,7 @@ export async function getLiveCashState(
       amount: decimal(row.amount),
       appliedAmount: decimal(row.appliedAmount),
       penaltyAmount: decimal(row.penaltyAmount),
+      returnedAmount: decimal(row.returnedAmount),
     });
     custodyMap.set(row.currency, (custodyMap.get(row.currency) ?? 0) + custody);
   }
@@ -703,13 +713,25 @@ export async function getLiveCashState(
         amount: decimal(row.amount),
         appliedAmount: decimal(row.appliedAmount),
         penaltyAmount: decimal(row.penaltyAmount),
+      returnedAmount: decimal(row.returnedAmount),
       }),
       originalAmount: decimal(row.amount),
       appliedAmount: decimal(row.appliedAmount),
       penaltyAmount: decimal(row.penaltyAmount),
+      returnedAmount: decimal(row.returnedAmount),
       state: row.state,
       notes: row.notes ?? null,
       createdAt: row.createdAt,
+      settlements: row.settlements.map((settlement) => ({
+        id: settlement.id,
+        kind: settlement.kind,
+        amount: decimal(settlement.amount),
+        currency: settlement.currency,
+        reason: settlement.reason,
+        notes: settlement.notes,
+        createdByName: settlement.createdBy.name,
+        createdAt: settlement.createdAt,
+      })),
     })),
     audits: auditRows.map((row) => {
       const guaranteeRows = Array.isArray(row.guaranteeSnapshot)

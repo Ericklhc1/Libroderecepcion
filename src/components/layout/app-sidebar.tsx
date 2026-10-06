@@ -5,12 +5,12 @@ import { preserveScheduleContextHref } from '@/domain/schedule-navigation';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, Home, BookOpen, CalendarClock, ShieldCheck, BedDouble, History, BarChart3, DoorClosed, KeyRound, Banknote, AlarmClock, Settings } from 'lucide-react';
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, Home, BookOpen, CalendarClock, ShieldCheck, BedDouble, History, BarChart3, DoorClosed, KeyRound, Banknote, AlarmClock, Settings, Package } from 'lucide-react';
 import type { NavGroup, NavItem } from './nav-items';
 import { cn } from '@/lib/cn';
 import { secondaryDestinations } from './navigation-presentation';
 
-const icons = { home: Home, book: BookOpen, shift: CalendarClock, supervision: ShieldCheck, guest: BedDouble, history: History, metrics: BarChart3, room: DoorClosed, key: KeyRound, cash: Banknote, alarm: AlarmClock, admin: Settings };
+const icons = { home: Home, book: BookOpen, shift: CalendarClock, supervision: ShieldCheck, guest: BedDouble, history: History, metrics: BarChart3, room: DoorClosed, key: KeyRound, inventory: Package, cash: Banknote, alarm: AlarmClock, admin: Settings };
 
 import { activeDestination, activeModule } from './navigation-state';
 export { activeDestination, activeModule } from './navigation-state';

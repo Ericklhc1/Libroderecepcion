@@ -10,6 +10,7 @@ export const TUTORIAL_MODULE_KEYS = [
   'llaves',
   'alertas',
   'housekeeping',
+  'inventario',
   'equipo',
   'supervision',
   'gerencia',
@@ -55,7 +56,8 @@ export const TUTORIAL_MODULES: TutorialModule[] = [
     anyOf: ['key.assign', 'key.inventory', 'key.stock'],
   },
   { key: 'alertas', label: 'Avisos', route: '/notificaciones' },
-  { key: 'housekeeping', label: 'Housekeeping', route: '/admin/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
+  { key: 'housekeeping', label: 'Housekeeping', route: '/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS },
+  { key: 'inventario', label: 'Inventario', route: '/inventario', anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'] },
   { key: 'equipo', label: 'Equipo y horarios', route: '/equipo', anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     key: 'supervision',
@@ -137,9 +139,9 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   { id: 'equipo', module: 'equipo', title: 'Equipo y horarios', description: 'Calendario de personal por área, colaboradores, glosa, cobertura, cambios y extras. Publicar no acredita asistencia ni cambia el turno operativo.', route: '/equipo', target: ROUTE_TARGET, anyOf: ['schedule.self.view', 'schedule.view', 'schedule.view.all', 'schedule.manage', 'schedule.publish', 'schedule.catalog.manage', 'schedule.extra.approve', 'schedule.configure'] },
   {
     id: 'inicio',
-    title: 'Inicio: tu radar del turno',
+    title: 'Mi jornada: tu entrada operativa',
     description:
-      'Aquí ves lo urgente, vencido y pendiente. AROH organiza la continuidad operativa; FNSrooms sigue siendo el PMS.',
+      'Aquí ves lo urgente, vencido y pendiente y entras al recorrido que corresponde a tu rol. AROH organiza continuidad; FNSrooms sigue siendo el PMS.',
     route: '/',
     target: ROUTE_TARGET,
   },
@@ -226,7 +228,16 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'housekeeping', module: 'housekeeping', title: 'Housekeeping',
     description: 'Organiza el trabajo del día: solicita, asigna, ejecuta y revisa según tu cargo y área. Una limpieza terminada requiere inspección de otra persona antes de aprobarse.',
-    route: '/admin/housekeeping', target: ROUTE_TARGET, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS,
+    route: '/housekeeping', target: ROUTE_TARGET, anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS,
+  },
+  {
+    id: 'inventario',
+    module: 'inventario',
+    title: 'Inventario y lavandería',
+    description: 'Consulta el stock común, sus ubicaciones y movimientos desde una sola fuente. Lavandería utiliza ese mismo inventario y mantiene folios, entregas, recepciones y diferencias trazables.',
+    route: '/inventario',
+    target: ROUTE_TARGET,
+    anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'],
   },
   {
     id: 'supervision',
@@ -278,6 +289,35 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
 ];
 
 export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = {
+  inventario: [
+    {
+      id: 'mod-inventario-stock',
+      module: 'inventario',
+      title: 'Una sola fuente de existencias',
+      description: 'Artículos, ubicaciones y saldos viven en Inventario. Un carro o material asignado a una persona sigue formando parte del stock común: la asignación cambia la custodia, no crea ni descuenta una copia.',
+      route: '/inventario',
+      target: ROUTE_TARGET,
+      anyOf: ['inventory.view', 'inventory.move', 'inventory.manage', 'laundry.manage'],
+    },
+    {
+      id: 'mod-inventario-movimientos',
+      module: 'inventario',
+      title: 'Mueve material con trazabilidad',
+      description: 'Los traslados registran origen, destino, cantidad y motivo. Quien opera sólo puede mover dentro de su alcance; administrar categorías, artículos, ubicaciones y valorización requiere el permiso específico.',
+      route: '/inventario',
+      target: ROUTE_TARGET,
+      anyOf: ['inventory.move', 'inventory.manage'],
+    },
+    {
+      id: 'mod-inventario-lavanderia',
+      module: 'inventario',
+      title: 'Lavandería reutiliza el inventario',
+      description: 'Los folios de lavandería registran entrega, recepción parcial y diferencias contra las mismas existencias. No existe un segundo stock paralelo.',
+      route: '/lavanderia',
+      target: ROUTE_TARGET,
+      anyOf: ['laundry.manage'],
+    },
+  ],
   equipo: [
     { id: 'mod-equipo-calendario', module: 'equipo', title: 'Planifica por área', description: 'Añade usuarios existentes al área y define su referencia semanal en horas. La jornada se computa completa. Crea una malla y programa por casillas o revisa una carga. Los bloques de ocho días y la semana calendario tienen vistas independientes.', route: '/equipo', target: ROUTE_TARGET },
     { id: 'mod-equipo-cambios', module: 'equipo', title: 'Revisa antes de cambiar', description: 'Mover, reasignar, intercambiar y agregar cobertura tienen efectos distintos. El servidor comprueba pertenencia, solapamientos y descanso configurado. Una asignación anterior permanece en el historial.', route: '/equipo', target: ROUTE_TARGET },
@@ -287,12 +327,12 @@ export const MODULE_TUTORIAL_STEPS: Record<TutorialModuleKey, TutorialStep[]> = 
     {
       id: 'mod-housekeeping-recepcion', module: 'housekeeping', title: 'Ubica tu trabajo del día',
       description: 'Selecciona fecha y área. Recepción solicita; la supervisora organiza disponibilidad y asignaciones; cada mucama ejecuta sus trabajos. La novedad vinculada conserva su contenido original.',
-      route: '/admin/housekeeping', target: ROUTE_TARGET,
+      route: '/housekeeping', target: ROUTE_TARGET,
     },
     {
       id: 'mod-housekeeping-resultado', module: 'housekeeping', title: 'Termina, inspecciona y da continuidad',
       description: 'Comienza tu asignación, registra impedimentos y marca terminado con un resultado. Otra persona habilitada inspecciona la limpieza y aprueba o devuelve para corregir. El relevo conserva pendientes y llaves; Fronti propone y tú confirmas.',
-      route: '/admin/housekeeping', target: ROUTE_TARGET,
+      route: '/housekeeping', target: ROUTE_TARGET,
     },
   ],
   novedades: [

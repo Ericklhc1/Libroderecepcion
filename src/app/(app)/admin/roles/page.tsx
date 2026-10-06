@@ -116,6 +116,7 @@ export default async function RolesPage({
                 .filter((rp) => rp.requiresApproval)
                 .map((rp) => rp.permission.key)}
               locked={role.key === ROLE_KEYS.SYSTEM_ADMIN}
+              affectedUsers={role._count.users}
             />
             </div>
           </CardScroll>

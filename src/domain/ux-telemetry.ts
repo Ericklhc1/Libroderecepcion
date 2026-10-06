@@ -12,7 +12,7 @@ export function uxRoute(path:string):Pick<UxEvent,'route'|'entityType'|'entityId
   const detail=/^\/(libro|tareas)\/([a-z0-9]{20,40})$/.exec(path);
   if(detail)return {route:detail[1]==='libro'?'asunto':'tarea',entityType:detail[1]==='libro'?'OperationalEntry':'Task',entityId:detail[2]};
   if(path==='/')return {route:'inicio'};
-  const known:Record<string,UxEvent['route']>={'/libro':'libro','/tareas':'tareas','/incidencias':'incidencias','/seguimientos':'seguimientos','/coordinacion':'coordinacion','/novedades/habitacion':'habitacion','/admin/housekeeping':'housekeeping','/supervision':'supervision','/gerencia':'gerencia','/turno':'turno','/caja':'caja','/llaves':'llaves','/alertas':'avisos','/notificaciones':'avisos'};
+  const known:Record<string,UxEvent['route']>={'/libro':'libro','/tareas':'tareas','/incidencias':'incidencias','/seguimientos':'seguimientos','/coordinacion':'coordinacion','/novedades/habitacion':'habitacion','/housekeeping':'housekeeping','/supervision':'supervision','/gerencia':'gerencia','/turno':'turno','/caja':'caja','/llaves':'llaves','/alertas':'avisos','/notificaciones':'avisos'};
   return known[path]?{route:known[path]}:null;
 }
 

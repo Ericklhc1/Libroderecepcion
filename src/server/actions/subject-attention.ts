@@ -9,7 +9,7 @@ export async function requestSubjectAttentionAction(_state:ActionState|null,form
   return runAction(async()=>{
     const user=await requireUser();const data=input.parse(formDataToObject(form));
     const result=await requestSubjectAttention(user,data);
-    revalidatePath(`/libro/${data.entryId}`);revalidatePath('/coordinacion');revalidatePath('/tareas');revalidatePath('/admin/housekeeping');
+    revalidatePath(`/libro/${data.entryId}`);revalidatePath('/coordinacion');revalidatePath('/tareas');revalidatePath('/housekeeping');
     return{ok:true as const,message:result.existing?'La atención existente conserva el mismo asunto.':'Atención solicitada. El resultado vuelve a este asunto.',id:result.id,navigateTo:`/libro/${encodeURIComponent(data.entryId)}`};
   });
 }

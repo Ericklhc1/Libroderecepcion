@@ -148,7 +148,11 @@ export function outstandingAmount(guarantee: {
   amount: number;
   appliedAmount: number | null;
   penaltyAmount: number | null;
+  returnedAmount?: number | null;
 }): number {
-  const usado = (guarantee.appliedAmount ?? 0) + (guarantee.penaltyAmount ?? 0);
+  const usado =
+    (guarantee.appliedAmount ?? 0) +
+    (guarantee.penaltyAmount ?? 0) +
+    (guarantee.returnedAmount ?? 0);
   return Math.max(0, guarantee.amount - usado);
 }

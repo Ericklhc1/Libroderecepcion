@@ -84,7 +84,7 @@ export const HELP_TOPICS: HelpTopic[] = [
       'Si cambia la novedad original, la supervisora debe revisar la nueva instrucción. Deja pendientes y llaves en el relevo para otra persona; Fronti sólo propone asignaciones que debes confirmar.',
     ],
     caveat: 'Marcar terminado no aprueba una limpieza. Los avisos anteriores conservan historial y requieren organización explícita para incorporarse al trabajo diario. Los permisos siempre respetan el área.',
-    route: '/admin/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS, keywords: ['housekeeping', 'mucama', 'asignar', 'inspección', 'supervisor', 'ama de llaves', 'relevo', 'bloquear', 'pendiente'],
+    route: '/housekeeping', anyOf: HOUSEKEEPING_ACCESS_PERMISSIONS, keywords: ['housekeeping', 'mucama', 'asignar', 'inspección', 'supervisor', 'ama de llaves', 'relevo', 'bloquear', 'pendiente'],
   },
   {
     id: 'tomar-turno',

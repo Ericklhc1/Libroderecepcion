@@ -62,7 +62,7 @@ describe('continuidad nativa entre lista y detalle', () => {
   it('retiene rutas directas y fragmentos existentes sin fabricar entidades', () => {
     expect(detailHrefWithListContext('/tareas/real?modo=consulta#historial-asunto', '/tareas', 'registro-task-real'))
       .toBe('/tareas/real?modo=consulta&desdeLista=%2Ftareas%23registro-task-real#historial-asunto');
-    for (const href of ['/seguimientos', '/alertas?alerta=real', '/admin/housekeeping?aviso=417']) {
+    for (const href of ['/seguimientos', '/alertas?alerta=real', '/housekeeping?aviso=417']) {
       expect(detailHrefWithListContext(href, '/libro', 'registro-task-real')).toBe(href);
     }
     expect(safeListReturnHref(undefined, '/libro')).toBe('/libro');

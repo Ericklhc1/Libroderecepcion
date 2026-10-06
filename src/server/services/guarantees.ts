@@ -488,12 +488,25 @@ export async function changeGuaranteeState(
     });
     if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
 
+    const partialSettlements = await tx.guaranteeSettlement.count({
+      where: { guaranteeId: guarantee.id },
+    });
+
     const from = guarantee.state as GuaranteeStateValue;
     const to = input.state as GuaranteeStateValue;
     if (from === to) throw new RuleError('La garantía ya está en ese estado.');
     if (!canTransition(from, to)) {
       throw new RuleError(
         `No se puede pasar de «${GUARANTEE_STATE_LABELS[from]}» a «${GUARANTEE_STATE_LABELS[to]}».`,
+      );
+    }
+    if (
+      guarantee.kind === GuaranteeKind.EFECTIVO &&
+      partialSettlements > 0 &&
+      (to === 'DEVUELTA' || to === 'MULTA')
+    ) {
+      throw new RuleError(
+        'Esta garantía ya tiene devoluciones o cobros parciales. Continúa desde Caja para resolver únicamente el saldo restante.',
       );
     }
 

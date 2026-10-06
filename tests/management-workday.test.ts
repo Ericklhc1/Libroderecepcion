@@ -72,7 +72,7 @@ describe('Mi jornada de jefatura por área', () => {
         grantedById: user.id,
         startsAt: new Date(Date.now() - 60_000),
         endsAt: new Date(Date.now() + 60 * 60_000),
-        permission: 'housekeeping.plan',
+        permission: 'housekeeping.assign',
         reason: 'Cobertura temporal de prueba',
       },
     });

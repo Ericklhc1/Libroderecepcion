@@ -5,7 +5,7 @@ import {isHkFocused} from './housekeeping-work';
 /** La entrada prioriza el trabajo vigente sin conceder permisos ni cambiar rutas históricas. */
 export function operationalLanding(user:Pick<CurrentUser,'roleKey'|'permissions'|'isSystemAdmin'>,areaKey?:string|null):string|null{
   if(user.isSystemAdmin)return null;
-  if(isHkFocused(user))return '/housekeeping';
+  if(isHkFocused(user))return '/housekeeping?vista=mios';
   if(user.roleKey===ROLE_KEYS.MANAGEMENT&&user.permissions.includes('management.dashboard.view'))return '/gerencia';
   if(!isReceptionDeskRole(user.roleKey)&&areaKey==='MANTENIMIENTO')return '/coordinacion?vista=unreceived';
   if(user.roleKey===ROLE_KEYS.SUPERVISOR&&user.permissions.includes('supervision.center.view'))return '/supervision?seccion=senales#senales';

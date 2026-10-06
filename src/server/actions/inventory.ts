@@ -93,6 +93,7 @@ const locationSchema = z.object({
   id: z.string().trim().optional().transform((value) => value || undefined),
   key: optionalText,
   departmentId: optionalText,
+  custodianUserId: optionalText,
   name: z.string().trim().min(2).max(120),
   kind: z.nativeEnum(InventoryLocationKind),
   active: z.string().optional().transform((value) => value !== 'false'),

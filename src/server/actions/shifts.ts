@@ -722,7 +722,7 @@ export async function cancelShiftAction(
       const shift = await tx.shift.findUnique({ where: { id: input.shiftId } });
       if (!shift) throw new NotFoundError('El turno no existe.');
 
-      if (![ShiftStatus.PROGRAMADO, ShiftStatus.INICIADO].includes(shift.status)) {
+      if (shift.status !== ShiftStatus.PROGRAMADO && shift.status !== ShiftStatus.INICIADO) {
         throw new RuleError(
           shift.status === ShiftStatus.ACTIVO
             ? 'El turno ya está ACTIVO. Debe cerrarse o regularizarse; no se puede anular como un inicio incompleto.'

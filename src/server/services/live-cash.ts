@@ -340,14 +340,18 @@ export async function recordGuaranteeChargeOut(
 }
 
 export async function assertGuaranteeCanBeDeleted(guaranteeId: string): Promise<void> {
-  const hasIn = await cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_INGRESO' });
-  const [hasReturn, hasCharge] = await Promise.all([
-    cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_DEVOLUCION' }),
-    cashMovementExists(prisma, { guaranteeId, kind: 'GARANTIA_COBRO' }),
-  ]);
-  if (hasIn && !hasReturn && !hasCharge) {
+  const movements = await prisma.cashMovement.findMany({
+    where: { guaranteeId, voidedAt: null },
+    select: { direction: true, amount: true },
+  });
+  const net = movements.reduce(
+    (total, movement) =>
+      total + (movement.direction === 'ENTRADA' ? decimal(movement.amount) : -decimal(movement.amount)),
+    0,
+  );
+  if (net > 0.000001) {
     throw new RuleError(
-      'Esta garantía tiene efectivo en caja. Devuélvela o resuélvela antes de eliminarla.',
+      `Esta garantía todavía mantiene ${net} en efectivo bajo custodia. Devuelve o resuelve el saldo antes de eliminarla.`,
     );
   }
 }

@@ -27,7 +27,7 @@ import {
   OpenShiftForm,
 } from '@/components/operational/shift-actions';
 
-export const metadata = { title: 'Inicio' };
+export const metadata = { title: 'Mi jornada' };
 export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
@@ -66,9 +66,9 @@ export default async function DashboardPage() {
             </p>
             {shift ? (
               <>
-                <h1 className="mt-1 text-xl font-semibold text-petrol-900">
+                <h2 className="mt-1 text-xl font-semibold text-petrol-900">
                   {SHIFT_TYPE_LABEL[shift.type]} · {formatCalendarDate(shift.date)}
-                </h1>
+                </h2>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-slate-600">
                   <Badge
                     tone={
@@ -99,9 +99,9 @@ export default async function DashboardPage() {
               </>
             ) : (
               <>
-                <h1 className="mt-1 text-xl font-semibold text-petrol-900">
+                <h2 className="mt-1 text-xl font-semibold text-petrol-900">
                   No tienes un turno abierto
-                </h1>
+                </h2>
                 <p className="mt-1 text-sm text-slate-600">
                   {!user.roleOperational
                     ? 'Tu rol está fuera de la operación de turnos. Puedes supervisar y administrar desde el menú.'

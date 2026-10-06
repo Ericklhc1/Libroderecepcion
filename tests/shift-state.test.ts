@@ -23,6 +23,7 @@ describe('máquina de estados del turno', () => {
   it('permite únicamente el ciclo previsto', () => {
     expect(canTransition(ShiftStatus.PROGRAMADO, ShiftStatus.INICIADO)).toBe(true);
     expect(canTransition(ShiftStatus.INICIADO, ShiftStatus.ACTIVO)).toBe(true);
+    expect(canTransition(ShiftStatus.INICIADO, ShiftStatus.ANULADO)).toBe(true);
     expect(canTransition(ShiftStatus.ACTIVO, ShiftStatus.PREPARANDO_ENTREGA)).toBe(true);
     expect(
       canTransition(ShiftStatus.PREPARANDO_ENTREGA, ShiftStatus.ENTREGA_ENVIADA),

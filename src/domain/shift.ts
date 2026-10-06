@@ -20,7 +20,7 @@ import {
  */
 export const SHIFT_TRANSITIONS: Record<ShiftStatus, ShiftStatus[]> = {
   [ShiftStatus.PROGRAMADO]: [ShiftStatus.INICIADO, ShiftStatus.ANULADO],
-  [ShiftStatus.INICIADO]: [ShiftStatus.ACTIVO],
+  [ShiftStatus.INICIADO]: [ShiftStatus.ACTIVO, ShiftStatus.ANULADO],
   [ShiftStatus.ACTIVO]: [ShiftStatus.PREPARANDO_ENTREGA],
   [ShiftStatus.PREPARANDO_ENTREGA]: [
     ShiftStatus.ENTREGA_ENVIADA,

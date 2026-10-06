@@ -30,6 +30,21 @@ describe('anular un turno libera la participación', () => {
     expect(cancelAction).toContain('endShiftParticipation(tx, shift.id, now)');
   });
 
+  it('la anulación desde INICIADO libera la entrega sólo antes de confirmar custodia', () => {
+    const start = shiftActions.indexOf('export async function cancelShiftAction');
+    const end = shiftActions.indexOf('const archiveSchema', start);
+    const cancelAction = shiftActions.slice(start, end);
+
+    expect(cancelAction).toContain('ShiftStatus.INICIADO');
+    expect(cancelAction).toContain("kind: 'CONFIRMADO'");
+    expect(cancelAction).toContain('confirmed: true');
+    expect(cancelAction).toContain('missingApprovedAt');
+    expect(cancelAction).toContain('toShiftId: null');
+    expect(cancelAction).toContain('receiverBriefingReviewedAt: null');
+    expect(cancelAction).toContain('receiverCustodyReviewedAt: null');
+    expect(cancelAction).toContain('receiverFinalReviewAt: null');
+  });
+
   it('el retiro forzado del Administrador también libera la participación', () => {
     const start = adminActions.indexOf('export async function removeShiftFromOperationAction');
     const forcedRemoval = adminActions.slice(start);

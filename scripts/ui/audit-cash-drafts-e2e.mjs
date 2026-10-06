@@ -67,10 +67,10 @@ try {
     assert.equal(await form().locator('textarea[name=notes]').inputValue(),'');assert.equal(await check().isChecked(),false);
     await quantity().fill('4');await form().locator('textarea[name=notes]').fill('SYNTHETIC segundo relevo');
     await page.goto(url);
-    await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();
+    await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),false,'A draft must not restore an unsent physical validation');
     await page.goBack();await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();assert.equal(await quantity().inputValue(),'4');assert.equal(await check().isChecked(),false);
-    await page.goForward();await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();assert.equal(await quantity().inputValue(),'5');assert.equal(await check().isChecked(),false);
+    await page.goForward();await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();assert.equal(await quantity().inputValue(),'5');assert.equal(await check().isChecked(),false);
     // Switch between two authenticated synthetic participants in this same tab.
     // The renderer regression separately exercises reuse without a document load.
     await context.addCookies([{name:'lor_session',value:f.users.worker.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);

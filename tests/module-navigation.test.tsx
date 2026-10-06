@@ -69,6 +69,7 @@ describe('cabecera persistente y contexto de módulos', () => {
   it('las rutas secundarias y profundas permanecen en su módulo real', () => {
     for (const [path, root] of [
       ['/alertas', '/notificaciones'], ['/housekeeping', '/housekeeping'],
+      ['/lavanderia', '/inventario'], ['/inventario', '/inventario'],
       ['/admin/auditoria', '/admin/auditoria'], ['/admin/turnos', '/turno'],
       ['/admin/usuarios/ejemplo', '/admin'], ['/tareas/ejemplo', '/libro?clase=entry'],
     ]) expect(activeModule(groups, path!)).toBe(root);

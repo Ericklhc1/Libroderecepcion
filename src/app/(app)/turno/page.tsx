@@ -21,6 +21,7 @@ import { ShiftStepper } from '@/components/operational/shift-stepper';
 import {
   AddShiftMemberForm,
   CancelPreparationForm,
+  CancelStartedShiftForm,
   CloseShiftForm,
   EmergencyOpenShiftForm,
   JoinShiftForm,
@@ -427,6 +428,11 @@ export default async function ShiftPage({
                         />
                       </div>
                     ) : null}
+                    {sharedOperationalShift.status === ShiftStatus.INICIADO && user.permissions.includes('shift.manage') ? (
+                      <div className="mt-3 max-w-md">
+                        <CancelStartedShiftForm shiftId={sharedOperationalShift.id} />
+                      </div>
+                    ) : null}
                     {sharedOperationalShift.status === ShiftStatus.INICIADO ||
                     sharedOperationalShift.status === ShiftStatus.ACTIVO ? (
                       <div className="mt-3 max-w-md">
@@ -569,6 +575,9 @@ export default async function ShiftPage({
                 </div>
 
                 <div className="flex flex-col gap-2">
+                  {shift.status === ShiftStatus.INICIADO && user.permissions.includes('shift.manage') ? (
+                    <CancelStartedShiftForm shiftId={shift.id} />
+                  ) : null}
                   {shift.status === ShiftStatus.ACTIVO ? (
                     <>
                       <Link href="/coordinacion?mios=1" className="rounded-lg bg-petrol-800 px-3.5 py-2 text-center text-sm font-semibold text-white">Continuar operación</Link>

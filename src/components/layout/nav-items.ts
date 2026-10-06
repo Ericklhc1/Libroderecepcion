@@ -46,7 +46,8 @@ export type NavGroup = { title: string | null; items: NavItem[] };
 
 const PRIMARY: NavItem[] = [
   { href: '/coordinacion', label: 'Coordinación', icon: 'book' },
-  { href: '/', label: 'Mi jornada', mobileLabel: 'Jornada', icon: 'home', mobile: true },
+  { href: '/', label: 'Inicio', icon: 'home', mobile: true },
+  { href: '/jornada', label: 'Mi jornada', mobileLabel: 'Jornada', icon: 'shift', mobile: true, anyOf: ['workday.manage'] },
   {
     href: '/libro?clase=entry',
     label: 'Novedades',

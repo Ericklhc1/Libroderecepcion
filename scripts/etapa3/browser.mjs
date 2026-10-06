@@ -23,6 +23,9 @@ try{
   await open(maid.page);await act(maid.page,'Comenzar');await act(maid.page,'Informar impedimento','Fuga de agua sintética');
   await open(admin.page);await act(admin.page,'Solicitar Mantenimiento','Reparar fuga sintética','ALTA');
   const linked=await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id},include:{maintenanceEntry:true}});assert.ok(linked.maintenanceEntry);
+  const completedAt=new Date();
+  await db.task.updateMany({where:{entryId:linked.maintenanceEntry.id,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']}},data:{status:'VALIDADA',evidenceProvided:'PRUEBA AUTOMÁTICO DE IA · obligación sintética completada',completedAt,completedById:f.users.admin.id,validatedAt:completedAt,validatedById:f.users.admin.id}});
+  await db.followUp.updateMany({where:{entryId:linked.maintenanceEntry.id,status:{in:['PENDIENTE','VENCIDO']}},data:{status:'CUMPLIDO',result:'PRUEBA AUTOMÁTICO DE IA · seguimiento sintético cumplido',resolution:'Continuidad cerrada antes de resolver Mantenimiento',completedAt}});
   const completeMessage=`Finaliza Mantenimiento #${linked.maintenanceEntry.humanId}: Válvula reparada y comprobada ${width}`;const resultKey=randomUUID();
   const response=await admin.context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:completeMessage,requestKey:resultKey}});const body=await response.json();assert.equal(response.status(),200,body.error);assert.match(body.reply,/Completado/);
   const retry=await admin.context.request.post('http://localhost:3000/api/fronti',{headers:{Origin:'http://localhost:3000'},data:{message:completeMessage,requestKey:resultKey}});assert.equal(retry.status(),200);assert.equal(await db.housekeepingEvent.count({where:{requestId:work.id,action:'MANTENIMIENTO_RESULTADO'}}),1);

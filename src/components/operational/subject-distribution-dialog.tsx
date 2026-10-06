@@ -1,0 +1,23 @@
+'use client';
+import {useState} from 'react';
+import {Dialog} from '@/components/ui/dialog';
+import {ActionForm,Field,Input,Textarea,Select} from '@/components/ui/form';
+import {SubmitButton} from '@/components/ui/button';
+import {distributeSubjectAction} from './navigation-action';
+type Area={value:string;label:string;needsLocation:boolean;people:{id:string;name:string}[]};
+export function SubjectDistributionDialog({entryId,revision,requestKey,areas,room}:{entryId:string;revision:string;requestKey:string;areas:Area[];room:string|null}){
+  const [selected,setSelected]=useState<string[]>([]);const [urgent,setUrgent]=useState(false);const [validate,setValidate]=useState(false);const [contacts,setContacts]=useState<Record<string,string>>({});
+  return <Dialog title="Distribuir atención" trigger="Solicitar atención" triggerVariant="gold" width="lg" description="Un asunto compartido, con decisiones y resultados independientes por área. La distribución es interna.">
+    <ActionForm action={distributeSubjectAction}>
+      <input type="hidden" name="entryId" value={entryId}/><input type="hidden" name="revision" value={revision}/><input type="hidden" name="requestKey" value={requestKey}/><input type="hidden" name="departmentIds" value={JSON.stringify(selected)}/><input type="hidden" name="urgent" value={String(urgent)}/><input type="hidden" name="requiresValidation" value={String(validate)}/><input type="hidden" name="urgentContacts" value={JSON.stringify(contacts)}/>
+      <fieldset className="space-y-2"><legend className="font-medium">Áreas que deben revisar este asunto</legend><label className="flex gap-2 text-sm"><input type="checkbox" checked={selected.length===areas.length&&areas.length>0} onChange={e=>setSelected(e.target.checked?areas.map(a=>a.value):[])}/>Todas las áreas operativas disponibles</label>{areas.map(a=><label key={a.value} className="flex gap-2 text-sm"><input type="checkbox" checked={selected.includes(a.value)} onChange={e=>setSelected(e.target.checked?[...selected,a.value]:selected.filter(v=>v!==a.value))}/>{a.label}</label>)}</fieldset>
+      {room?<p className="text-sm">Habitación {room} · contexto original incluido.</p>:areas.some(a=>a.needsLocation&&selected.includes(a.value))?<Field label="Ubicación del trabajo especializado" name="location"><Input name="location" required maxLength={160}/></Field>:null}
+      <Field label="Urgencia de la acción" name="urgent"><Select value={String(urgent)} onChange={e=>setUrgent(e.target.value==='true')} options={[{value:'false',label:'Revisión normal por la jefatura'},{value:'true',label:'Atención inmediata por guardia o suplencia'}]}/></Field>
+      <p className="text-xs text-slate-600">La importancia conserva la prioridad del asunto. Una prioridad alta no implica urgencia inmediata.</p>
+      {urgent&&<div className="space-y-3 rounded-lg border border-amber-300 p-3"><Field label="Riesgo concreto y acción inmediata necesaria" name="urgencyReason"><Textarea name="urgencyReason" required maxLength={1000}/></Field>{areas.filter(a=>selected.includes(a.value)).map(a=><Field key={a.value} label={`Guardia o suplencia indicada · ${a.label}`} name={`contact-${a.value}`}><Select required value={contacts[a.value]??''} onChange={e=>setContacts({...contacts,[a.value]:e.target.value})} placeholder="Seleccionar persona habilitada" options={a.people.map(p=>({value:p.id,label:p.name}))}/></Field>)}{areas.some(a=>selected.includes(a.value)&&!a.people.length)&&<p role="status" className="text-sm font-medium">No hay una guardia habilitada seleccionable en alguna de estas áreas. El asunto original sigue guardado: puedes cerrar este formulario y contactar directamente a la jefatura o guardia por el canal vigente, sin esperar una publicación. Este formulario no sustituye el aviso directo ante riesgo inmediato.</p>}<p className="text-xs">La persona indicada recibe el aviso y puede tomar el trabajo sin esperar publicación. Confirma directamente su disponibilidad; el horario no acredita presencia. La revisión de jefatura queda pendiente. Si estás preparando una entrega, vuelve a operar desde Mi turno → Cancelar preparación; ante riesgo que no puede esperar, contacta directamente a la guardia.</p></div>}
+      <label className="flex gap-2 text-sm"><input type="checkbox" checked={validate} onChange={e=>setValidate(e.target.checked)}/>Requerir validación independiente del resultado</label>
+      <p className="text-sm text-slate-600">Tomar conocimiento no publica ni cierra. Los plazos del asunto se conservan; no se crea otro plazo por distribuirlo.</p>
+      <SubmitButton pendingLabel="Distribuyendo…" disabled={!selected.length}>Enviar a revisión de las áreas</SubmitButton>
+    </ActionForm>
+  </Dialog>;
+}

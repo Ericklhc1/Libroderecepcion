@@ -89,7 +89,7 @@ export function OperationalBriefButton() {
                   </div>
                   <Link
                     href={action.href}
-                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-gold-500 px-3 py-1.5 text-xs font-semibold text-petrol-950 hover:bg-gold-400"
+                    className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg bg-petrol-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-petrol-900"
                   >
                     Aplicar
                     <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />

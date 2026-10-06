@@ -652,6 +652,7 @@ model LegalAcceptance {
 // ================================= ÁREAS ==================================
 
 model Department {
+  subjectAttentions SubjectAreaAttention[]
   operationalAutomations OperationalAutomation[]
   hkRoutines HousekeepingRoutine[]
   hkDayMembers HousekeepingDayMember[]
@@ -1135,7 +1136,8 @@ model OperationalEntry {
   workRequestKey String?
 
   hkMaintenanceWork HousekeepingRequest? @relation("hkMaintenance")
-  housekeepingRequest HousekeepingRequest?
+  housekeepingRequests HousekeepingRequest[]
+  areaAttentions SubjectAreaAttention[]
   id               String      @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   seq              Int         @unique @default(autoincrement())
@@ -1180,6 +1182,7 @@ model OperationalEntry {
   rootCause       String?
   resolution      String?
 
+  resolvedAt DateTime?
   closedAt   DateTime?
   closedById String?
   closedBy   User?     @relation("entryClosedBy", fields: [closedById], references: [id])
@@ -1214,6 +1217,7 @@ model OperationalEntry {
 
 // Operational coordination. Legacy administrative trials retain isDemo=true.
 model HousekeepingRequest {
+  areaAttention SubjectAreaAttention?
   workAssignedAt DateTime?
   workflowVersion Int @default(0)
   workKind String @default("AVISO")
@@ -1244,7 +1248,7 @@ model HousekeepingRequest {
   id             String @id @default(cuid())
   humanId        Int @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   requestKey     String @unique
-  sourceEntryId  String? @unique
+  sourceEntryId  String?
   sourceEntry    OperationalEntry? @relation(fields: [sourceEntryId], references: [id], onDelete: Restrict)
   title          String?
   description    String?
@@ -1266,6 +1270,7 @@ model HousekeepingRequest {
   @@index([status, dueAt])
   @@index([departmentId, workDate, status])
   @@unique([routineId, workDate])
+  @@unique([sourceEntryId, departmentId])
 }
 
 model HousekeepingEvent {
@@ -1284,6 +1289,7 @@ model HousekeepingEvent {
 }
 
 model Task {
+  areaAttention SubjectAreaAttention?
   sourceFollowUps TaskSourceFollowUp[]
   procedureOccurrenceKey String? @unique
   requiresIndependentValidation Boolean @default(false)
@@ -3559,4 +3565,37 @@ view NotificationSourceFollowUp {
   notification Notification @relation(fields: [notificationId], references: [id])
   followUp FollowUp @relation(fields: [followUpId], references: [id])
   @@unique([notificationId, followUpId])
+}
+
+// Routing decisions are distinct from execution, source closure and notification reading.
+model SubjectAreaAttention {
+  id String @id @default(cuid())
+  requestKey String @unique
+  entryId String
+  entry OperationalEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  departmentId String
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  status String @default("POR_REVISAR")
+  urgent Boolean @default(false)
+  urgencyReason String?
+  urgentContactId String?
+  requiresValidation Boolean @default(false)
+  location String?
+  createdById String
+  knownAt DateTime?
+  knownById String?
+  decisionAt DateTime?
+  decidedById String?
+  decisionNote String?
+  taskId String? @unique
+  task Task? @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  housekeepingId String? @unique
+  housekeeping HousekeepingRequest? @relation(fields: [housekeepingId], references: [id], onDelete: Restrict)
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([entryId, departmentId])
+  @@index([departmentId, status])
+  @@index([urgentContactId])
 }

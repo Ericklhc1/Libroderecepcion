@@ -232,3 +232,16 @@ describe('Fronti contextual · selección de herramientas', () => {
     expect(frontiToolMode('proponer_checkouts')).toBe('propose');
   });
 });
+
+describe('contexto de las nuevas superficies de auditoría',()=>{
+  it('cambios de turno y bandeja de áreas sólo recomiendan consulta',()=>{
+    expect(resolveFrontiPageContext({pathname:'/turno/cambios'}).recommendedTools).toEqual(['consultar_contexto_pantalla']);
+    expect(resolveFrontiPageContext({pathname:'/coordinacion/areas',search:'?area=one&atencion=two'})).toMatchObject({moduleKey:'coordinacion',sectionKey:'areas',filters:{area:'one',atencion:'two'}});
+  });
+  it('el lector documental no aparenta recibir originales locales ni una aprobación',()=>{
+    const page=resolveFrontiPageContext({pathname:'/supervision/documentos'});
+    expect(page.sectionKey).toBe('documentos-locales');expect(page.recommendedTools).toEqual(['consultar_contexto_pantalla']);
+    const reader=readFileSync('src/server/ai/fronti-v2/page-context-tool.ts','utf8');
+    expect(reader).toContain('originalAvailableOnServer:false');expect(reader).toContain('documentInferenceEnabled:false');expect(reader).toContain('No has recibido ni analizado ese documento');
+  });
+});

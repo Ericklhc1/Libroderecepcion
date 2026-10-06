@@ -69,7 +69,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: ${{ github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' && 'npm' || '' }}
+          cache: ${{ github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-operational-audit-20261005' && github.ref != 'refs/heads/codex/aroh-operational-audit-20261005' && 'npm' || '' }}
 
       - name: Validar infraestructura oficial
         run: |
@@ -129,11 +129,19 @@ jobs:
           npm run test
           node --test scripts/ui/hydration-diagnostics.test.mjs scripts/framework/react-ping-backport.test.mjs scripts/framework/verify-react-ping-build.test.mjs
 
+      - name: Fechas calendario en Santiago y UTC
+        run: |
+          TZ=America/Santiago npx vitest run tests/rooms-keys.test.ts tests/shift-reports.test.ts tests/operational-metrics-domain.test.ts tests/audit-cash-display.test.ts
+          TZ=UTC npx vitest run tests/rooms-keys.test.ts tests/shift-reports.test.ts tests/operational-metrics-domain.test.ts tests/audit-cash-display.test.ts
+
       - name: Build
         id: production_build
         env:
           NODE_ENV: production
         run: npm run build
+
+      - name: Verificar empaquetado PDF tras build
+        run: npx vitest run tests/empaquetado-pdf.test.ts
 
       - name: Preparar recorridos de navegador de Etapa 1
         run: |
@@ -291,6 +299,38 @@ jobs:
           done
           exit "$journey_status"
 
+      - name: Auditoría de Caja, borradores y contexto de Equipo
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          journey_status=0
+          for script in audit-cash-drafts-e2e schedule-audit-e2e manual-documents-browser; do
+            npx tsx scripts/etapa1/fixture.mts
+            NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/operational-audit-browser.log 2>&1 &
+            server_pid=$!
+            trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+            for i in $(seq 1 60); do
+              if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+              sleep 1
+            done
+            if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node "scripts/ui/$script.mjs"; then
+              journey_status=1
+              echo "Synthetic audit failure: $script"
+              tail -60 /tmp/operational-audit-browser.log
+            fi
+            kill "$server_pid" 2>/dev/null || true
+            wait "$server_pid" 2>/dev/null || true
+          done
+          exit "$journey_status"
+
+      - name: Navegación compacta, teclado y temas en cuatro tamaños
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 3
+        run: node scripts/ui/compact-navigation-isolated.mjs
+
       - name: Diagnóstico de estado SPA y Flight sin salida externa
         if: ${{ !cancelled() && steps.production_build.outcome == 'success' && github.ref == 'refs/heads/codex/aroh-fns-20261005' }}
         timeout-minutes: 3
@@ -309,10 +349,10 @@ jobs:
           PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/navigation-transport-probe.mjs
 
       - name: Evidencia temporal en logs sin almacenamiento adicional
-        if: ${{ always() && (github.ref == 'refs/heads/codex/aroh-fns-20261005' || github.ref == 'refs/heads/codex/aroh-future-handoff-20261005' || github.head_ref == 'codex/aroh-future-handoff-20261005') }}
+        if: ${{ always() && (github.ref == 'refs/heads/codex/aroh-fns-20261005' || github.ref == 'refs/heads/codex/aroh-future-handoff-20261005' || github.head_ref == 'codex/aroh-future-handoff-20261005' || github.head_ref == 'codex/aroh-operational-audit-20261005' || github.ref == 'refs/heads/codex/aroh-operational-audit-20261005') }}
         run: |
           echo "Candidate commit: $GITHUB_SHA"
-          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-hydration-diagnostics.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json module-navigation-browser-results.json /tmp/context-worklist-browser-results.json housekeeping-worklist-browser-results.json room-context-browser-results.json custody-worklist-browser-results.json /tmp/search-context-browser-results.json history-context-browser-results.json; do
+          for file in etapa3-typecheck.log etapa1-browser-results.json etapa2-browser-results.json etapa3-browser-results.json etapa3-hydration-diagnostics.json etapa3-block2-browser-results.json collapsible-sections-browser-results.json etapa4-reception-browser-results.json etapa4-subject-browser-results.json etapa4-attention-browser-results.json etapa4-roles-browser-results.json etapa4-intent-browser-results.json etapa4-surfaces-browser-results.json appearance-browser-results.json /tmp/list-context-browser-results.json substitution-candidates-browser-results.json module-navigation-browser-results.json /tmp/context-worklist-browser-results.json housekeeping-worklist-browser-results.json room-context-browser-results.json custody-worklist-browser-results.json /tmp/search-context-browser-results.json history-context-browser-results.json audit-cash-drafts-browser-results.json /tmp/schedule-audit-browser-results.json; do
             if [ -f "$file" ]; then
               printf '\n=== %s ===\n' "$file"
               cat "$file"
@@ -320,7 +360,7 @@ jobs:
           done
 
       - name: Evidencia de recorridos sin credenciales
-        if: ${{ always() && github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' }}
+        if: ${{ always() && github.ref != 'refs/heads/codex/aroh-fns-20261005' && github.ref != 'refs/heads/codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-future-handoff-20261005' && github.head_ref != 'codex/aroh-operational-audit-20261005' && github.ref != 'refs/heads/codex/aroh-operational-audit-20261005' }}
         uses: actions/upload-artifact@v4
         with:
           name: etapa1-browser-${{ github.sha }}

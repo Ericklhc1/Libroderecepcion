@@ -1,25 +1,16 @@
 import 'server-only';
 import type {CurrentUser} from '@/server/auth/current-user';
-import {taskFollowUpReadWhere} from './followup-access';
+import { sharedMetricTasks, overdueTasksWhere, criticalIncidentsWhere, criticalFindingsWhere, overdueCorrectivesWhere, cashDifferencesWhere, managementEvidenceHref } from './management-evidence';
 
 import {
-  EntryStatus,
   EntryType,
   HandoverStatus,
-  Priority,
-  Severity,
   ShiftStatus,
-  TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
-import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { ENTRY_RESOLVED_STATUSES, TASK_COMPLETED_STATUSES, metricPeriod, metricCalendarRange, incidentResolutionAt, signedMoney, SHARED_METRIC_SCOPE, TASK_COMPLETION_DEFINITION, INCIDENT_RESOLUTION_DEFINITION } from '@/domain/operational-metrics';
+import { ENTRY_OPEN_STATUSES } from '@/domain/labels';
 import { getRoomMonitorOverview } from '@/server/services/room-monitor';
-import {
-  chatWithFrontiProviderChain,
-  resolveFrontiBackgroundProviderChainRuntime,
-} from '@/server/ai/fronti-provider';
-
 export type ManagementDecisionSeverity = 'critica' | 'atencion' | 'seguimiento';
 
 export type ManagementDecisionEvidence = {
@@ -39,6 +30,8 @@ export type ManagementDecision = {
   action: string;
   href: string;
   evidence: ManagementDecisionEvidence[];
+  evidenceTotal?: number;
+  evidenceHref?: string;
 };
 
 export type ManagementTrend = {
@@ -48,6 +41,8 @@ export type ManagementTrend = {
   previous: number | null;
   unit: '%' | 'h' | 'n';
   better: 'higher' | 'lower';
+  currentDenominator?: number;
+  previousDenominator?: number;
 };
 
 function safeRate(numerator: number, denominator: number): number | null {
@@ -56,23 +51,6 @@ function safeRate(numerator: number, denominator: number): number | null {
 
 function average(values: number[]): number | null {
   return values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-}
-
-function normalizeDays(input: number): 7 | 30 | 90 {
-  if (input === 7 || input === 90) return input;
-  return 30;
-}
-
-function periodFor(days: 7 | 30 | 90, now: Date) {
-  const currentFrom = hotelDayStart(addHotelCalendarDays(now, -(days - 1)));
-  const currentTo = now;
-  const previousTo = new Date(currentFrom.getTime() - 1);
-  const previousFrom = hotelDayStart(addHotelCalendarDays(currentFrom, -days));
-  return {
-    days,
-    current: { from: currentFrom, to: currentTo },
-    previous: { from: previousFrom, to: previousTo },
-  };
 }
 
 function sortDecisions(items: ManagementDecision[]) {
@@ -87,101 +65,14 @@ function sortDecisions(items: ManagementDecision[]) {
 export async function getManagementDecisionAdvice(
   decisions: ManagementDecision[],
 ): Promise<Record<string, string>> {
-  if (decisions.length === 0) return {};
-
-  try {
-    const providers = await resolveFrontiBackgroundProviderChainRuntime({ reasoningEffort: 'low' });
-    if (providers.length === 0) return {};
-
-    const response = await chatWithFrontiProviderChain({
-      providers,
-      toolChoice: 'required',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Eres Fronti, asistente operativo de AROH. Recibirás señales gerenciales ya detectadas por reglas determinísticas. ' +
-            'No inventes hechos, montos, personas, causas ni identificadores. Para cada señal entrega una recomendación breve, concreta y accionable, ' +
-            'basada únicamente en los hechos y evidencias proporcionados. Máximo 280 caracteres por recomendación.',
-        },
-        {
-          role: 'user',
-          content: JSON.stringify(
-            decisions.map((decision) => ({
-              id: decision.id,
-              title: decision.title,
-              fact: decision.fact,
-              why: decision.why,
-              baseAction: decision.action,
-              evidence: decision.evidence.map((item) => ({
-                label: item.label,
-                detail: item.detail,
-              })),
-            })),
-          ),
-        },
-      ],
-      tools: [
-        {
-          type: 'function',
-          function: {
-            name: 'entregar_sugerencias_gerencia',
-            description: 'Devuelve una sugerencia operativa para cada señal de Gerencia.',
-            strict: true,
-            parameters: {
-              type: 'object',
-              properties: {
-                suggestions: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: { type: 'string' },
-                      advice: { type: 'string' },
-                    },
-                    required: ['id', 'advice'],
-                    additionalProperties: false,
-                  },
-                },
-              },
-              required: ['suggestions'],
-              additionalProperties: false,
-            },
-          },
-        },
-      ],
-    });
-
-    const call = response.toolCalls.find(
-      (item) => item.function.name === 'entregar_sugerencias_gerencia',
-    );
-    if (!call) return {};
-
-    const parsed = JSON.parse(call.function.arguments) as {
-      suggestions?: Array<{ id?: unknown; advice?: unknown }>;
-    };
-    const allowed = new Set(decisions.map((decision) => decision.id));
-    const result: Record<string, string> = {};
-    for (const item of parsed.suggestions ?? []) {
-      if (typeof item.id !== 'string' || !allowed.has(item.id)) continue;
-      if (typeof item.advice !== 'string') continue;
-      const advice = item.advice.trim().replace(/\s+/g, ' ').slice(0, 360);
-      if (advice) result[item.id] = advice;
-    }
-    return result;
-  } catch (error) {
-    console.warn(
-      '[management] Fronti no pudo generar sugerencias; se conserva la acción determinística.',
-      error instanceof Error ? error.message : error,
-    );
-    return {};
-  }
+  // A page read must not initiate paid inference or rewrite signed source facts.
+  return Object.fromEntries(decisions.map(decision => [decision.id, decision.action]));
 }
 
 export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   const now = new Date();
-  const days = normalizeDays(inputDays);
-  const period = periodFor(days, now);
+  const period = metricPeriod(inputDays, now);
+  const days = period.days;
   const currentRange = { gte: period.current.from, lte: period.current.to };
   const previousRange = { gte: period.previous.from, lte: period.previous.to };
 
@@ -212,29 +103,28 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
     floor4,
     floor5,
     floor6,
+    overdueTasks, criticalOpenIncidents, criticalFindings, correctiveOverdue,
+    cashAuditTotal, cashDifferenceTotal, cashPositive, cashNegative,
+    incidentsWithoutDate, tasksWithoutDate,
   ] = await Promise.all([
     prisma.task.findMany({
       where: {
-        deletedAt: null,AND:[taskFollowUpReadWhere(user)],
-        status: TaskStatus.COMPLETADA,
+        deletedAt: null,AND:[sharedMetricTasks],
+        status: { in: TASK_COMPLETED_STATUSES },
         completedAt: currentRange,
       },
       select: { completedAt: true, dueAt: true },
     }),
     prisma.task.findMany({
       where: {
-        deletedAt: null,AND:[taskFollowUpReadWhere(user)],
-        status: TaskStatus.COMPLETADA,
+        deletedAt: null,AND:[sharedMetricTasks],
+        status: { in: TASK_COMPLETED_STATUSES },
         completedAt: previousRange,
       },
       select: { completedAt: true, dueAt: true },
     }),
     prisma.task.findMany({
-      where: {
-        deletedAt: null,AND:[taskFollowUpReadWhere(user)],
-        status: { in: TASK_OPEN_STATUSES },
-        dueAt: { lt: now },
-      },
+      where: overdueTasksWhere(now),
       select: {
         id: true,
         humanId: true,
@@ -243,25 +133,25 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
         assignee: { select: { name: true } },
       },
       orderBy: { dueAt: 'asc' },
-      take: 30,
+      take: 5,
     }),
     prisma.operationalEntry.findMany({
       where: {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
-        status: { in: [EntryStatus.CERRADO, EntryStatus.RESUELTO] },
-        closedAt: currentRange,
+        status: { in: ENTRY_RESOLVED_STATUSES },
+        OR: [{ resolvedAt: currentRange }, { resolvedAt: null, closedAt: currentRange }],
       },
-      select: { occurredAt: true, closedAt: true },
+      select: { occurredAt: true, resolvedAt: true, closedAt: true },
     }),
     prisma.operationalEntry.findMany({
       where: {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
-        status: { in: [EntryStatus.CERRADO, EntryStatus.RESUELTO] },
-        closedAt: previousRange,
+        status: { in: ENTRY_RESOLVED_STATUSES },
+        OR: [{ resolvedAt: previousRange }, { resolvedAt: null, closedAt: previousRange }],
       },
-      select: { occurredAt: true, closedAt: true },
+      select: { occurredAt: true, resolvedAt: true, closedAt: true },
     }),
     prisma.operationalEntry.count({
       where: {
@@ -285,12 +175,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       },
     }),
     prisma.operationalEntry.findMany({
-      where: {
-        deletedAt: null,
-        type: EntryType.INCIDENCIA,
-        status: { in: ENTRY_OPEN_STATUSES },
-        priority: Priority.CRITICA,
-      },
+      where: criticalIncidentsWhere(),
       select: {
         id: true,
         humanId: true,
@@ -300,7 +185,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
         room: { select: { number: true } },
       },
       orderBy: { occurredAt: 'asc' },
-      take: 30,
+      take: 5,
     }),
     prisma.shiftHandover.count({
       where: {
@@ -322,24 +207,24 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
     }),
     prisma.shift.count({
       where: {
-        date: currentRange,
+        date: metricCalendarRange(period.current),
         status: { not: ShiftStatus.ANULADO },
       },
     }),
     prisma.shift.count({
-      where: { date: currentRange, status: ShiftStatus.CERRADO },
+      where: { date: metricCalendarRange(period.current), status: ShiftStatus.CERRADO },
     }),
     prisma.shift.count({
       where: {
-        date: previousRange,
+        date: metricCalendarRange(period.previous),
         status: { not: ShiftStatus.ANULADO },
       },
     }),
     prisma.shift.count({
-      where: { date: previousRange, status: ShiftStatus.CERRADO },
+      where: { date: metricCalendarRange(period.previous), status: ShiftStatus.CERRADO },
     }),
     prisma.cashAudit.findMany({
-      where: { createdAt: currentRange },
+      where: cashDifferencesWhere(period.current),
       select: {
         id: true,
         humanId: true,
@@ -351,29 +236,14 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
         countedBy: { select: { name: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 200,
+      take: 5,
     }),
     getRoomMonitorOverview(user,now),
     prisma.checklistRun.count({
       where: { deletedAt: null, status: { not: 'CERRADA' } },
     }),
     prisma.auditFinding.findMany({
-      where: {
-        deletedAt: null,
-        confirmed: true,
-        severity: Severity.CRITICA,
-        OR: [
-          { correctiveMeasures: { none: { deletedAt: null } } },
-          {
-            correctiveMeasures: {
-              some: {
-                deletedAt: null,
-                status: { notIn: ['VALIDADA', 'CANCELADA'] },
-              },
-            },
-          },
-        ],
-      },
+      where: criticalFindingsWhere(),
       select: {
         id: true,
         humanId: true,
@@ -382,7 +252,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
         audit: { select: { humanId: true, templateName: true } },
       },
       orderBy: { createdAt: 'asc' },
-      take: 30,
+      take: 5,
     }),
     prisma.correctiveMeasure.count({
       where: {
@@ -391,11 +261,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       },
     }),
     prisma.correctiveMeasure.findMany({
-      where: {
-        deletedAt: null,
-        status: { notIn: ['VALIDADA', 'CANCELADA'] },
-        dueAt: { lt: now },
-      },
+      where: overdueCorrectivesWhere(now),
       select: {
         id: true,
         humanId: true,
@@ -410,12 +276,13 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
         },
       },
       orderBy: { dueAt: 'asc' },
-      take: 30,
+      take: 5,
     }),
     prisma.keyInventoryCount.findFirst({
       where: { floor: 4 },
       orderBy: { countedAt: 'desc' },
       select: {
+        id: true, humanId: true,
         countedAt: true,
         items: { select: { expected: true, found: true, outOfService: true } },
       },
@@ -424,6 +291,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       where: { floor: 5 },
       orderBy: { countedAt: 'desc' },
       select: {
+        id: true, humanId: true,
         countedAt: true,
         items: { select: { expected: true, found: true, outOfService: true } },
       },
@@ -432,23 +300,30 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       where: { floor: 6 },
       orderBy: { countedAt: 'desc' },
       select: {
+        id: true, humanId: true,
         countedAt: true,
         items: { select: { expected: true, found: true, outOfService: true } },
       },
     }),
+    prisma.task.count({ where: overdueTasksWhere(now) }),
+    prisma.operationalEntry.count({ where: criticalIncidentsWhere() }),
+    prisma.auditFinding.count({ where: criticalFindingsWhere() }),
+    prisma.correctiveMeasure.count({ where: overdueCorrectivesWhere(now) }),
+    prisma.cashAudit.count({ where: { createdAt: currentRange } }),
+    prisma.cashAudit.count({ where: cashDifferencesWhere(period.current) }),
+    prisma.cashAudit.groupBy({ by: ['currency'], where: { createdAt: currentRange, difference: { gt: 0 } }, _sum: { difference: true } }),
+    prisma.cashAudit.groupBy({ by: ['currency'], where: { createdAt: currentRange, difference: { lt: 0 } }, _sum: { difference: true } }),
+    prisma.operationalEntry.count({ where: { deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_RESOLVED_STATUSES }, resolvedAt: null, closedAt: null } }),
+    prisma.task.count({ where: { deletedAt: null, AND: [sharedMetricTasks], status: { in: TASK_COMPLETED_STATUSES }, completedAt: null } }),
   ]);
-
-  const overdueTasks = overdueTaskRows.length;
-  const criticalOpenIncidents = criticalOpenIncidentRows.length;
-  const criticalFindings = criticalFindingRows.length;
-  const correctiveOverdue = correctiveOverdueRows.length;
 
   const taskOnTime = (rows: typeof currentTasksClosed) =>
     rows.filter((row) => !row.dueAt || (row.completedAt && row.completedAt <= row.dueAt)).length;
   const incidentHours = (rows: typeof currentIncidentClosures) =>
     rows
-      .filter((row) => row.closedAt)
-      .map((row) => (row.closedAt!.getTime() - row.occurredAt.getTime()) / 3_600_000);
+      .map((row) => ({ start: row.occurredAt, end: incidentResolutionAt(row) }))
+      .filter((row) => row.end && row.end >= row.start)
+      .map((row) => (row.end!.getTime() - row.start.getTime()) / 3_600_000);
 
   const currentTaskRate = safeRate(taskOnTime(currentTasksClosed), currentTasksClosed.length);
   const previousTaskRate = safeRate(taskOnTime(previousTasksClosed), previousTasksClosed.length);
@@ -459,13 +334,12 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   const currentShiftClosureRate = safeRate(currentShiftsClosed, currentShifts);
   const previousShiftClosureRate = safeRate(previousShiftsClosed, previousShifts);
 
-  const cashDifferences = cashAudits.filter((row) => Number(row.difference) !== 0);
-  const cashDifferenceByCurrency = Array.from(
-    cashDifferences.reduce((map, row) => {
-      map.set(row.currency, (map.get(row.currency) ?? 0) + Math.abs(Number(row.difference)));
-      return map;
-    }, new Map<string, number>()),
-  ).map(([currency, amount]) => ({ currency, amount }));
+  const cashDifferences = cashAudits;
+  const cashDifferenceByCurrency = Array.from(new Set([...cashPositive, ...cashNegative].map(row => row.currency))).map(currency => {
+    const positive = Number(cashPositive.find(row => row.currency === currency)?._sum.difference ?? 0);
+    const negative = Number(cashNegative.find(row => row.currency === currency)?._sum.difference ?? 0);
+    return { currency, amount: positive - negative, netAmount: positive + negative };
+  });
 
   type KeyTotals = {
     expected: number;
@@ -493,7 +367,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
           return acc;
         }, emptyKeyTotals())
       : emptyKeyTotals();
-    return { floor, countedAt: snapshot?.countedAt ?? null, ...totals };
+    return { floor, id: snapshot?.id ?? null, humanId: snapshot?.humanId ?? null, countedAt: snapshot?.countedAt ?? null, ...totals };
   });
   const keysMissing = keySnapshots.reduce((sum, row) => sum + row.missing, 0);
   const keysOutOfService = keySnapshots.reduce((sum, row) => sum + row.outOfService, 0);
@@ -503,6 +377,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   if (correctiveOverdue > 0) {
     decisions.push({
       id: 'corrective-overdue',
+      evidenceTotal: correctiveOverdue, evidenceHref: managementEvidenceHref('corrective-overdue', days),
       severity: 'critica',
       title: 'Medidas correctivas vencidas',
       fact: `${correctiveOverdue} medida(s) correctiva(s) vencida(s) siguen abiertas.`,
@@ -522,22 +397,23 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       })),
     });
   }
-  if (cashDifferences.length > 0) {
+  if (cashDifferenceTotal > 0) {
     decisions.push({
       id: 'cash-differences',
+      evidenceTotal: cashDifferenceTotal, evidenceHref: managementEvidenceHref('cash-differences', days),
       severity: 'critica',
       title: 'Diferencias de Caja detectadas',
-      fact: `${cashDifferences.length} arqueo(s) del período registraron diferencia física.`,
-      why: 'Las diferencias repetidas pueden indicar un problema de proceso, custodia o regularización pendiente.',
+      fact: `${cashDifferenceTotal} arqueo(s) del período registraron diferencia física.`,
+      why: 'El arqueo acredita una diferencia; no acredita su causa ni responsabilidad. Un ajuste requiere evidencia propia.',
       action: 'Revisar patrón, causa y correcciones antes del siguiente cierre.',
       href: '/caja?seccion=auditorias',
       evidence: cashDifferences.slice(0, 5).map((row) => {
         const difference = Number(row.difference);
         return {
           id: `cash-${row.id}`,
-          label: `Arqueo #${row.humanId} · ${row.currency} ${difference > 0 ? '+' : ''}${difference.toLocaleString('es-CL')}`,
+          label: `Arqueo #${row.humanId} · ${signedMoney(row.currency, difference)}`,
           detail:
-            `Esperado ${Number(row.expectedAmount).toLocaleString('es-CL')} · contado ${Number(row.countedAmount).toLocaleString('es-CL')} · ${row.countedBy.name}`,
+            `Esperado ${signedMoney(row.currency, Number(row.expectedAmount))} · contado ${signedMoney(row.currency, Number(row.countedAmount))} · ${row.countedBy.name}`,
           href: `/caja/arqueos/${row.id}`,
           at: row.createdAt,
         };
@@ -547,6 +423,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   if (criticalOpenIncidents > 0) {
     decisions.push({
       id: 'critical-incidents',
+      evidenceTotal: criticalOpenIncidents, evidenceHref: managementEvidenceHref('critical-incidents', days),
       severity: 'critica',
       title: 'Incidencias críticas abiertas',
       fact: `${criticalOpenIncidents} incidencia(s) crítica(s) continúan abiertas.`,
@@ -596,14 +473,14 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       fact: `${keysMissing} faltante(s) y ${keysOutOfService} fuera de servicio según los últimos inventarios disponibles.`,
       why: 'La cobertura física insuficiente aumenta el riesgo de contingencia durante la operación diaria.',
       action: 'Validar reposición, recuperación o contingencia por piso.',
-      href: '/llaves?piso=todos',
+      href: managementEvidenceHref('keys-risk', days),
       evidence: keySnapshots
         .filter((row) => row.missing > 0 || row.outOfService > 0)
         .map((row) => ({
           id: `keys-floor-${row.floor}`,
           label: `Piso ${row.floor}`,
           detail: `${row.missing} faltante(s) · ${row.outOfService} fuera de servicio`,
-          href: `/llaves?piso=${row.floor}`,
+          href: managementEvidenceHref('keys-risk', days, { floor: row.floor, countId: row.id ?? undefined }),
           at: row.countedAt,
         })),
     });
@@ -629,6 +506,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   if (overdueTasks > 0) {
     decisions.push({
       id: 'tasks-overdue',
+      evidenceTotal: overdueTasks, evidenceHref: managementEvidenceHref('tasks-overdue', days),
       severity: 'seguimiento',
       title: 'Backlog vencido',
       fact: `${overdueTasks} tarea(s) abiertas superaron su fecha límite.`,
@@ -647,6 +525,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   if (criticalFindings > 0) {
     decisions.push({
       id: 'critical-findings',
+      evidenceTotal: criticalFindings, evidenceHref: managementEvidenceHref('critical-findings', days),
       severity: 'seguimiento',
       title: 'Hallazgos críticos confirmados',
       fact: `${criticalFindings} hallazgo(s) crítico(s) confirmado(s) no tienen cierre correctivo completo.`,
@@ -666,6 +545,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   const trends: ManagementTrend[] = [
     {
       key: 'task-on-time',
+      currentDenominator: currentTasksClosed.length, previousDenominator: previousTasksClosed.length,
       label: 'Tareas completadas en plazo',
       current: currentTaskRate,
       previous: previousTaskRate,
@@ -674,6 +554,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
     },
     {
       key: 'incident-mttr',
+      currentDenominator: incidentHours(currentIncidentClosures).length, previousDenominator: incidentHours(previousIncidentClosures).length,
       label: 'Tiempo medio de resolución de incidencias',
       current: currentIncidentAvg,
       previous: previousIncidentAvg,
@@ -682,6 +563,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
     },
     {
       key: 'handover-compliance',
+      currentDenominator: currentHandoversSent, previousDenominator: previousHandoversSent,
       label: 'Recepción de entregas de turno',
       current: currentHandoverRate,
       previous: previousHandoverRate,
@@ -690,6 +572,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
     },
     {
       key: 'shift-closure',
+      currentDenominator: currentShifts, previousDenominator: previousShifts,
       label: 'Cierre formal de turnos',
       current: currentShiftClosureRate,
       previous: previousShiftClosureRate,
@@ -709,9 +592,20 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
   return {
     generatedAt: now,
     period,
-    decisions: sortDecisions(decisions).slice(0, 6),
+    decisions: sortDecisions(decisions),
+    scope: SHARED_METRIC_SCOPE,
+    definitions: { tasks: TASK_COMPLETION_DEFINITION, incidents: INCIDENT_RESOLUTION_DEFINITION },
     execution: {
       taskOnTimeRate: currentTaskRate,
+      tasksCompleted: currentTasksClosed.length,
+      tasksOnTime: taskOnTime(currentTasksClosed),
+      tasksWithoutDate,
+      incidentsResolved: currentIncidentClosures.length,
+      incidentResolutionSamples: incidentHours(currentIncidentClosures).length,
+      incidentHistoricalClosures: currentIncidentClosures.filter(row => !row.resolvedAt).length,
+      incidentsWithoutDate,
+      handoversSent: currentHandoversSent, handoversReceived: currentHandoversReceived,
+      shiftsTotal: currentShifts, shiftsClosed: currentShiftsClosed,
       overdueTasks,
       openIncidents,
       criticalOpenIncidents,
@@ -729,8 +623,8 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       openGuarantees: roomMonitor.summary.openGuarantees,
     },
     controls: {
-      cashAudits: cashAudits.length,
-      cashDifferences: cashDifferences.length,
+      cashAudits: cashAuditTotal,
+      cashDifferences: cashDifferenceTotal,
       cashDifferenceByCurrency,
       auditsOpen,
       criticalFindings,

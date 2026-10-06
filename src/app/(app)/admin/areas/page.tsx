@@ -33,7 +33,7 @@ export default async function DepartmentsPage({
           }
         : {}),
     },
-    include: { _count: { select: { entries: true, tasks: true, users: true } } },
+    include: { _count: { select: { entries: true, tasks: true, users: true, scheduleMemberships: { where: { active: true } } } } },
     orderBy: { order: 'asc' },
   });
 
@@ -52,7 +52,8 @@ export default async function DepartmentsPage({
           <h1 className="text-xl font-semibold text-petrol-900">Áreas</h1>
           <p className="mt-0.5 text-sm text-slate-600">
             Departamentos usados para clasificar registros, tareas y alertas. Las áreas con
-            historial se desactivan en lugar de eliminarse.
+            historial se desactivan en lugar de eliminarse. El área principal de una cuenta y sus
+            pertenencias de horarios se cuentan por separado; una persona puede estar en varias áreas.
           </p>
         </div>
         <DepartmentDialog />
@@ -72,6 +73,12 @@ export default async function DepartmentsPage({
           </select>
         </label>
       </ListFilterBar>
+
+      <p className="text-xs text-slate-500">
+        Las pertenencias activas no equivalen a cuentas habilitadas: también se requiere cuenta activa,
+        visible, rol operativo y perfil de horarios activo. Desactivar un área conserva sus pertenencias
+        e historial, y se bloquea mientras tenga asignaciones vigentes o futuras.
+      </p>
 
       <DisclosureCard title="Listado" description="Áreas operativas y su configuración básica." count={departments.length} defaultOpen>
         
@@ -95,7 +102,8 @@ export default async function DepartmentsPage({
                 <p className="mt-0.5 text-xs text-slate-500">
                   <Chip>{department._count.entries} registros</Chip>{' '}
                   <Chip>{department._count.tasks} tareas</Chip>{' '}
-                  <Chip>{department._count.users} personas</Chip>
+                  <Chip>{department._count.users} cuentas con esta área principal</Chip>{' '}
+                  <Chip>{department._count.scheduleMemberships} pertenencias de horarios activas</Chip>
                 </p>
               </div>
               <DepartmentDialog

@@ -23,14 +23,14 @@ async function noOverflow(page) {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Navigation must fit the viewport');
 }
 async function openMobile(page) {
-  const trigger = page.locator('[data-module-navigation="mobile"] button');
+  const trigger = page.getByRole('navigation', { name: 'Navegación rápida', exact: true }).getByRole('button', { name: 'Más', exact: true });
   await trigger.click();
   const panel = page.getByRole('dialog', { name: 'Todo el menú', exact: true });
   await panel.waitFor();
   return { trigger, panel };
 }
 async function expandMobileModule(panel, label) {
-  const options = panel.getByRole('button', { name: 'Opciones de ' + label, exact: true });
+  const options = panel.getByRole('button', { name: 'Vistas de ' + label, exact: true });
   if (!(await options.isVisible())) await panel.getByRole('button', { name: 'Operación', exact: true }).click();
   if (await options.getAttribute('aria-expanded') !== 'true') await options.click();
 }
@@ -73,6 +73,8 @@ try {
       assert.ok(await focused(panel.locator('a').last()), 'End reaches the last destination');
       await page.keyboard.press('Home');
       assert.ok(await focused(panel.locator('a').first()), 'Home reaches the first destination');
+      assert.equal(await panel.getByRole('link', { name: 'Incidencias', exact: true }).count(), 0, 'Secondary destinations start closed');
+      await panel.getByRole('button', { name: 'Vistas de Novedades', exact: true }).click();
       const selected = panel.locator('a[aria-current="page"]');
       assert.equal(await selected.count(), 1);
       assert.equal(await selected.getAttribute('href'), '/libro?clase=entry&tipo=INCIDENCIA');
@@ -90,6 +92,7 @@ try {
       await panel.waitFor({ state: 'hidden' });
       // Query-only navigation must close the panel and select a single destination.
       await trigger.click();
+      await panel.getByRole('button', { name: 'Vistas de Novedades', exact: true }).click();
       navigationFailure.mark('module-task-query', '/libro?clase=task');
       const taskDocument = await page.evaluate(() => performance.timeOrigin);
       try {
@@ -99,6 +102,7 @@ try {
       } catch (error) { await navigationFailure('module-task-query'); throw error; }
       await panel.waitFor({ state: 'hidden' });
       await trigger.click();
+      await panel.getByRole('button', { name: 'Vistas de Novedades', exact: true }).click();
       assert.equal(await panel.locator('a[aria-current="page"]').getAttribute('href'), '/libro?clase=task');
       await page.keyboard.press('Escape');
       await page.goBack();
@@ -106,6 +110,7 @@ try {
       await panel.waitFor({ state: 'hidden' });
       // Every approved operation root remains reachable, including shortcut submenus.
       await trigger.click();
+      await panel.getByRole('button', { name: 'Vistas de Novedades', exact: true }).click();
       for (const href of ['/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/admin/housekeeping', '/custodia', '/seguimientos', '/tareas', '/historial']) {
         assert.ok(await panel.locator('a').evaluateAll((links, href) => links.some(link => link.getAttribute('href') === href), href), 'Missing destination: ' + href);
       }
@@ -139,13 +144,13 @@ try {
       await panel.waitFor();
       await page.keyboard.press('Escape');
       await panel.waitFor({ state: 'hidden' });
-      assert.ok(await focused(more), 'More and the module header each retain their own focus return');
+      assert.ok(await focused(more), 'The single mobile menu trigger retains focus return');
       await trigger.click();
       await expandMobileModule(panel, 'Novedades');
       await panel.getByRole('link', { name: 'Mis tareas', exact: true }).click();
       await page.waitForURL(url => url.pathname === '/libro' && url.searchParams.get('clase') === 'task');
       await panel.waitFor({ state: 'hidden' });
-      assert.ok((await trigger.textContent()).includes('Mis tareas'), 'Persistent context reflects the query view');
+      assert.ok((await page.locator('[data-module-navigation="mobile"]').textContent()).includes('Mis tareas'), 'Persistent context reflects the query view');
       await trigger.click();
       await expandMobileModule(panel, 'Caja');
       await panel.getByRole('link', { name: 'Garantías', exact: true }).waitFor();

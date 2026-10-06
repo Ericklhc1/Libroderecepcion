@@ -34,7 +34,8 @@ describe('Cockpit estratégico de Gerencia', () => {
     expect(source).toContain('prisma.keyInventoryCount.');
     expect(source).toContain('prisma.checklistRun.');
     expect(source).toContain('prisma.correctiveMeasure.');
-    expect(source).toContain('chatWithFrontiProviderChain');
+    expect(source).not.toContain('chatWithFrontiProviderChain');
+    expect(source).not.toContain('resolveFrontiBackgroundProviderChainRuntime');
     expect(source).not.toContain('prisma.alert.');
   });
 
@@ -47,7 +48,8 @@ describe('Cockpit estratégico de Gerencia', () => {
     expect(page).toContain('Contexto por habitación');
     expect(page).toContain('FNSrooms continúa siendo la fuente PMS');
     expect(page).toContain('Ver el registro y su historial');
-    expect(page).toContain('Fronti sugiere');
+    expect(page).toContain('Recomendación operativa');
+    expect(page).not.toContain('await getManagementDecisionAdvice');
     expect(page).toContain('Abrir registro');
     expect(page).not.toContain('Ver evidencia');
     expect(page).not.toContain('Llegadas 24 h');

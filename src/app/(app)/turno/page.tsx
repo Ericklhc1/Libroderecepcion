@@ -291,6 +291,7 @@ export default async function ShiftPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
+      <Link href="/turno/cambios" className="block text-sm font-medium text-petrol-800 underline">Qué cambió desde mi último turno</Link>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-petrol-900">Mi turno</h1>

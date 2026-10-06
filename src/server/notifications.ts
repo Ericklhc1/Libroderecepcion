@@ -20,6 +20,8 @@ export type NotifyInput = {
   entity?: string | null;
   entityId?: string | null;
   isDemo?: boolean;
+  /** New internal coordination must not create an automatic email side effect. */
+  internalOnly?: boolean;
 };
 
 /**
@@ -63,7 +65,7 @@ async function dispatchExternal(
   notifications: NotifyInput[],
   client: Client,
 ): Promise<void> {
-  const candidates = notifications.filter((notification) => !notification.isDemo);
+  const candidates = notifications.filter((notification) => !notification.isDemo && !notification.internalOnly);
   if (candidates.length === 0) return;
 
   const policy = await getNotificationEmailPolicy();

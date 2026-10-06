@@ -1,3 +1,5 @@
+import { listAreaAttentions } from '@/server/services/subject-distribution';
+import { getChangesSinceLastShift } from '@/server/services/shift-changes';
 import {alertReadWhere} from '@/server/services/followup-access';
 import 'server-only';
 import { getMaintenanceState } from '@/server/services/system-maintenance';
@@ -29,6 +31,8 @@ import { listMyOperationalAlarms } from '@/server/services/operational-alarms';
 import { listGymPasses, listParkingPasses } from '@/server/services/gym-pass';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
 import { getMetrics, defaultRange } from '@/server/services/metrics';
+import { getManagementCockpit } from '@/server/services/management';
+import { getManagementEvidence, getManagementKeyEvidence } from '@/server/services/management-evidence';
 import {
   getOperationalHealth,
   operationalHealthRange,
@@ -710,7 +714,7 @@ export async function executeFrontiPageContextTool(
 
   if (isHkFocused(user)) {
     if(page.moduleKey === 'inicio') return { ...base, snapshot: await adminSnapshot(user,{...page,sectionKey:'housekeeping'}) };
-    if(page.sectionKey !== 'housekeeping' && !['coordinacion','equipo','notificaciones','perfil','fronti-procedimientos'].includes(page.moduleKey)) throw new Error('Tu acceso operativo está limitado a Housekeeping y a tus datos personales.');
+    if(page.sectionKey !== 'housekeeping' && !['coordinacion','cambios-turno','equipo','notificaciones','perfil','fronti-procedimientos'].includes(page.moduleKey)) throw new Error('Tu acceso operativo está limitado a Housekeeping y a tus datos personales.');
   }
   const detail = await detailSnapshot(user, page);
   if (detail) return { ...base, snapshot: detail };
@@ -725,7 +729,9 @@ export async function executeFrontiPageContextTool(
       const rows=await prisma.operationalAutomation.findMany({where:{ownerId:user.id},select:{id:true,name:true,kind:true,enabled:true,version:true,expiresAt:true,revokedAt:true},orderBy:{createdAt:'desc'},take:51});
       return {...base,snapshot:{scope:'Políticas propias',complete:rows.length<=50,rows:rows.slice(0,50),note:'Simula antes de habilitar. Los horarios no acreditan presencia.'}};
     }
+    case 'cambios-turno': return {...base,snapshot:await getChangesSinceLastShift(user,Number(page.filters.pagina)||1),guidance:'Corte desde fin real de participación; no inventar asistencia ni atribuir una causa al cambio. Cada registro conserva fuente y responsable.'};
     case 'coordinacion': {
+      if(page.sectionKey==='areas')return {...base,snapshot:await listAreaAttentions(user,{departmentId:page.filters.area,id:page.filters.atencion,page:Number(page.filters.pagina)||1}),guidance:'Conocimiento, publicación, ejecución y validación son eventos distintos. Esta consulta no habilita ninguna distribución ni decisión.'};
       const coordinationViews:CoordinationView[]=['all','reception','unassigned','unreceived','blocked','clarification','carryover'];
       const view=coordinationViews.includes(page.filters.vista as CoordinationView)?page.filters.vista as CoordinationView:'all';
       const board=await getCoordinationBoard(user,{departmentId:page.filters.area,mine:page.filters.mios==='1',history:page.filters.historial==='1',page:Number(page.filters.pagina)||1,view});
@@ -946,6 +952,16 @@ export async function executeFrontiPageContextTool(
         },
       };
     }
+    case 'gerencia': {
+      requireAny(user, ['management.dashboard.view'], 'No tienes permiso para consultar Gerencia.');
+      const days = Number(page.filters.dias ?? 30);
+      const snapshot = page.sectionKey === 'evidencia'
+        ? page.filters.tipo === 'keys-risk'
+          ? await getManagementKeyEvidence(user, { floor: page.filters.piso ? Number(page.filters.piso) : undefined, countId: page.filters.conteo })
+          : await getManagementEvidence(user, { kind: page.filters.tipo ?? '', days, page: Number(page.filters.pagina ?? 1) })
+        : await getManagementCockpit(user, days);
+      return { ...base, snapshot, guidance: 'Hechos: reproducir moneda, signo, unidad, período y denominador exactos; enlazar su evidencia. El importe absoluto agregado no es una diferencia neta ni el signo de un arqueo. Hipótesis: no se acredita causa por una cifra; no atribuir ajustes ni responsabilidades sin un registro explícito. Recomendación: separar la acción propuesta del hecho. Esta lectura no ejecuta acciones ni genera inferencias automáticas.' };
+    }
     case 'indicadores': {
       requireAny(user, ['metrics.view'], 'No tienes permiso para consultar Indicadores.');
       const requested = Number(page.filters.dias ?? 30);
@@ -953,6 +969,11 @@ export async function executeFrontiPageContextTool(
       return { ...base, snapshot: await getMetrics(defaultRange(days)) };
     }
     case 'supervision':
+      if(page.sectionKey==='documentos-locales'){
+        requireAny(user,['supervision.center.view'],'No tienes acceso a Supervisión.');
+        requireAny(user,['supervision.audit.create'],'No tienes permiso para preparar esta revisión.');
+        return {...base,snapshot:{localOnly:true,originalAvailableOnServer:false,sharedPersistence:false,documentInferenceEnabled:false,scannedVisionEnabled:false},guidance:'El original y los borradores existen sólo en el navegador. No has recibido ni analizado ese documento. No inventes datos ni una aprobación persistida; la exportación local es una propuesta de revisión.'};
+      }
       return {
         ...base,
         snapshot: await supervisionSectionSnapshot(user, page),

@@ -1,0 +1,26 @@
+import 'server-only';
+import type {Prisma} from '@prisma/client';
+import {RuleError} from '@/server/errors';
+
+/** Called under the source row lock, shared by resolve and close. */
+export async function assertSubjectCanFinish(tx:Prisma.TransactionClient,entryId:string){
+  const [tasks,hk,followups,areas]=await Promise.all([
+    tx.task.count({where:{entryId,deletedAt:null,isDemo:false,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']}}}),
+    tx.housekeepingRequest.count({where:{sourceEntryId:entryId,isDemo:false,status:{notIn:['RESUELTO','CANCELADO']}}}),
+    tx.followUp.count({where:{deletedAt:null,isDemo:false,OR:[{entryId},{task:{entryId}},{sourceEntity:'OperationalEntry',sourceId:entryId}],status:{in:['PENDIENTE','VENCIDO']},AND:[{OR:[{origin:null},{origin:{not:{startsWith:'SUPERVISION_'}}}]}]}}),
+    tx.subjectAreaAttention.count({where:{entryId,status:{in:['POR_REVISAR','ACLARACION']}}}),
+  ]);
+  const reasons=[tasks&&`${tasks} trabajo(s) pendiente(s)`,hk&&`${hk} atención(es) de Housekeeping pendiente(s)`,followups&&`${followups} seguimiento(s) operativo(s) sin resolver`,areas&&`${areas} área(s) por revisar o aclarar`].filter(Boolean);
+  if(reasons.length)throw new RuleError(`No puedes resolver ni cerrar el asunto: ${reasons.join('; ')}. Abre sus vínculos y completa, valida o cancela con motivo cada intervención que corresponda.`);
+}
+
+/** Writers that add/reactivate an obligation serialize against global source completion. */
+export async function lockOpenSubjectForWork(tx:Prisma.TransactionClient,input:{entryId?:string|null;taskId?:string|null;sourceEntity?:string|null;sourceId?:string|null;origin?:string|null}){
+  if(input.origin?.startsWith('SUPERVISION_'))return;
+  const taskEntry=input.taskId?(await tx.task.findUnique({where:{id:input.taskId},select:{entryId:true}}))?.entryId:null;
+  const ids=[...new Set([input.entryId,taskEntry,input.sourceEntity==='OperationalEntry'?input.sourceId:null].filter((id):id is string=>!!id))].sort();
+  for(const id of ids){
+    await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${id} FOR UPDATE`;
+    if(!await tx.operationalEntry.count({where:{id,deletedAt:null,status:{notIn:['RESUELTO','CERRADO']}}}))throw new RuleError('Reabre el asunto antes de crear o reactivar una intervención pendiente.');
+  }
+}

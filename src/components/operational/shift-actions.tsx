@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Compass, X } from 'lucide-react';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
-import { SubmitButton } from '@/components/ui/button';
+import { Button, SubmitButton } from '@/components/ui/button';
 import { useShiftReturnNavigation, useShiftStartNavigation } from '@/components/operational/shift-start-navigation';
 import { ShiftActionDialog } from './shift-action-dialog';
 import {
@@ -58,13 +58,14 @@ function GuidedShiftSubmit({
 
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="gold"
         onClick={() => setOpen(true)}
-        className="inline-flex min-h-10 items-center justify-center rounded-lg bg-gold-500 px-3.5 py-2 text-sm font-semibold text-petrol-950 transition-colors hover:bg-gold-400"
+        className="min-h-10"
       >
         {buttonLabel}
-      </button>
+      </Button>
 
       {open ? (
         <div

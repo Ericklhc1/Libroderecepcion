@@ -22,7 +22,7 @@ export async function listOperationalUsers() {
       id: true,
       name: true,
       username: true,
-      role: { select: { key: true, name: true } },
+      role: { select: { key: true, name: true, permissions:{select:{permission:{select:{key:true}}}} } },
       department: { select: { id: true, name: true } },
     },
     orderBy: [{ role: { level: 'desc' } }, { name: 'asc' }],

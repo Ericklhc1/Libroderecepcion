@@ -48,7 +48,7 @@ try{
         await origin.page.getByText('Reparación comprobada; habitación lista para continuar',{exact:true}).waitFor();
         assert.equal(await db.task.count({where:{entryId:source.id}}),1);
       }else{
-        const work=await db.housekeepingRequest.findUniqueOrThrow({where:{sourceEntryId:source.id}});
+        const work=await db.housekeepingRequest.findUniqueOrThrow({where:{sourceEntryId_departmentId:{sourceEntryId:source.id,departmentId:area.id}}});
         assert.equal(work.roomId,room.id);assert.equal(work.title,null);assert.equal(work.description,null);
         await origin.page.getByRole('link',{name:'Ver atención del área',exact:true}).click();
         const card=origin.page.locator(`[data-housekeeping-detail="${work.id}"]`);
@@ -87,7 +87,7 @@ try{
         await resultDialog.getByRole('button',{name:'Confirmar',exact:true}).click();
         await resultDialog.waitFor({state:'hidden'});
         await origin.page.goto(`http://localhost:3000/libro/${source.id}`);
-        await origin.page.locator('#atencion-area').getByText('Necesidad atendida y comprobada',{exact:false}).waitFor();
+        await origin.page.locator(`#atencion-area-${work.humanId}`).getByText('Necesidad atendida y comprobada',{exact:false}).waitFor();
         assert.equal((await db.housekeepingRequest.findUniqueOrThrow({where:{id:work.id}})).status,'RESUELTO');
       }
       await origin.page.getByRole('button',{name:'Revisar y cerrar',exact:true}).click();

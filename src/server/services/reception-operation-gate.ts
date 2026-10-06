@@ -173,6 +173,20 @@ export async function getReceptionOperationGate(
   };
 }
 
+/** Physical cash return is the only general-Caja exception while preparing a handover. */
+export async function assertReceptionCashGuaranteeReturn(
+  user: CurrentUser,
+  client: Prisma.TransactionClient = prisma,
+): Promise<void> {
+  if (!isReceptionDeskRole(user.roleKey)) return;
+  const gate = await getReceptionOperationGate(user, client);
+  if (
+    gate.mode === 'ACTIVE' ||
+    (gate.mode === 'CLOSING' && gate.shiftStatus === ShiftStatus.PREPARANDO_ENTREGA)
+  ) return;
+  throw new RuleError(gateMessage(gate.mode));
+}
+
 function gateMessage(mode: ReceptionOperationMode): string {
   if (mode === 'NO_SHIFT') {
     return 'Debes iniciar tu turno antes de interactuar con la operación.';

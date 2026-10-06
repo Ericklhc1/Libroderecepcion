@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { formatDateTime } from '@/lib/format';
 import { useMemo, useRef, useState } from 'react';
 import { ActionForm, Field, Input, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
@@ -14,7 +16,7 @@ import {
   saveHandoverUsdRateAction,
 } from '@/server/actions/cash';
 import { reportMissingElementAction, approveMissingElementAction } from './navigation-action';
-import { CASH_MEDIUM_LABELS, fromMinor, type CashMediumValue } from '@/domain/cash';
+import { CASH_MEDIUM_LABELS, fromMinor, toMinor, type CashMediumValue } from '@/domain/cash';
 import type { HandoverCashState } from '@/server/services/cash';
 import { closeShiftCashAction, reopenShiftCashAction } from '@/server/actions/cash-closure';
 import { DenominationVisual } from '@/components/cash/denomination-visual';
@@ -66,12 +68,18 @@ function CountForm({
   guarantees,
   kind,
   previous,
+  previousCount,
+  latestMovementAt,
+  actorId,
 }: {
   handoverId: string;
   denominations: DenominationOption[];
   guarantees: HandoverCashState['cashGuarantees'];
   kind: 'declarar' | 'confirmar';
   previous: Record<string, number>;
+  previousCount: HandoverCashState['declared'];
+  latestMovementAt: Date | null;
+  actorId: string;
 }) {
   const metricStartedAtRef = useRef<HTMLInputElement>(null);
   const currencies = useMemo(() => {
@@ -92,7 +100,11 @@ function CountForm({
         }
       }}
     >
-      <ActionForm action={kind === 'declarar' ? declareCashCountAction : confirmCashCountAction}>
+      <ActionForm action={kind === 'declarar' ? declareCashCountAction : confirmCashCountAction}
+        preserveOnSuccess draftScope={`cash:${actorId}:${handoverId}:${kind}`}
+        draftRevision={`${previousCount?.countedAt.toISOString() ?? 'new'}:${latestMovementAt?.toISOString() ?? ''}`}
+        draftFields={[...denominations.map(row => `d_${row.id}`), 'notes']}>
+      {previousCount && <p className="text-xs text-slate-600">Arqueo guardado #{previousCount.humanId}. Revisa antes de volver a guardar. {latestMovementAt && latestMovementAt > previousCount.countedAt ? 'Caja cambió: confirma nuevamente las garantías físicas.' : 'Se muestran las cantidades, notas y garantías confirmadas en ese arqueo.'}</p>}
       <input type="hidden" name="handoverId" value={handoverId} />
       <input ref={metricStartedAtRef} type="hidden" name="metricStartedAt" defaultValue="" />
       <p className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-slate-200">
@@ -168,6 +180,7 @@ function CountForm({
                   name={`g_${guarantee.id}`}
                   value="1"
                   required
+                  defaultChecked={Boolean(previousCount && (!latestMovementAt || latestMovementAt <= previousCount.countedAt) && previousCount.validatedGuarantees.some(row => row.id === guarantee.id && row.currency === guarantee.currency && row.amountMinor === toMinor(guarantee.amount, guarantee.currency)))}
                   className="mt-1 h-4 w-4 rounded border-slate-300"
                 />
                 <span className="min-w-0 flex-1">
@@ -192,7 +205,7 @@ function CountForm({
         name="notes"
         hint="Úsalo sólo cuando exista una diferencia que explicar."
       >
-        <Textarea name="notes" rows={2} maxLength={500} />
+        <Textarea name="notes" rows={2} maxLength={500} defaultValue={previousCount?.notes ?? ''} />
       </Field>
 
       <SubmitButton pendingLabel="Guardando arqueo…">
@@ -357,6 +370,7 @@ export function CashBox({
   canApproveMissing = false,
   reviewerId,
   receiverStage,
+  canReturnGuaranteeDuringClosing = false,
 }: {
   handoverId: string;
   shiftId: string;
@@ -374,6 +388,7 @@ export function CashBox({
   canApproveMissing?: boolean;
   reviewerId?: string;
   receiverStage?: 'CASH' | 'CUSTODY';
+  canReturnGuaranteeDuringClosing?: boolean;
 }) {
   if (!state.enabled && state.elements.length === 0) return null;
 
@@ -385,7 +400,7 @@ export function CashBox({
       />
       <div className="space-y-4 px-4 py-4">
         <p className="text-xs text-slate-500">
-          Este es el arqueo formal del turno. Las denominaciones verifican exclusivamente el fondo fijo; las garantías en efectivo se validan una a una en un bloque separado. Los movimientos operacionales y las transferencias mantienen su propia trazabilidad. Fondo fijo:{' '}
+          Horas en America/Santiago. Este es el arqueo formal del turno. Las denominaciones verifican exclusivamente el fondo fijo; las garantías en efectivo se validan una a una en un bloque separado. Los movimientos operacionales y las transferencias mantienen su propia trazabilidad. Fondo fijo:{' '}
           {state.funds.map((fund) => `${fund.currency} ${fund.amount.toLocaleString('es-CL')}`).join(' · ')}.
           Estos fondos se configuran desde Administración → Parámetros.
         </p>
@@ -396,7 +411,7 @@ export function CashBox({
             {state.declared ? (
               <>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  #{state.declared.humanId} · {state.declared.countedByName} · {state.declared.countedAt.toLocaleString('es-CL')}
+                  #{state.declared.humanId} · {state.declared.countedByName} · {formatDateTime(state.declared.countedAt)}
                 </p>
                 <ul className="mt-1 divide-y divide-slate-100">
                   {state.declared.statuses.map((status) => <FundRow key={status.currency} status={status} />)}
@@ -413,7 +428,7 @@ export function CashBox({
             {state.confirmed ? (
               <>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  #{state.confirmed.humanId} · {state.confirmed.countedByName} · {state.confirmed.countedAt.toLocaleString('es-CL')}
+                  #{state.confirmed.humanId} · {state.confirmed.countedByName} · {formatDateTime(state.confirmed.countedAt)}
                 </p>
                 <ul className="mt-1 divide-y divide-slate-100">
                   {state.confirmed.statuses.map((status) => <FundRow key={status.currency} status={status} />)}
@@ -459,16 +474,26 @@ export function CashBox({
                     <p className="text-xs text-slate-500">
                       {guarantee.reference ? `${guarantee.reference} · ` : ''}
                       {guarantee.state.toLowerCase().replaceAll('_', ' ')}
-                      {guarantee.dueAt ? ` · objetivo ${new Date(guarantee.dueAt).toLocaleString('es-CL')}` : ''}
+                      {guarantee.dueAt ? ` · objetivo ${formatDateTime(guarantee.dueAt)}` : ''}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <span className="font-semibold tabular text-petrol-900">
                       {guarantee.currency} {guarantee.amount.toLocaleString('es-CL')}
                     </span>
-                    <span className="text-[0.68rem] text-slate-500">
-                      La devolución se gestiona en Caja operativa, fuera del relevo.
-                    </span>
+                    {role === 'emisor' && canReturnGuaranteeDuringClosing ? (
+                      <Link
+                        href={`/caja?seccion=garantias&q=${guarantee.humanId}&volver=${encodeURIComponent(`/turno/entrega/${handoverId}?paso=1`)}`}
+                        aria-label={`Devolver garantía #${guarantee.humanId} en Caja`}
+                        className="text-[0.68rem] font-semibold text-petrol-700 underline"
+                      >
+                        Devolver esta garantía en Caja
+                      </Link>
+                    ) : (
+                      <span className="text-[0.68rem] text-slate-500">
+                        La devolución se gestiona en Caja operativa, fuera del relevo.
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}
@@ -532,6 +557,10 @@ export function CashBox({
               {role === 'emisor' ? 'Contar y declarar la caja' : 'Recontar la caja'}
             </h3>
             <CountForm
+              key={`${reviewerId}:${handoverId}:${role}:${state.latestMovementAt?.toISOString() ?? ''}:${(role === 'emisor' ? state.declared : state.confirmed)?.countedAt.toISOString() ?? ''}`}
+              actorId={reviewerId ?? role}
+              previousCount={role === 'emisor' ? state.declared : state.confirmed}
+              latestMovementAt={state.latestMovementAt}
               handoverId={handoverId}
               denominations={denominations}
               guarantees={state.cashGuarantees}
@@ -550,7 +579,7 @@ export function CashBox({
                 </h3>
                 {formalClosure && !formalClosure.reopenedAt ? (
                   <p className="mt-1 text-xs text-emerald-800">
-                    #{formalClosure.humanId} · Cerrada por {formalClosure.closedByName} · {new Date(formalClosure.closedAt).toLocaleString('es-CL')}
+                    #{formalClosure.humanId} · Cerrada por {formalClosure.closedByName} · {formatDateTime(formalClosure.closedAt)}
                   </p>
                 ) : (
                   <p className="mt-1 text-xs text-slate-600">

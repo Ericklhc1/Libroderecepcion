@@ -1,3 +1,4 @@
+import {assertSubjectCanFinish} from './subject-completion';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
 import { publishHkMaintenanceUpdate } from './housekeeping-maintenance';
@@ -32,7 +33,7 @@ import {
 import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-scheduler';
 
 export const entryInclude = {
-  housekeepingRequest: { select: { humanId:true, departmentId:true, status:true, resolution:true, resolvedAt:true, isDemo:true, requiresInspection:true, inspectedAt:true, inspectedBy:{select:{name:true}} } },
+  housekeepingRequests: { orderBy: {createdAt:'desc'}, select: { humanId:true, departmentId:true, status:true, resolution:true, resolvedAt:true, isDemo:true, requiresInspection:true, inspectedAt:true, inspectedBy:{select:{name:true}} } },
   createdBy: { select: { id: true, name: true } },
   owner: { select: { id: true, name: true } },
   closedBy: { select: { id: true, name: true } },
@@ -42,9 +43,8 @@ export const entryInclude = {
   _count: { select: { comments: true, tasks: true, followUps: true, attachments: true } },
 } satisfies Prisma.OperationalEntryInclude;
 
-export type EntryWithRelations = Prisma.OperationalEntryGetPayload<{
-  include: typeof entryInclude;
-}>;
+type NativeEntryWithRelations = Prisma.OperationalEntryGetPayload<{ include: typeof entryInclude }>;
+export type EntryWithRelations = NativeEntryWithRelations & { housekeepingRequest: NativeEntryWithRelations['housekeepingRequests'][number] | null };
 
 type EntryCreateInput = {
   type: EntryType;
@@ -262,13 +262,14 @@ export async function getEntry(id: string): Promise<EntryWithRelations> {
     include: entryInclude,
   });
   if (!entry) throw new NotFoundError('El registro no existe.');
-  return entry;
+  return {...entry, housekeepingRequest:entry.housekeepingRequests[0]??null};
 }
 
 /** Modelo de lectura del asunto: mantiene la reserva histórica antes de proyectar contexto. */
 export async function getSubjectEntry(user: Pick<CurrentUser, 'isSystemAdmin'>, id: string): Promise<EntryWithRelations> {
   const entry = await getEntry(id);
-  return { ...entry, housekeepingRequest: entry.housekeepingRequest?.isDemo && !user.isSystemAdmin ? null : entry.housekeepingRequest };
+  const housekeepingRequests=entry.housekeepingRequests.filter(work=>!work.isDemo||user.isSystemAdmin);
+  return { ...entry, housekeepingRequests, housekeepingRequest:housekeepingRequests[0]??null };
 }
 
 export async function updateEntry(
@@ -415,26 +416,7 @@ export async function changeEntryStatus(
         );
       }
     }
-    const openFollowUps = await prisma.followUp.count({
-      where: {
-        entryId: current.id,
-        deletedAt: null,
-        status: { in: ['PENDIENTE', 'VENCIDO'] },
-        // «Seguir» en Supervisión es vigilancia, no otra obligación que haya
-        // que cerrar antes de resolver la fuente original. El OR explícito
-        // incluye origin=NULL: un NOT sobre un campo nulo se vuelve UNKNOWN en
-        // PostgreSQL y excluiría seguimientos operativos legítimos.
-        OR: [
-          { origin: null },
-          { origin: { not: { startsWith: 'SUPERVISION_' } } },
-        ],
-      },
-    });
-    if (openFollowUps > 0 && input.status === EntryStatus.CERRADO) {
-      throw new RuleError(
-        `No puedes cerrar el registro: tiene ${openFollowUps} seguimiento(s) operativo(s) sin resolver.`,
-      );
-    }
+
   }
 
   if (reopening && !user.permissions.includes('entry.reopen')) {
@@ -442,6 +424,8 @@ export async function changeEntryStatus(
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.id} FOR UPDATE`;
+    if (closing) await assertSubjectCanFinish(tx,current.id);
     const now = new Date();
     const updated = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt:current.updatedAt, ownerId:current.ownerId, status:current.status },
@@ -451,6 +435,7 @@ export async function changeEntryStatus(
         ...(input.status === 'EN_CURSO' ? { workStartedAt: current.workStartedAt ?? now, ...(current.ownerId === user.id ? {workAcknowledgedAt: current.workAcknowledgedAt ?? now, workAcknowledgedById: user.id} : {}) } : {}),
         resolution: input.resolution ?? current.resolution,
         rootCause: input.rootCause ?? current.rootCause,
+        resolvedAt: closing ? (current.resolvedAt ?? current.closedAt ?? now) : reopening ? null : current.resolvedAt,
         closedAt: input.status === EntryStatus.CERRADO ? now : null,
         closedById: input.status === EntryStatus.CERRADO ? user.id : null,
         reopenedAt: reopening ? now : current.reopenedAt,

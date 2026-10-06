@@ -18,6 +18,7 @@ export function ReceptionOperationGate({
   if (
     pathname === '/turno' ||
     pathname.startsWith('/turno/entrega/') ||
+    (mode === 'CLOSING' && pathname === '/caja') ||
     pathname === '/perfil' ||
     pathname === '/equipo'
   ) {

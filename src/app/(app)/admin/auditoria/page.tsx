@@ -1,3 +1,4 @@
+import { formatAuditValue } from '@/domain/audit-display';
 import {auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
 import Link from 'next/link';
@@ -34,12 +35,7 @@ const ENTITIES = [
 
 function value(input: Prisma.JsonValue | null): string | null {
   if (input === null || input === undefined) return null;
-  if (typeof input === 'object') {
-    return Object.entries(input as Record<string, unknown>)
-      .map(([key, val]) => `${key}: ${val === null ? '—' : String(val)}`)
-      .join(' · ');
-  }
-  return String(input);
+  return formatAuditValue(input);
 }
 
 export default async function AuditPage({

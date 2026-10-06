@@ -1,3 +1,4 @@
+import {subjectDistributionEnabled} from './subject-distribution-gate';
 import 'server-only';
 import { activeRuleOverrides } from './automation-policy-scope';
 import { Prisma, type Priority } from '@prisma/client';
@@ -72,7 +73,7 @@ export async function getHousekeepingSources(user: CurrentUser, query = '') {
   const number = /^#?\d+$/.test(text) ? Number(text.replace('#', '')) : undefined;
   return prisma.operationalEntry.findMany({
     where: {
-      deletedAt: null, housekeepingRequest: null,
+      deletedAt: null, housekeepingRequests: {none:{}},
       status: { notIn: ['CERRADO', 'RESUELTO'] },
       ...(text ? { OR: [{ title: { contains: text, mode: 'insensitive' as const } }, { room: { number: { contains: text } } }, ...(number && Number.isSafeInteger(number) ? [{ humanId: number }] : [])] } : {}),
     },
@@ -90,6 +91,12 @@ export async function createHousekeepingRequest(user: CurrentUser, input: Create
   if (existing) { if (existing.isDemo && user.roleKey !== 'ADMINISTRADOR_SISTEMA') throw new ForbiddenError(); return existing; }
   try {
     return await prisma.$transaction(async (tx) => {
+      if(input.sourceEntryId){
+        await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.sourceEntryId} FOR UPDATE`;
+        const retry=await tx.housekeepingRequest.findUnique({where:{requestKey:input.requestKey}});
+        if(retry){if(retry.createdById!==user.id)throw new ForbiddenError();return retry;}
+        if(!subjectDistributionEnabled()&&await tx.housekeepingRequest.count({where:{sourceEntryId:input.sourceEntryId}}))throw new RuleError('Esta novedad ya está vinculada a Housekeeping. La distribución simultánea todavía no está habilitada.');
+      }
       const departmentId = input.departmentId || (await tx.department.findUnique({ where: { key: 'HOUSEKEEPING' }, select: { id: true } }))?.id;
       await validateDestination(tx, departmentId, input.assignedToId);
       const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] } } }) : null;

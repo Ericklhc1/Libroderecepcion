@@ -291,8 +291,8 @@ describe('habitaciones y llaves', () => {
       const room = await getRoomDetail('414');
       expect(room.snapshot.state).toBe('PENDIENTE_LIBERACION');
       expect(room.snapshot.incomingState).toBe('EN_COLA');
-      expect(room.snapshot.outgoing?.departureDate?.getDate()).toBe(14);
-      expect(room.snapshot.incoming?.arrivalDate?.getDate()).toBe(14);
+      expect(room.snapshot.outgoing?.departureDate?.getUTCDate()).toBe(14);
+      expect(room.snapshot.incoming?.arrivalDate?.getUTCDate()).toBe(14);
     });
 
     it('la 515 compara por identificador de reserva y no por nombre', async () => {

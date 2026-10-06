@@ -270,6 +270,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_caja',
     ], 'ShiftHandover', handover[1] ?? null);
   }
+  if (pathname === '/turno/cambios') return detail('cambios-turno', 'Mi turno', 'cambios', 'Qué cambió desde mi último turno', ['consultar_contexto_pantalla']);
   if (pathname === '/turno') {
     return detail('turno', 'Mi turno', 'estado', 'Estado y continuidad', [
       'consultar_contexto_pantalla',
@@ -326,6 +327,9 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_prioridades',
     ]);
   }
+  if (pathname === '/gerencia/evidencia') {
+    return detail('gerencia', 'Gerencia', 'evidencia', 'Evidencia gerencial de sólo lectura', ['consultar_contexto_pantalla']);
+  }
   if (pathname === '/gerencia') {
     return detail('gerencia', 'Gerencia', filters.dias ? `${filters.dias}d` : '30d', 'Cockpit estratégico de Gerencia', [
       'consultar_contexto_pantalla',
@@ -339,6 +343,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  if (pathname === '/supervision/documentos') return detail('supervision', 'Centro de Supervisión', 'documentos-locales', 'Revisión documental local sin persistencia central', ['consultar_contexto_pantalla']);
   if (pathname === '/supervision') {
     return detail('supervision', 'Centro de Supervisión', 'centro', 'Centro de Supervisión', [
       'consultar_contexto_pantalla',
@@ -402,6 +407,7 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
   if (pathname === '/fronti/procedimientos') return detail('fronti-procedimientos', 'Fronti', 'ejecuciones', 'Mis procedimientos', ['consultar_contexto_pantalla', 'consultar_procedimientos']);
   if (pathname === '/coordinacion/indicadores') return detail('indicadores-operativos', 'Coordinación', 'indicadores', 'Resumen e indicadores', ['consultar_contexto_pantalla']);
   if (pathname === '/coordinacion/automatizaciones') return detail('automatizaciones', 'Coordinación', 'politicas', 'Reglas y procedimientos', ['consultar_contexto_pantalla']);
+  if (pathname === '/coordinacion/areas') return detail('coordinacion', 'Coordinación', 'areas', 'Bandeja de revisión por áreas', ['consultar_contexto_pantalla']);
   if (pathname === '/coordinacion') return detail('coordinacion', 'Coordinación', 'pendientes', 'Coordinación y continuidad', ['consultar_contexto_pantalla']);
 
   if (pathname === '/admin') {

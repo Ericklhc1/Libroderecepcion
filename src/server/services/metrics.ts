@@ -6,10 +6,9 @@ import {
   HandoverStatus,
   OperationalAlarmStatus,
   ShiftStatus,
-  TaskStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
+import { ENTRY_RESOLVED_STATUSES, TASK_COMPLETED_STATUSES, metricPeriod, metricCalendarRange, incidentResolutionAt, SHARED_METRIC_SCOPE, TASK_COMPLETION_DEFINITION, INCIDENT_RESOLUTION_DEFINITION } from '@/domain/operational-metrics';
 import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 
@@ -20,9 +19,7 @@ const sharedTasks=taskFollowUpReadWhere(sharedReader,true);
 export type MetricsRange = { from: Date; to: Date };
 
 export function defaultRange(days = 30): MetricsRange {
-  const to = new Date();
-  const from = hotelDayStart(addHotelCalendarDays(to, -days));
-  return { from, to };
+  return metricPeriod(days).current;
 }
 
 /**
@@ -45,11 +42,14 @@ export async function getMetrics(range: MetricsRange) {
     openTasks,
     liveAlerts,
     openOperationalEntries,
+    formalIncidentClosures,
+    incidentsWithoutDate,
+    tasksWithoutDate,
   ] = await Promise.all([
     prisma.task.findMany({
       where: { AND:[sharedTasks],
         deletedAt: null,
-        status: TaskStatus.COMPLETADA,
+        status: { in: TASK_COMPLETED_STATUSES },
         completedAt: { gte: range.from, lte: range.to },
       },
       select: { completedAt: true, dueAt: true, createdAt: true },
@@ -72,10 +72,10 @@ export async function getMetrics(range: MetricsRange) {
       where: {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
-        status: { in: [EntryStatus.CERRADO, EntryStatus.RESUELTO] },
-        closedAt: { gte: range.from, lte: range.to },
+        status: { in: ENTRY_RESOLVED_STATUSES },
+        OR: [{ resolvedAt: createdIn }, { resolvedAt: null, closedAt: createdIn }],
       },
-      select: { occurredAt: true, closedAt: true },
+      select: { occurredAt: true, resolvedAt: true, closedAt: true },
     }),
     prisma.shiftHandover.count({
       where: { issuedAt: createdIn, status: { in: [HandoverStatus.ENVIADA, HandoverStatus.RECIBIDA] } },
@@ -106,6 +106,9 @@ export async function getMetrics(range: MetricsRange) {
         status: { in: ENTRY_OPEN_STATUSES },
       },
     }),
+    prisma.operationalEntry.count({ where: { deletedAt: null, type: EntryType.INCIDENCIA, status: EntryStatus.CERRADO, closedAt: createdIn } }),
+    prisma.operationalEntry.count({ where: { deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_RESOLVED_STATUSES }, resolvedAt: null, closedAt: null } }),
+    prisma.task.count({ where: { AND: [sharedTasks], deletedAt: null, status: { in: TASK_COMPLETED_STATUSES }, completedAt: null } }),
   ]);
 
   const completedOnTime = tasksClosed.filter(
@@ -114,8 +117,9 @@ export async function getMetrics(range: MetricsRange) {
   const completedLate = tasksClosed.length - completedOnTime;
 
   const resolutionHours = closedIncidents
-    .filter((i) => i.closedAt)
-    .map((i) => (i.closedAt!.getTime() - i.occurredAt.getTime()) / 3600_000);
+    .map((i) => ({ end: incidentResolutionAt(i), start: i.occurredAt }))
+    .filter((i) => i.end && i.end >= i.start)
+    .map((i) => (i.end!.getTime() - i.start.getTime()) / 3600_000);
   const avgResolutionHours =
     resolutionHours.length > 0
       ? resolutionHours.reduce((a, b) => a + b, 0) / resolutionHours.length
@@ -145,17 +149,20 @@ export async function getMetrics(range: MetricsRange) {
 
   const [shiftsClosed, shiftsTotal] = await Promise.all([
     prisma.shift.count({
-      where: { date: { gte: range.from, lte: range.to }, status: ShiftStatus.CERRADO },
+      where: { date: metricCalendarRange(range), status: ShiftStatus.CERRADO },
     }),
     prisma.shift.count({
-      where: { date: { gte: range.from, lte: range.to }, status: { not: ShiftStatus.ANULADO } },
+      where: { date: metricCalendarRange(range), status: { not: ShiftStatus.ANULADO } },
     }),
   ]);
 
   return {
     range,
+    scope: SHARED_METRIC_SCOPE,
+    definitions: { tasks: TASK_COMPLETION_DEFINITION, incidents: INCIDENT_RESOLUTION_DEFINITION },
     tasks: {
       completed: tasksClosed.length,
+      withoutCompletionDate: tasksWithoutDate,
       completedOnTime,
       completedLate,
       onTimeRate:
@@ -167,7 +174,11 @@ export async function getMetrics(range: MetricsRange) {
     },
     incidents: {
       open: openIncidents,
-      closedInRange: closedIncidents.length,
+      closedInRange: formalIncidentClosures,
+      resolvedInRange: closedIncidents.length,
+      resolutionSamples: resolutionHours.length,
+      historicalClosureSamples: closedIncidents.filter((i) => !i.resolvedAt).length,
+      withoutResolutionDate: incidentsWithoutDate,
       avgResolutionHours,
       byDepartment: incidentsByDepartment
         .map((row) => ({
@@ -216,7 +227,7 @@ export async function getShiftMetrics(shiftId: string) {
     }),
     prisma.task.count({ where: { AND:[sharedTasks], shiftId, deletedAt: null } }),
     prisma.task.count({
-      where: { AND:[sharedTasks], shiftId, deletedAt: null, status: TaskStatus.COMPLETADA },
+      where: { AND:[sharedTasks], shiftId, deletedAt: null, status: { in: TASK_COMPLETED_STATUSES } },
     }),
   ]);
   return { entries, incidents, tasksCreated, tasksCompleted };

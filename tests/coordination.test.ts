@@ -49,7 +49,7 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     const e=await entry();const input={kind:'entry' as const,id:e.id,updatedAt:e.updatedAt,requestKey:randomUUID(),action:'ASIGNAR' as const,ownerId:b.id,nextAction:'Atender solicitud'};
     await Promise.all([coordinateWork(admin,input),coordinateWork(admin,input)]);
     expect(await prisma.auditLog.count({where:{entityId:e.id,summary:{contains:'Coordinación'}}})).toBe(1);
-    expect(await prisma.notification.count({where:{entityId:e.id,title:{contains:'por recibir'}}})).toBe(1);
+    expect(await prisma.notification.count({where:{entityId:e.id,userId:b.id,title:{contains:'nueva recepción pendiente'}}})).toBe(1);
     await expect(coordinateWork(admin,{...input,nextAction:'Cambiar el contenido con la misma clave'})).rejects.toThrow('reintento');
   });
   it('dos reasignaciones con la misma versión no se sobrescriben',async()=>{
@@ -114,8 +114,11 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     await expect(changeHkWork(admin,{id:r.id,version:blocked.version,action:'MANTENIMIENTO',note:'Reintento',severity:'ALTA'})).rejects.toThrow();expect(await prisma.operationalEntry.count()).toBe(1);
   });
   it('una tarea de otro responsable o de un origen cerrado sigue visible en mis pendientes',async()=>{
-    const e=await entry();await prisma.operationalEntry.update({where:{id:e.id},data:{status:'CERRADO'}});
+    const e=await entry();
     const t=await createTask(admin,{title:'Continuidad aún abierta',entryId:e.id,assigneeId:b.id,priority:'MEDIA',tags:[],checklist:[]});
+    // Historical inconsistency remains visible; the writer now rejects creating it.
+    await prisma.operationalEntry.update({where:{id:e.id},data:{status:'CERRADO'}});
+    await expect(createTask(admin,{title:'Nueva solicitud prohibida',entryId:e.id,assigneeId:b.id,priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow('Reabre');
     expect((await getCoordinationBoard(b,{mine:true})).rows.some(r=>r.id===t.id)).toBe(true);
   });
   it('la programación futura no genera escalamiento prematuro',async()=>{

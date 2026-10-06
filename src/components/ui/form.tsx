@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import { decodeFormDraft, encodeFormDraft, formDraftRevision } from '@/domain/form-draft';
 import { cn } from '@/lib/cn';
 import type { ActionState, RevealedCredentials } from '@/server/action';
 
@@ -205,6 +206,10 @@ export function ActionForm({
   className,
   closeOnSuccess = false,
   resetOnSuccess = false,
+  preserveOnSuccess = false,
+  draftScope,
+  draftRevision,
+  draftFields = [],
   hideSuccess = false,
   refreshOnSuccess = false,
   onSuccess,
@@ -215,6 +220,11 @@ export function ActionForm({
   className?: string;
   closeOnSuccess?: boolean;
   resetOnSuccess?: boolean;
+  preserveOnSuccess?: boolean;
+  /** User/object-scoped session-only draft. Never include passwords, permissions or physical confirmations. */
+  draftScope?: string;
+  draftRevision?: string;
+  draftFields?: string[];
   hideSuccess?: boolean;
   /**
    * Vuelve a pedir la pantalla al servidor cuando la acción tiene éxito.
@@ -233,9 +243,28 @@ export function ActionForm({
 }) {
   const router = useRouter();
   const close = useDialogClose();
+  const [draftState, setDraftState] = useState<'saved' | 'restored' | 'stale' | 'unavailable' | null>(null);
+  const dirtyDraft = useRef(false);
+  const draftBaseRevision = useRef<string | null>(draftRevision ?? null);
+  const draftEdit = useRef(0);
+  const latestDraftControls = useRef<Map<string, ControlValue> | null>(null);
+  const submittedDraft = useRef<{ key: string; raw?: string | null; edit: number } | null>(null);
+  const draftKey = draftScope ? `aroh:form-draft:v1:${draftScope}` : null;
+  const draftFieldKey = draftFields.join('|');
   const formId = useId();
   const actionWithImmediateDialogClose = useCallback(async (previous: ActionState | null, formData: FormData) => {
+    const draft = submittedDraft.current;
     const result = await action(previous, formData);
+    // Revalidation can unmount this form before useActionState commits. Clear
+    // only the submitted snapshot here, never a newer edit made while waiting.
+    if (result.ok && draft && draft.edit === draftEdit.current) {
+      let newerDraft = false;
+      try {
+        newerDraft = draft.raw !== undefined && sessionStorage.getItem(draft.key) !== draft.raw;
+        if (!newerDraft) sessionStorage.removeItem(draft.key);
+      } catch { /* Storage is optional; never turn a confirmed save into an error. */ }
+      if (!newerDraft) window.dispatchEvent(new CustomEvent('aroh:form-draft-saved', { detail: { key: draft.key, formId } }));
+    }
     if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId } }));
     // Server Actions may persist before React commits useActionState's returned state.
     // Do not refresh from inside the action wrapper: doing so keeps React's action
@@ -259,9 +288,51 @@ export function ActionForm({
   const reveals = state?.ok === true && state.credentials !== undefined;
 
   useEffect(() => {
+    if (!draftKey) return;
+    dirtyDraft.current = false;
+    draftBaseRevision.current = draftRevision ?? null;
+    const form = document.getElementById(formId) as HTMLFormElement | null;
+    try {
+      const raw = sessionStorage.getItem(draftKey);
+      const values = decodeFormDraft(raw, draftFieldKey.split('|'));
+      if (form && values) {
+        writeControls(form, values);
+        dirtyDraft.current = true;
+        draftBaseRevision.current = formDraftRevision(raw);
+        setDraftState(draftBaseRevision.current !== (draftRevision ?? null) ? 'stale' : 'restored');
+      } else { setDraftState(null); }
+    } catch { setDraftState('unavailable'); }
+    const warn = (event: BeforeUnloadEvent) => {
+      if (!dirtyDraft.current) return;
+      event.preventDefault(); event.returnValue = '';
+    };
+    const cleared = () => { dirtyDraft.current = false; setDraftState(null); };
+    const saved = (event: Event) => {
+      if (!(event instanceof CustomEvent) || event.detail?.key !== draftKey) return;
+      // A replacement mounted by revalidation may have recovered the old draft
+      // just before its action returned. Its defaults are the new saved record.
+      if (event.detail.formId !== formId) form?.reset();
+      draftBaseRevision.current = draftRevision ?? null;
+      cleared();
+    };
+    window.addEventListener('beforeunload', warn);
+    window.addEventListener('aroh:clear-form-drafts', cleared);
+    window.addEventListener('aroh:form-draft-saved', saved);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      window.removeEventListener('aroh:clear-form-drafts', cleared);
+      window.removeEventListener('aroh:form-draft-saved', saved);
+    };
+  }, [draftKey, draftFieldKey, draftRevision, formId]);
+
+  useEffect(() => {
     if (!state) return;
     const form = document.getElementById(formId) as HTMLFormElement | null;
+    const laterEdits = submittedDraft.current && submittedDraft.current.edit !== draftEdit.current
+      ? latestDraftControls.current : null;
     if (state.ok) {
+      if (form && laterEdits) writeControls(form, laterEdits);
+      else if (preserveOnSuccess && form && submitted.current) writeControls(form, submitted.current);
       submitted.current = null;
       if (state.credentials) return;
       if (resetOnSuccess) form?.reset();
@@ -275,7 +346,7 @@ export function ActionForm({
       if (refreshOnSuccess) router.refresh();
       return;
     }
-    if (form && submitted.current) writeControls(form, submitted.current);
+    if (form && (laterEdits || submitted.current)) writeControls(form, (laterEdits || submitted.current)!);
     if (handledError.current !== state) {
       handledError.current = state;
       onError?.(state);
@@ -285,6 +356,7 @@ export function ActionForm({
     close,
     closeOnSuccess,
     resetOnSuccess,
+    preserveOnSuccess,
     refreshOnSuccess,
     router,
     formId,
@@ -299,8 +371,23 @@ export function ActionForm({
       <form
         id={formId}
         action={formAction}
+        onChange={(event) => {
+          if (!draftKey) return;
+          dirtyDraft.current = true;
+          draftEdit.current += 1;
+          latestDraftControls.current = readControls(event.currentTarget);
+          try {
+            sessionStorage.setItem(draftKey, encodeFormDraft(latestDraftControls.current, draftFields, Date.now(), draftBaseRevision.current));
+            setDraftState(draftBaseRevision.current !== (draftRevision ?? null) ? 'stale' : 'saved');
+          } catch { setDraftState('unavailable'); }
+        }}
         onSubmit={(event) => {
           submitted.current = readControls(event.currentTarget);
+          submittedDraft.current = null;
+          if (draftKey) {
+            submittedDraft.current = { key: draftKey, edit: draftEdit.current };
+            try { submittedDraft.current.raw = sessionStorage.getItem(draftKey); } catch { /* Optional storage. */ }
+          }
         }}
         className={cn('space-y-4', className)}
       >
@@ -309,6 +396,9 @@ export function ActionForm({
           lector de pantalla anuncie el cambio sin que se reordene el resto.
         */}
         <div aria-live="polite">
+          {draftState && <p className="text-xs text-slate-600" role="status">
+            {draftState === 'unavailable' ? 'No se pudo conservar el borrador en esta pestaña. Guarda antes de salir.' : draftState === 'stale' ? 'El registro guardado cambió después de este borrador. Conservamos lo escrito: compáralo con el resumen guardado antes de enviar.' : draftState === 'restored' ? 'Borrador recuperado de esta pestaña. Revisa y guarda; las confirmaciones físicas deben comprobarse nuevamente.' : 'Borrador conservado en esta pestaña durante 12 horas. Aún no está guardado en el registro.'}
+          </p>}
           {state && !state.ok ? (
             <p
               role="alert"

@@ -90,7 +90,7 @@ export function TaskForm({
             name="assigneeId"
             placeholder="Sin asignar"
             defaultValue={defaultAssigneeId}
-            options={options.users}
+            options={(options.taskUsers??options.users)}
           />
         </Field>
         <Field label="Prioridad" name="priority" required>
@@ -103,11 +103,11 @@ export function TaskForm({
         <p className="mb-2 text-xs text-slate-500">
           Opcional. Marca a quienes colaboran; funciona igual con ratón, teclado o pantalla táctil.
         </p>
-        {options.users.length === 0 ? (
+        {(options.taskUsers??options.users).length === 0 ? (
           <p className="text-sm text-slate-500">No hay personal operativo disponible.</p>
         ) : (
           <div className="grid gap-2 sm:grid-cols-2">
-            {options.users.map((option) => (
+            {(options.taskUsers??options.users).map((option) => (
               <label
                 key={option.value}
                 className="flex items-center gap-2 rounded-lg px-2 py-2 text-sm text-petrol-900 hover:bg-slate-50"

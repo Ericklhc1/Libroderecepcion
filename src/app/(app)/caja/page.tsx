@@ -62,6 +62,9 @@ export default async function LiveCashPage({
   const moneda = typeof params.moneda === 'string' ? params.moneda : '';
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const roomContext = typeof params.habitacion === 'string' ? params.habitacion : '';
+  const returnCandidate = typeof params.volver === 'string' ? params.volver : '';
+  const hasReturnToHandover = returnCandidate.startsWith('/turno/entrega/');
+  const returnHref = hasReturnToHandover ? returnCandidate : '/turno';
   const todayKey = hotelDateKey(new Date());
   const defaultFrom = `${todayKey.slice(0, 8)}01`;
   const gymFrom = typeof params.desde === 'string' && params.desde ? params.desde : defaultFrom;
@@ -82,6 +85,7 @@ export default async function LiveCashPage({
     listParkingPasses({ from: gymFrom, to: gymTo, limit: 1000 }),
   ]);
   const canOperateCash = operationGate.mode === 'ACTIVE';
+  const canReturnDuringClosing = operationGate.mode === 'CLOSING' && operationGate.shiftStatus === 'PREPARANDO_ENTREGA';
 
   const canManualIn = canOperateCash && hasPermission(user, 'cash.manual_in');
   const canManualOut = canOperateCash && hasPermission(user, 'cash.manual_out');
@@ -90,7 +94,8 @@ export default async function LiveCashPage({
   const canCreateGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_in');
   const canEditGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_in');
   const canReconcileDifference = canOperateCash && hasPermission(user, 'cash.approve');
-  const canReturnGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_out');
+  const canChargeGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_out');
+  const canReturnGuarantee = (canOperateCash || canReturnDuringClosing) && hasPermission(user, 'cash.guarantee_out');
 
   const matches = (values: Array<string | number | null | undefined>) =>
     !q ||
@@ -249,9 +254,9 @@ export default async function LiveCashPage({
       </header>
 
       <section aria-label="Estado actual de Caja" className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-        <p className="font-semibold">{canOperateCash ? 'Caja operativa' : 'Caja en consulta'}</p>
-        <p className="mt-1">Siguiente acción: {canOperateCash ? 'revisar el efectivo esperado y registrar lo ocurrido; el arqueo confirma el conteo físico.' : 'continuar el paso pendiente de Mi turno.'}</p>
-        <div className="mt-2 flex flex-wrap gap-3"><Link className="underline" href="/caja?seccion=auditorias">Revisar arqueos y diferencias</Link><Link className="underline" href="/caja?seccion=movimientos">Ver movimientos registrados</Link>{!canOperateCash && <Link className="font-semibold underline" href="/turno">Continuar Mi turno</Link>}</div>
+        <p className="font-semibold">{canOperateCash ? 'Caja operativa' : canReturnDuringClosing ? 'Caja durante cierre' : 'Caja en consulta'}</p>
+        <p className="mt-1">Siguiente acción: {canOperateCash ? 'revisar el efectivo esperado y registrar lo ocurrido; el arqueo confirma el conteo físico.' : canReturnDuringClosing ? 'devolver únicamente una garantía en efectivo que deba salir físicamente antes de terminar el cierre.' : 'continuar el paso pendiente de Mi turno.'}</p>
+        <div className="mt-2 flex flex-wrap gap-3"><Link className="underline" href="/caja?seccion=auditorias">Revisar arqueos y diferencias</Link><Link className="underline" href="/caja?seccion=movimientos">Ver movimientos registrados</Link>{hasReturnToHandover ? <Link className="font-semibold underline" href={returnHref}>Volver al cierre</Link> : !canOperateCash ? <Link className="font-semibold underline" href="/turno">Continuar Mi turno</Link> : null}</div>
       </section>
 
       {!canOperateCash ? (
@@ -264,7 +269,9 @@ export default async function LiveCashPage({
                 ? 'Recibe primero la entrega pendiente y recuenta Caja desde Mi turno.'
                 : operationGate.mode === 'RECEIVING'
                   ? 'Completa la recepción del turno antes de operar Caja.'
-                  : 'Tu turno está en cierre. Completa Caja desde el cierre guiado y termina el turno antes de volver a operar.'}
+                  : canReturnDuringClosing
+                    ? 'El cierre sigue activo. Sólo puedes devolver físicamente una garantía vigente; cobros, nuevas garantías y demás operaciones continúan bloqueados.'
+                    : 'Tu turno está en cierre. Completa Caja desde el cierre guiado y termina el turno antes de volver a operar.'}
           </p>
         </div>
       ) : null}
@@ -431,7 +438,7 @@ export default async function LiveCashPage({
                             </p>
                             <Chip>{human(guarantee.state)}</Chip>
                           </div>
-                          {canEditGuarantee || canReturnGuarantee ? (
+                          {canEditGuarantee || canChargeGuarantee || canReturnGuarantee ? (
                             <div className="flex flex-wrap justify-end gap-2">
                               {canEditGuarantee ? (
                                 <EditCashGuaranteeForm
@@ -446,26 +453,26 @@ export default async function LiveCashPage({
                                   notes={guarantee.notes}
                                 />
                               ) : null}
+                              {canChargeGuarantee ? (
+                                <ChargeCashGuaranteeForm
+                                  guaranteeId={guarantee.id}
+                                  humanId={guarantee.humanId}
+                                  reference={guarantee.reference ?? guarantee.guestName}
+                                  currency={guarantee.currency}
+                                  amount={guarantee.amount}
+                                  guestName={guarantee.guestName}
+                                  roomNumber={guarantee.roomNumber}
+                                />
+                              ) : null}
                               {canReturnGuarantee ? (
-                                <>
-                                  <ChargeCashGuaranteeForm
-                                    guaranteeId={guarantee.id}
-                                    humanId={guarantee.humanId}
-                                    reference={guarantee.reference ?? guarantee.guestName}
-                                    currency={guarantee.currency}
-                                    amount={guarantee.amount}
-                                    guestName={guarantee.guestName}
-                                    roomNumber={guarantee.roomNumber}
-                                  />
-                                  <ReturnCashGuaranteeForm
-                                    guaranteeId={guarantee.id}
-                                    reference={guarantee.reference ?? guarantee.guestName}
-                                    currency={guarantee.currency}
-                                    amount={guarantee.amount}
-                                    guestName={guarantee.guestName}
-                                    roomNumber={guarantee.roomNumber}
-                                  />
-                                </>
+                                <ReturnCashGuaranteeForm
+                                  guaranteeId={guarantee.id}
+                                  reference={guarantee.reference ?? guarantee.guestName}
+                                  currency={guarantee.currency}
+                                  amount={guarantee.amount}
+                                  guestName={guarantee.guestName}
+                                  roomNumber={guarantee.roomNumber}
+                                />
                               ) : null}
                             </div>
                           ) : null}

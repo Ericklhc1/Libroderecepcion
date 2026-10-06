@@ -17,7 +17,7 @@ import {
 import { requirePermission } from '@/server/auth/guard';
 import { hashPassword, passwordSchema } from '@/server/auth/password';
 import { revokeAllUserSessions } from '@/server/auth/session';
-import { recordAudit, diffFields } from '@/server/audit';
+import { recordAudit } from '@/server/audit';
 import { AppError, NotFoundError, RuleError } from '@/server/errors';
 import { normalizeUsername } from '@/domain/username';
 import {
@@ -26,25 +26,9 @@ import {
 } from '@/lib/permissions';
 import { DEFAULT_SETTINGS, getSettingString, type SettingKey } from '@/server/services/settings';
 import { allocateUsername, deliverCredentials, generatePassword } from '@/server/services/credentials';
-import { adminRevision, adminUserRevision } from '@/server/services/admin-revision';
+import { adminRevision } from '@/server/services/admin-revision';
+import { updateAdministrativeUser, deleteAdministrativeUser, saveAdministrativeDepartment } from '@/server/services/schedule-admin-safety';
 import { runAlertEngine } from '@/server/services/alert-engine';
-
-/** Impide quedarse sin administradores activos. */
-async function assertAdminRemains(excludeUserId: string) {
-  const remaining = await prisma.user.count({
-    where: {
-      id: { not: excludeUserId },
-      active: true,
-      deletedAt: null,
-      role: { key: ROLE_KEYS.SYSTEM_ADMIN },
-    },
-  });
-  if (remaining === 0) {
-    throw new RuleError(
-      'Debe existir al menos un Administrador de sistema activo. Asigna el rol a otro usuario antes de continuar.',
-    );
-  }
-}
 
 export async function createUserAction(
   _state: ActionState | null,
@@ -160,72 +144,16 @@ export async function updateUserAction(
     const actor = await requirePermission('user.manage');
     const input = parseOrThrow(userUpdateSchema, formDataToObject(formData));
 
-    const current = await prisma.user.findFirst({
-      where: { id: input.id, deletedAt: null },
-      include: { role: true },
-    });
+    // Role changes retain their independent permission check inside the locked service.
+    const current = await prisma.user.findFirst({ where: { id: input.id, deletedAt: null }, select: { roleId: true } });
     if (!current) throw new NotFoundError('El usuario no existe.');
-    const expectedRevision=formData.get('__frontiRevision');
-    if(expectedRevision&&expectedRevision!==adminUserRevision(current))throw new RuleError('El usuario cambió después de autorizar. Prepara una nueva propuesta.');
-
-    const roleChanged = current.roleId !== input.roleId;
-    if (roleChanged) {
-      // Cambiar roles es gestión de permisos: requiere su propio permiso.
-      await requirePermission('role.manage');
-    }
-
-    const losesAdmin =
-      current.role.key === ROLE_KEYS.SYSTEM_ADMIN && (roleChanged || !input.active);
-    if (losesAdmin) await assertAdminRemains(current.id);
-
-    const updated = await prisma.user.update({
-      where: { id: input.id, updatedAt: current.updatedAt },
-      data: {
-        name: input.name,
-        email: input.email ?? null,
-        emailNotificationsEnabled: input.emailNotificationsEnabled,
-        hiddenFromSelectors: input.hiddenFromSelectors,
-        roleId: input.roleId,
-        departmentId: input.departmentId,
-        phone: input.phone,
-        active: input.active,
-      },
-      include: { role: true },
-    });
-
-    // Un usuario desactivado o con rol nuevo no debe conservar sesiones vivas.
-    if (!updated.active || roleChanged) {
-      await revokeAllUserSessions(updated.id);
-    }
-
-    const changes = diffFields(
-      current as unknown as Record<string, unknown>,
-      {
-        name: input.name,
-        email: input.email ?? null,
-        emailNotificationsEnabled: input.emailNotificationsEnabled,
-        hiddenFromSelectors: input.hiddenFromSelectors,
-        roleId: input.roleId,
-        departmentId: input.departmentId,
-        phone: input.phone,
-        active: input.active,
-      },
-      ['name', 'email', 'emailNotificationsEnabled', 'hiddenFromSelectors', 'roleId', 'departmentId', 'phone', 'active'],
-    );
-
-    await recordAudit({
-      entity: 'User',
-      entityId: updated.id,
-      action: roleChanged ? AuditAction.PERMISOS : AuditAction.EDITAR,
-      summary: roleChanged
-        ? `Rol de ${updated.name}: ${current.role.name} → ${updated.role.name}`
-        : `Usuario ${updated.name} actualizado (${changes.changed.join(', ') || 'sin cambios'})`,
-      user: actor,
-      before: changes.before,
-      after: changes.after,
-    });
+    if (current.roleId !== input.roleId) await requirePermission('role.manage');
+    const expectedRevision = formData.get('__frontiRevision');
+    await updateAdministrativeUser(actor, input, typeof expectedRevision === 'string' ? expectedRevision : undefined);
 
     revalidatePath('/admin/usuarios');
+    revalidatePath('/admin/areas');
+    revalidatePath('/equipo');
     return { ok: true as const, message: 'Usuario actualizado.' };
   });
 }
@@ -285,37 +213,10 @@ export async function deleteUserAction(
     const actor = await requirePermission('user.manage');
     const input = parseOrThrow(softDeleteSchema, formDataToObject(formData));
 
-    if (input.id === actor.id) {
-      throw new RuleError('No puedes eliminar tu propia cuenta.');
-    }
-    const user = await prisma.user.findFirst({
-      where: { id: input.id, deletedAt: null },
-      include: { role: true },
-    });
-    if (!user) throw new NotFoundError('El usuario no existe.');
-    if (user.role.key === ROLE_KEYS.SYSTEM_ADMIN) await assertAdminRemains(user.id);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        deletedAt: new Date(),
-        deletedById: actor.id,
-        deletionReason: input.reason,
-        active: false,
-      },
-    });
-    await revokeAllUserSessions(user.id);
-
-    await recordAudit({
-      entity: 'User',
-      entityId: user.id,
-      action: AuditAction.ELIMINAR,
-      summary: `Usuario ${user.name} desactivado y eliminado lógicamente`,
-      user: actor,
-      reason: input.reason,
-    });
-
+    await deleteAdministrativeUser(actor, input);
     revalidatePath('/admin/usuarios');
+    revalidatePath('/admin/areas');
+    revalidatePath('/equipo');
     return { ok: true as const, message: 'Usuario eliminado. Sus registros históricos se conservan.' };
   });
 }
@@ -439,30 +340,10 @@ export async function saveDepartmentAction(
     const actor = await requirePermission('system.configure');
     const input = parseOrThrow(departmentSchema, formDataToObject(formData));
 
-    const department = input.id
-      ? await prisma.department.update({
-          where: { id: input.id },
-          data: { name: input.name, order: input.order, active: input.active },
-        })
-      : await prisma.department.create({
-          data: {
-            key: input.key,
-            name: input.name,
-            order: input.order,
-            active: input.active,
-          },
-        });
-
-    await recordAudit({
-      entity: 'Department',
-      entityId: department.id,
-      action: input.id ? AuditAction.EDITAR : AuditAction.CREAR,
-      summary: `Área ${department.name} ${input.id ? 'actualizada' : 'creada'}`,
-      user: actor,
-      after: { key: department.key, name: department.name, active: department.active },
-    });
-
+    await saveAdministrativeDepartment(actor, input);
     revalidatePath('/admin/areas');
+    revalidatePath('/admin/usuarios');
+    revalidatePath('/equipo');
     return { ok: true as const, message: `Área ${input.id ? 'actualizada' : 'creada'}.` };
   });
 }

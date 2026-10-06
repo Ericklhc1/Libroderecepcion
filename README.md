@@ -1,17 +1,12 @@
 # AROH Central IA · Hotel HW Libertad
 
-Plataforma operativa interna del Hotel HW Libertad. Centraliza turnos,
-entregas, Novedades, Caja, llaves, Supervisión, Central de Reservas,
-seguimientos, alertas, trazabilidad e informes.
+Plataforma operativa interna del Hotel HW Libertad. Centraliza jornada, coordinación entre áreas, Novedades, turnos, Caja, llaves, Housekeeping, Inventario, Equipo y horarios, Supervisión, Gerencia, trazabilidad e informes.
 
-«Libro/Novedades» permanece como una superficie concreta dentro de la Central;
-ya no es el nombre del producto completo. La prioridad sigue siendo que cada
-rol entienda en pocos segundos qué ocurre, qué debe hacer y qué debe continuar
-en el siguiente relevo.
+Novedades permanece como una superficie concreta dentro de la Central; las rutas históricas del «libro» se conservan por compatibilidad, pero ya no nombran el producto completo. Coordinación reúne la visión de responsabilidades y continuidad sin duplicar las fuentes. La prioridad es que cada rol entienda en pocos segundos qué ocurre, qué debe hacer y qué debe continuar.
 
 ## Production
 
-Versión de esta rama: **v1.30.0**.
+Estado funcional de referencia para esta normalización: **v1.60.0**. La versión publicada debe verificarse siempre contra el release/commit de Production.
 
 Flujo único: `GitHub main → Vercel Production → Neon production`.
 Toda actualización entra por PR a `main`, debe superar la Compuerta y aumentar la versión SemVer. Una vez que Vercel sirve el SHA y la versión esperados, GitHub crea el tag `vX.Y.Z`.

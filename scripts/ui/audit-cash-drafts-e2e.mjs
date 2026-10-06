@@ -55,8 +55,8 @@ try {
     assert.equal(await page.getByRole('button',{name:'Cobrar garantía',exact:true}).count(),0,'Charging a guarantee remains blocked during closing');
     const returnRow=page.locator('li').filter({hasText:`#${returnGuarantee.humanId}`});
     await returnRow.getByRole('button',{name:'Devolver',exact:true}).click();
-    const returnForm=page.locator('form').filter({has:page.getByRole('button',{name:'CONFIRMAR DEVOLUCIÓN',exact:true})});
-    await returnForm.locator('input[name=confirmed]').check();await submit(returnForm,'CONFIRMAR DEVOLUCIÓN');
+    const returnForm=page.locator('form').filter({has:page.getByRole('button',{name:'Registrar devolución',exact:true})});
+    await returnForm.locator('input[name=confirmed]').check();await submit(returnForm,'Registrar devolución');
     assert.equal((await db.guarantee.findUniqueOrThrow({where:{id:returnGuarantee.id}})).state,'DEVUELTA');
     await page.getByRole('link',{name:'Volver al cierre',exact:true}).click();
     await page.waitForURL(url=>url.pathname===`/turno/entrega/${handover.id}`&&url.searchParams.get('paso')==='1');

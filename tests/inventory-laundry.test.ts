@@ -227,7 +227,7 @@ describe('Inventario común y lavandería', () => {
     expect(await balance(towel.id, warehouse.id)).toBe(85);
     expect(await balance(towel.id, laundry.id)).toBe(15);
 
-    expect(received.shipment.differenceEntry).not.toBeNull();
+    expect(received.shipment.differenceEntryId).not.toBeNull();
     expect(await prisma.operationalEntry.count({
       where: { id: received.shipment.differenceEntryId ?? undefined },
     })).toBe(1);

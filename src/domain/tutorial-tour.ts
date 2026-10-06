@@ -147,7 +147,6 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     id: 'jornada-jefatura',
-    module: 'jornada',
     title: 'Mi jornada de jefatura',
     description:
       'Inicia y cierra el ejercicio de tu jefatura por área. No abre Caja, no inicia un turno de Recepción y no acredita asistencia. Los pendientes continúan en sus objetos de origen.',

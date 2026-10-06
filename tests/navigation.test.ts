@@ -78,8 +78,8 @@ describe('menú principal', () => {
     for (const retired of RETIRED_FROM_MENU) {
       const source = readFileSync(`src/app/(app)${retired}/page.tsx`, 'utf-8');
       expect(source).toContain('export default async function');
-      // Y cada una debe ofrecer el camino de vuelta al libro.
-      expect(source).toContain('/libro');
+      // Y cada una debe ofrecer el camino hacia la visión conjunta vigente.
+      expect(source).toContain('/coordinacion');
     }
   });
 });

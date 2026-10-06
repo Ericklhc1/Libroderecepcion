@@ -46,7 +46,7 @@ describe('menú principal', () => {
       '/turno', // fotografía y relevo del turno
       '/llaves', // inventario físico autónomo
       '/notificaciones', // avisos recibidos y recordatorios existentes
-      '/admin/housekeeping', // coordinación habilitable por permisos
+      '/housekeeping', // coordinación habilitable por permisos
     ]);
     expect(NAV_GROUPS.find((group) => group.title === 'Equipo')?.items.map((item) => item.href)).toEqual(['/equipo']);
   });
@@ -87,9 +87,9 @@ describe('visibilidad por rol', () => {
   it('Housekeeping tiene navegación de su área sin lectores generales de Recepción',()=>{
     for(const role of [ROLE_KEYS.HK_ATTENDANT,ROLE_KEYS.HK_SUPERVISOR,ROLE_KEYS.HK_MANAGER]){
       const permissions=ROLE_PERMISSIONS[role];const hrefs=visibleNavItems(permissions).map(i=>i.href);
-      expect(hrefs).toEqual(['/coordinacion','/notificaciones','/admin/housekeeping','/equipo']);
-      expect(visibleNavItems(permissions).filter(i=>i.mobile).map(i=>i.href)).toContain('/admin/housekeeping');
-      expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).toEqual(expect.arrayContaining(['/admin/housekeeping','/equipo']));
+      expect(hrefs).toEqual(['/coordinacion','/notificaciones','/housekeeping','/equipo']);
+      expect(visibleNavItems(permissions).filter(i=>i.mobile).map(i=>i.href)).toContain('/housekeeping');
+      expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).toEqual(expect.arrayContaining(['/housekeeping','/equipo']));
       expect(visibleNavGroups(permissions).flatMap(g=>g.items.map(i=>i.href))).not.toContain('/libro?clase=entry');
     }
   });
@@ -102,7 +102,7 @@ describe('visibilidad por rol', () => {
 
   it('el Recepcionista ve sólo el núcleo operativo vigente', () => {
     const hrefs = visibleNavItems(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).map((i) => i.href);
-    expect(hrefs).toEqual(['/', '/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/admin/housekeeping']);
+    expect(hrefs).toEqual(['/', '/coordinacion', '/libro?clase=entry', '/novedades/habitacion', '/caja', '/turno', '/llaves', '/notificaciones', '/housekeeping']);
     expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).toContain('housekeeping.request');
     expect(ROLE_PERMISSIONS[ROLE_KEYS.RECEPTIONIST]).not.toContain('housekeeping.assign');
   });
@@ -171,7 +171,7 @@ describe('visibilidad por rol', () => {
     const permissions = ROLE_PERMISSIONS[ROLE_KEYS.SYSTEM_ADMIN];
     for (const permission of ['shift.manage', 'shift.start', 'shift.receive', 'shift.handover'] as const) expect(permissions).toContain(permission);
     const hrefs = visibleNavItems(permissions).map((item) => item.href);
-    expect(hrefs).toContain('/admin'); expect(hrefs).toContain('/turno'); expect(hrefs).toContain('/admin/housekeeping');
+    expect(hrefs).toContain('/admin'); expect(hrefs).toContain('/turno'); expect(hrefs).toContain('/housekeeping');
   });
 
   it('no deja grupos vacíos en el menú', () => {

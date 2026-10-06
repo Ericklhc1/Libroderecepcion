@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const page = readFileSync('src/app/(app)/admin/housekeeping/page.tsx', 'utf8');
+const page = readFileSync('src/app/(app)/housekeeping/page.tsx', 'utf8');
 describe('bandeja contextual de Housekeeping sobre contratos nativos', () => {
   it('conserva guardia y lector del área antes de proyectar filas', () => {
     expect(page).toContain('await requireHousekeepingPageUser()');

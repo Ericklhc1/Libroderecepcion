@@ -78,7 +78,7 @@ test('errors retain stage at occurrence and flush waits for async evidence befor
   const ready = new Promise(resolve => { release = resolve; });
   const asset = response('function hydrate(){if(marker==="F!")throw Error(code(418));}');
   const page = new EventEmitter();
-  page.url = () => 'http://localhost:3000/admin/housekeeping?note=DO_NOT_EXPORT';
+  page.url = () => 'http://localhost:3000/housekeeping?note=DO_NOT_EXPORT';
   page.context = () => ({ request: { get: async () => { await ready; return asset; } } });
   const emitted = [];
   const diagnostic = watchHydrationDiagnostics(page, { role: 'maid', width: 1280, emit: value => emitted.push(value) });
@@ -95,7 +95,7 @@ test('errors retain stage at occurrence and flush waits for async evidence befor
   await flushing;
   assert.equal(emitted.length, 1);
   assert.equal(emitted[0].stage, 'action:Comenzar');
-  assert.equal(emitted[0].path, '/admin/housekeeping');
+  assert.equal(emitted[0].path, '/housekeeping');
   assert.equal(emitted[0].reactError, 418);
   assert.equal(emitted[0].mismatch, 'HTML');
   assert.equal(emitted[0].sourceStatus, 'collected');

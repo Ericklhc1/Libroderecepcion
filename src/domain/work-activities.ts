@@ -63,11 +63,13 @@ export const WORK_ACTIVITY_PRESETS: WorkActivityPreset[] = [
   {
     key: 'linen-management',
     label: 'Gestionar lencería',
-    description: 'Se habilitará cuando Inventario/Lavandería tenga permisos canónicos propios.',
-    permissions: [],
+    description: 'Permite consultar inventario, registrar movimientos físicos y operar folios de lavandería.',
+    permissions: ['inventory.view', 'inventory.move', 'laundry.manage'],
     dependencies: [
-      'No se crea un permiso provisional ni una segunda fuente de autorización.',
+      'La persona necesita área principal o pertenencia activa para operar ubicaciones del área.',
+      'Gestionar folios no concede crear categorías, artículos, ubicaciones ni valorización.',
+      'inventory.manage se concede por separado sólo a quien administra el catálogo.',
     ],
-    available: false,
+    available: true,
   },
 ];

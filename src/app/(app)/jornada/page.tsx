@@ -32,7 +32,7 @@ export default async function ManagementWorkdayPage() {
       <p className="mt-1">Horario publicado = planificación. Mi jornada = ejercicio de jefatura. Mi turno = relevo operativo de Recepción y Caja.</p>
       <div className="mt-2 flex flex-wrap gap-3">
         <Link href="/equipo" className="underline">Consultar Equipo y horarios</Link>
-        {user.permissions.includes('shift.view') ? <Link href="/turno" className="underline">Ir a Mi turno</Link> : null}
+        {user.permissions.some(permission => permission.startsWith('shift.')) ? <Link href="/turno" className="underline">Ir a Mi turno</Link> : null}
       </div>
     </section>
 

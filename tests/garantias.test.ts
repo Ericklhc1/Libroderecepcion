@@ -618,6 +618,57 @@ describe('garantías', () => {
     expect(consumed).toBe(70_000);
   });
 
+  it('no permite eliminar una garantía en efectivo mientras quede saldo físico tras una devolución parcial', async () => {
+    const { id } = await createGuarantee(user, {
+      guestName: 'Huésped saldo vivo',
+      kind: 'EFECTIVO',
+      amount: 100_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    await settleGuarantee(user, {
+      id,
+      requestKey: randomUUID(),
+      kind: GuaranteeSettlementKind.DEVOLUCION,
+      amount: 30_000,
+      reason: 'Devolución parcial',
+    });
+
+    await expect(
+      softDeleteGuarantee(user, { id, reason: 'Intento con saldo aún vivo' }),
+    ).rejects.toThrow(/todavía mantiene 70000/i);
+  });
+
+  it('bloquea la ruta legado de devolución o multa después de una liquidación parcial', async () => {
+    const { id } = await createGuarantee(user, {
+      guestName: 'Huésped ruta parcial',
+      kind: 'EFECTIVO',
+      amount: 100_000,
+      currency: 'CLP',
+      state: GuaranteeState.VIGENTE,
+    });
+
+    await settleGuarantee(user, {
+      id,
+      requestKey: randomUUID(),
+      kind: GuaranteeSettlementKind.COBRO,
+      amount: 20_000,
+      reason: 'Cobro parcial',
+    });
+
+    await expect(
+      changeGuaranteeState(user, { id, state: GuaranteeState.DEVUELTA }),
+    ).rejects.toThrow(/continúa desde Caja/i);
+    await expect(
+      changeGuaranteeState(user, {
+        id,
+        state: GuaranteeState.MULTA,
+        penaltyAmount: 80_000,
+      }),
+    ).rejects.toThrow(/continúa desde Caja/i);
+  });
+
   it('no se puede aplicar ni multar más de lo tomado', async () => {
     const r = await reserva();
     const { id } = await createGuarantee(user, {

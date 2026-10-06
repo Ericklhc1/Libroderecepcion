@@ -67,7 +67,7 @@ describe('búsqueda global con retorno al contexto autorizado', () => {
   });
 
   it('no promete retorno para destinos sin contrato de detalle Libro/Tarea', () => {
-    for (const href of ['/seguimientos?seguimiento=real', '/alertas?alerta=real', '/admin/housekeeping?aviso=417', '/caja', '/llaves/personal/real', '/turnos/real', '/libro', '/tareas']) {
+    for (const href of ['/seguimientos?seguimiento=real', '/alertas?alerta=real', '/housekeeping?aviso=417', '/caja', '/llaves/personal/real', '/turnos/real', '/libro', '/tareas']) {
       expect(detailHrefWithListContext(href, '/buscar?q=512', 'registro-search-Task-real')).toBe(href);
     }
   });
@@ -124,9 +124,9 @@ describe('búsqueda global con retorno al contexto autorizado', () => {
     expect(empty).toContain('No encontré registros');
     expect(empty).not.toContain(result.title);
     expect(empty).not.toContain('data-list-item');
-    mocks.search.mockResolvedValueOnce([{ ...result, entityType: 'HousekeepingRequest', href: '/admin/housekeeping?aviso=417' }]);
+    mocks.search.mockResolvedValueOnce([{ ...result, entityType: 'HousekeepingRequest', href: '/housekeeping?aviso=417' }]);
     const hk = renderToStaticMarkup(await GlobalSearchPage({ searchParams: Promise.resolve({ q: '512' }) }));
-    expect(hk).toContain('href="/admin/housekeeping?aviso=417"');
+    expect(hk).toContain('href="/housekeeping?aviso=417"');
     expect(hk).not.toContain('desdeLista');
     expect(hk).not.toContain('Volver a resultados');
   });

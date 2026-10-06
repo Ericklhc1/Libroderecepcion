@@ -15,6 +15,7 @@ import {
   seedCatalog,
 } from './helpers';
 import {
+  listAssignedInventoryMaterial,
   listInventory,
   recordInventoryMovement,
   saveInventoryCategory,
@@ -132,6 +133,66 @@ describe('Inventario común y lavandería', () => {
     const item = inventory.items.find((row) => row.id === towel.id);
     expect(item?.total).toBe(100);
     expect(await prisma.inventoryMovement.count({ where: { requestKey } })).toBe(1);
+  });
+
+  it('un carro asignado conserva el stock común y aparece como material de la persona', async () => {
+    const { manager, hk, towel, warehouse, cartA } = await fixture();
+    const maid = await createUser({ roleKey: ROLE_KEYS.HK_ATTENDANT, name: 'Mucama sintética' });
+    await prisma.user.update({ where: { id: maid.id }, data: { departmentId: hk.id } });
+
+    await saveInventoryLocation(manager, {
+      id: cartA.id,
+      key: 'HK-CARRO-A',
+      departmentId: hk.id,
+      custodianUserId: maid.id,
+      name: 'Carro A',
+      kind: InventoryLocationKind.CARRO,
+      active: true,
+    });
+    await recordInventoryMovement(manager, {
+      requestKey: randomUUID(),
+      itemId: towel.id,
+      kind: InventoryMovementKind.TRASLADO,
+      quantity: 12,
+      fromLocationId: warehouse.id,
+      toLocationId: cartA.id,
+      reason: 'Asignar material al carro de la persona',
+    });
+
+    const assigned = await listAssignedInventoryMaterial(maid);
+    expect(assigned).toHaveLength(1);
+    expect(assigned[0]?.name).toBe('Carro A');
+    expect(assigned[0]?.items.map((item) => [item.code, item.quantity])).toEqual([
+      ['TOALLA-BANO', 12],
+    ]);
+    expect(await balance(towel.id, warehouse.id)).toBe(88);
+    expect((await listInventory(manager, hk.id)).items.find((row) => row.id === towel.id)?.total).toBe(100);
+  });
+
+  it('renombrar y archivar una categoría conserva su historial y movimientos', async () => {
+    const { manager, hk, category, towel, warehouse, cartA } = await fixture();
+    await recordInventoryMovement(manager, {
+      requestKey: randomUUID(),
+      itemId: towel.id,
+      kind: InventoryMovementKind.TRASLADO,
+      quantity: 5,
+      fromLocationId: warehouse.id,
+      toLocationId: cartA.id,
+      reason: 'Movimiento previo al archivo',
+    });
+
+    await saveInventoryCategory(manager, {
+      id: category.id,
+      departmentId: hk.id,
+      name: 'Blancos operativos',
+      active: false,
+    });
+
+    const archived = await prisma.inventoryCategory.findUniqueOrThrow({ where: { id: category.id } });
+    expect(archived.name).toBe('Blancos operativos');
+    expect(archived.active).toBe(false);
+    expect(archived.archivedAt).not.toBeNull();
+    expect(await prisma.inventoryMovement.count({ where: { itemId: towel.id } })).toBeGreaterThan(1);
   });
 
   it('evita existencias negativas incluso con dos traslados concurrentes', async () => {

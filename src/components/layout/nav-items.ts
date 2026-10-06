@@ -80,13 +80,13 @@ const PRIMARY: NavItem[] = [
         ],
       },
       {
-        title: 'Continuidad',
+        title: 'Vistas especializadas',
         items: [
-          { href: '/tareas', label: 'Tareas', description: 'Vista especializada de tareas.' },
+          { href: '/tareas', label: 'Tareas', description: 'Vista específica del trabajo ejecutable; la coordinación conjunta vive en Coordinación.' },
           {
             href: '/seguimientos',
             label: 'Seguimientos',
-            description: 'Continuidad personal y de Supervisión.',
+            description: 'Vista específica de continuidad; el asunto original y la coordinación permanecen enlazados.',
           },
         ],
       },

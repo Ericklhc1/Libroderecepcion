@@ -47,6 +47,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
+      <header><h1 className="text-xl font-semibold text-petrol-900">Mi jornada</h1><p className="mt-1 text-sm text-slate-600">Tu entrada operativa. Horario, turno y Caja conservan sus reglas propias; aquí ves qué necesita atención y cuál es el siguiente paso.</p></header>
       <Link href="/turno/cambios" className="block rounded-md border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-petrol-800 underline">Qué cambió desde mi último turno</Link>
       <details className="group rounded-md border border-slate-200 bg-white">
         <summary className="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium text-petrol-800">Ver coordinación</summary>

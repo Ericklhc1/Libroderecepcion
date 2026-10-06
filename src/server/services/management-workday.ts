@@ -145,6 +145,7 @@ export async function finishManagementWorkday(
   input: { shiftId: string; note?: string | null },
 ) {
   assertWorkdayPermission(user);
+  const allowed = new Set(await managementWorkdayDepartmentIds(user));
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT "id" FROM "SupervisionShift" WHERE "id" = ${input.shiftId} FOR UPDATE`;
     const shift = await tx.supervisionShift.findUnique({
@@ -161,7 +162,6 @@ export async function finishManagementWorkday(
       throw new RuleError('La jornada ya está cerrada.');
     }
 
-    const allowed = new Set(await managementWorkdayDepartmentIds(user));
     if (!allowed.has(shift.departmentId)) {
       throw new RuleError('Tu alcance sobre esa área ya no está vigente. Solicita regularización a Administración.');
     }

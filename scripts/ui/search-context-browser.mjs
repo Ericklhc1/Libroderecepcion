@@ -234,7 +234,7 @@ try {
       const html = await page.content();
       for (const hidden of [entryQuery, taskQuery, privateTitle, hkHiddenTitle, hkDemoTitle]) assert.ok(!html.includes(hidden), 'Search retains native permission and privacy filtering');
       const href = new URL(await page.locator('[data-list-item]').getAttribute('href'), base);
-      assert.equal(href.pathname, '/admin/housekeeping');
+      assert.equal(href.pathname, '/housekeeping');
       assert.equal(href.searchParams.has('desdeLista'), false);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       results.push({ width, areaOnlyScopePreserved: true, otherWorkAndDemoHidden: true });

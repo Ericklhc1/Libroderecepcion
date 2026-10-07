@@ -76,5 +76,6 @@ export function auditFollowUpReadWhere(user: Pick<CurrentUser,'id'|'permissions'
 }
 
 export function notificationReadWhere(user: Pick<CurrentUser,'id'|'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'departmentId'|'isSystemAdmin'>>): Prisma.NotificationWhereInput {
-  return {AND:[{sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}},{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}}]};
+  // Independent relation predicates remain conjunctive when combined with legacy AND filters.
+  return {sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}},sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}};
 }

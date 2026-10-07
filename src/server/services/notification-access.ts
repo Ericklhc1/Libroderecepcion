@@ -16,7 +16,7 @@ export async function notificationWhereForUser(userId:string):Promise<Prisma.Not
     prisma.task.findMany({where:{sourceAlert:closureValidationAlertWhere},select:{id:true}}),
   ]);
   const legacy=[['Alert',legacyAlerts],['Task',legacyTasks]] as const;
-  return {userId,deletedAt:null,AND:[notificationReadWhere(reader),...legacy.filter(([,rows])=>rows.length).map(([entity,rows])=>({OR:[{entity:null},{entityId:null},{NOT:{entity,entityId:{in:rows.map(row=>row.id)}}}]}))]};
+  return {userId,deletedAt:null,...notificationReadWhere(reader),AND:[...legacy.filter(([,rows])=>rows.length).map(([entity,rows])=>({OR:[{entity:null},{entityId:null},{NOT:{entity,entityId:{in:rows.map(row=>row.id)}}}]}))]};
 }
 
 /** Only visible notices may be acknowledged, including bulk and direct-id requests. */

@@ -250,11 +250,11 @@ export default async function HandoverPage({
 
   return (
     <>
-      <HandoverPrint title={`Entrega de turno ${shiftTypeTitle} · ${shiftPeriod}`} participants={shiftParticipants} issuer={handover.issuedBy.name}
+      {handover.status !== HandoverStatus.BORRADOR && <HandoverPrint handoverStatus={handover.status} title={`Entrega de turno ${shiftTypeTitle} · ${shiftPeriod}`} participants={shiftParticipants} issuer={handover.issuedBy.name}
         issuedAt={handover.issuedAt ? formatDateTime(handover.issuedAt) : 'Sin enviar'} status={HANDOVER_STATUS_LABEL[handover.status]}
         receiver={handover.receivedBy?.name ?? null} receivedAt={handover.receivedAt ? formatDateTime(handover.receivedAt) : null}
         supervisor={closureValidation?.resolvedBy?.name ?? null} items={handover.items} cash={cashState}
-        notes={handover.notes} receiverObservations={handover.receiverObservations} />
+        notes={handover.notes} receiverObservations={handover.receiverObservations} />}
       <div className="print-report handover-screen mx-auto max-w-5xl space-y-4">
       {handover.status !== HandoverStatus.BORRADOR && !receptionInProgress && <ClearHandoverDrafts handoverId={handover.id} />}
       <div className="flex flex-wrap items-center justify-between gap-2 no-print">

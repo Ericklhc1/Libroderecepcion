@@ -58,7 +58,7 @@ describe('AROH Simple · lectores independientes reservados',()=>{
     await prisma.task.update({where:{id:f.task.id},data:{shiftId:shift.id}});
     expect((await getMetrics(defaultRange())).tasks.open).toBe(0);
     expect((await getShiftMetrics(shift.id)).tasksCreated).toBe(0);
-    expect((await buildSupervisorReport('estado',defaultRange())).summary).toContain('Actividad del período · tareas creadas: 0');
+    expect((await buildSupervisorReport(f.reader,'estado',defaultRange())).summary).toContain('Actividad del período · tareas creadas: 0');
     await prisma.followUp.update({where:{id:f.follow.id},data:{visibility:'OPERATIVO'}});
     expect((await getMetrics(defaultRange())).tasks.open).toBe(1);
     expect((await getShiftMetrics(shift.id)).tasksCreated).toBe(1);

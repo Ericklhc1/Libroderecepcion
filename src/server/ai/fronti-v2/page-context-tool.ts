@@ -499,7 +499,7 @@ async function supervisionSectionSnapshot(
       requested === 'estado' || requested === 'gimnasio' || requested === 'multas'
         ? [requested]
         : ['estado', 'gimnasio', 'multas'];
-    const reports = await Promise.all(types.map((type) => buildSupervisorReport(type, range)));
+    const reports = await Promise.all(types.map((type) => buildSupervisorReport(user, type, range)));
     return {
       range,
       reports: reports.map((report) => ({

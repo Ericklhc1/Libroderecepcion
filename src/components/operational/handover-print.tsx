@@ -1,3 +1,4 @@
+import {HandoverStatus} from '@prisma/client';
 import type { HandoverCashState } from '@/server/services/cash';
 import { fromMinor } from '@/domain/cash';
 import { formatDateTime } from '@/lib/format';
@@ -5,6 +6,7 @@ import { handoverPrintRows, handoverPrintCounts } from '@/domain/handover-print'
 import type { PrintItem } from '@/domain/handover-print';
 
 export type HandoverPrintProps = {
+  handoverStatus: HandoverStatus;
   title: string; participants: string; issuer: string; issuedAt: string;
   status: string; receiver: string | null; receivedAt: string | null;
   supervisor: string | null; items: PrintItem[]; cash: HandoverCashState;
@@ -27,6 +29,7 @@ function ItemTable({ title, rows }: { title: string; rows: ReturnType<typeof han
 
 /** Print presentation of the same handover/custody records; no operational writes. */
 export function HandoverPrint(props: HandoverPrintProps) {
+  if(props.handoverStatus===HandoverStatus.BORRADOR)return null;
   const rows = handoverPrintRows(props.items);
   const counts = handoverPrintCounts(rows);
   const cash = props.cash;

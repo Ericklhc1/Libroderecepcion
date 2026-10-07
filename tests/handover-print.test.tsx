@@ -9,6 +9,9 @@ import { handover02Fixture, confirmedHandover02Fixture } from './fixtures/handov
 
 const css = readFileSync('src/app/globals.css', 'utf8');
 describe('impresión de entrega 02-10-2026', () => {
+  it('un borrador no monta informe ni firmas aunque se invoque la impresión del navegador',()=>{
+    expect(renderToStaticMarkup(<HandoverPrint {...handover02Fixture()} handoverStatus="BORRADOR" />)).toBe('');
+  });
   it('cuenta solo lo impreso y agrupa repetidos sin perder detalle ni cantidades', () => {
     const f = handover02Fixture();
     const rows = handoverPrintRows([...f.items, f.items[0]!]);

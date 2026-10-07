@@ -426,12 +426,12 @@ function canReceiveCandidate(
 
 /** Re-read identity and reserved source before claims and before copying evidence. */
 async function authorizedRecipient(db:Prisma.TransactionClient,userId:string,candidate:FrontiProactiveCandidate){
-  const row=await db.user.findFirst({where:{id:userId,active:true,deletedAt:null,role:{key:{in:[ROLE_KEYS.SUPERVISOR,ROLE_KEYS.SYSTEM_ADMIN]}}},select:{id:true,frontiAccessEnabled:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
+  const row=await db.user.findFirst({where:{id:userId,active:true,deletedAt:null,role:{key:{in:[ROLE_KEYS.SUPERVISOR,ROLE_KEYS.SYSTEM_ADMIN]}}},select:{id:true,departmentId:true,frontiAccessEnabled:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
   if(!row || row.role.key!==ROLE_KEYS.SYSTEM_ADMIN&&!row.frontiAccessEnabled)return false;
   const permissions=row.role.permissions.map(p=>p.permission.key);
   const recipient={id:row.id,roleKey:row.role.key,frontiAccessEnabled:row.frontiAccessEnabled,permissions:new Set(permissions)};
   if(!canReceiveCandidate(recipient,candidate))return false;
-  const reader={id:row.id,permissions:permissions as PermissionKey[]};
+  const reader={id:row.id,departmentId:row.departmentId,roleKey:row.role.key,isSystemAdmin:row.role.key===ROLE_KEYS.SYSTEM_ADMIN,permissions:permissions as PermissionKey[]};
   if(candidate.entityType==='Task')return Boolean(await db.task.count({where:{id:candidate.entityId,deletedAt:null,AND:[taskFollowUpReadWhere(reader)]}}));
   if(candidate.entityType==='FollowUp')return Boolean(await db.followUp.count({where:{id:candidate.entityId,AND:[followUpReadWhere(reader)]}}));
   if(candidate.entityType==='Alert')return Boolean(await db.alert.count({where:{id:candidate.entityId,deletedAt:null,AND:[alertReadWhere(reader)]}}));

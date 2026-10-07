@@ -14,7 +14,7 @@ import {
   TaskStatus,
   TaskTargetType,
 } from '@prisma/client';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatDateTime } from '@/lib/format';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -77,22 +77,24 @@ export type TaskCreateInput = {
 };
 
 /** Do not notify somebody about work whose reserved source they cannot read. */
-export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {entryId?:string|null;followUpId?:string|null;alertId?:string|null}, lockSources = false) {
-  if (!source.entryId && !source.followUpId && !source.alertId) return;
+export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {id?:string;entryId?:string|null;followUpId?:string|null;alertId?:string|null}, lockSources = false) {
+  if (!source.id && !source.entryId && !source.followUpId && !source.alertId) return;
   if (lockSources) {
-    if(source.entryId) await db.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${source.entryId} FOR SHARE`;
-    const [followUps, alerts] = await Promise.all([
+    const roots=[...(source.id?[Prisma.sql`SELECT "entryId" FROM native_entry_origin_ids('task',${source.id})`]:[]),...(source.alertId?[Prisma.sql`SELECT "entryId" FROM native_entry_origin_ids('alert',${source.alertId})`]:[]),...(source.followUpId?[Prisma.sql`SELECT "entryId" FROM native_entry_origin_ids('followup',${source.followUpId})`]:[]),...(source.entryId?[Prisma.sql`SELECT ${source.entryId}::text AS "entryId"`]:[])];
+    if(roots.length)await db.$queryRaw(Prisma.sql`SELECT e.id FROM "OperationalEntry" e WHERE e.id IN (${Prisma.join(roots,' UNION ')}) ORDER BY e.id FOR SHARE`);
+    const [followUps, alerts, taskOrigins] = await Promise.all([
       source.followUpId ? db.followUpSourceFollowUp.findMany({where:{descendantId:source.followUpId},select:{followUpId:true}}) : [],
       source.alertId ? db.alertSourceFollowUp.findMany({where:{alertId:source.alertId},select:{followUpId:true}}) : [],
+      source.id ? db.taskSourceFollowUp.findMany({where:{taskId:source.id},select:{followUpId:true}}) : [],
     ]);
-    const origins = new Set([...followUps, ...alerts].map(row => row.followUpId));
+    const origins = new Set([...followUps, ...alerts, ...taskOrigins].map(row => row.followUpId));
     if (source.followUpId) origins.add(source.followUpId);
     for (const id of [...origins].sort()) await db.$queryRaw`SELECT "id" FROM "FollowUp" WHERE "id"=${id} FOR SHARE`;
   }
   const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
   for(const person of people){
     const reader: EntryReader={id:person.id,departmentId:person.departmentId,roleKey:person.role.key,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
-    if(source.entryId && !await db.operationalEntry.count({where:{id:source.entryId,deletedAt:null,AND:[entryReadWhere(reader)]}}) || source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,AND:[alertReadWhere(reader)]}})){
+    if(source.id && !await db.task.count({where:{id:source.id,AND:[taskFollowUpReadWhere(reader)]}}) || source.entryId && !await db.operationalEntry.count({where:{id:source.entryId,deletedAt:null,AND:[entryReadWhere(reader)]}}) || source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,AND:[alertReadWhere(reader)]}})){
       throw new RuleError('El responsable o colaborador no puede acceder al origen reservado. Selecciona una persona autorizada.');
     }
   }

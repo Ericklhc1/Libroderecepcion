@@ -7,7 +7,7 @@ import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { listGymPasses } from './gym-pass';
 
-const sharedReader={id:'',permissions:[]};
+import {entryReadWhere,type EntryReader} from './entry-visibility';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
 
@@ -54,6 +54,7 @@ export function reportDateRange(fromRaw?: string | null, toRaw?: string | null):
 }
 
 export async function buildSupervisorReport(
+  user: EntryReader,
   type: SupervisorReportType,
   range: { from: Date; to: Date },
 ): Promise<SupervisorReport> {
@@ -126,17 +127,17 @@ export async function buildSupervisorReport(
   ] = await Promise.all([
     prisma.operationalEntry.groupBy({
       by: ['status'],
-      where: { deletedAt: null, occurredAt: { gte: range.from, lte: range.to } },
+      where: { AND:[entryReadWhere(user)], deletedAt: null, occurredAt: { gte: range.from, lte: range.to } },
       _count: { _all: true },
     }),
     prisma.task.groupBy({
       by: ['status'],
-      where: { AND:[taskFollowUpReadWhere(sharedReader,true)], deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
+      where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
       _count: { _all: true },
     }),
     prisma.alert.groupBy({
       by: ['status'],
-      where: { AND:[alertReadWhere(sharedReader,true)], deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
+      where: { AND:[alertReadWhere(user)], deletedAt: null, createdAt: { gte: range.from, lte: range.to } },
       _count: { _all: true },
     }),
     prisma.shift.findMany({
@@ -146,13 +147,13 @@ export async function buildSupervisorReport(
       take: 500,
     }),
     prisma.operationalEntry.count({
-      where: { deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
+      where: { AND:[entryReadWhere(user)], deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
     }),
     prisma.task.count({
-      where: { AND:[taskFollowUpReadWhere(sharedReader,true)], deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },
+      where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },
     }),
     prisma.alert.count({
-      where: { AND:[alertReadWhere(sharedReader,true)], deletedAt: null, status: { not: AlertStatus.RESUELTA } },
+      where: { AND:[alertReadWhere(user)], deletedAt: null, status: { not: AlertStatus.RESUELTA } },
     }),
   ]);
 

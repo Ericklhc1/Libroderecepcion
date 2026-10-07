@@ -2,7 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUser, createShift, prisma, resetOperationalData, ROLE_KEYS, seedCatalog } from './helpers';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { createEntry, updateEntryVisibility } from '@/server/services/entries';
-import { createOperationalAlarm, countMyActiveOperationalAlarms, dispatchDueAlarmsForUser, listMyOperationalAlarms } from '@/server/services/operational-alarms';
+import { acknowledgeOperationalAlarm, cancelOperationalAlarm, createOperationalAlarm, countMyActiveOperationalAlarms, dispatchDueAlarmsForUser, listMyOperationalAlarms } from '@/server/services/operational-alarms';
 import { auditFollowUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
 import { markReadableNotifications, notificationWhereForUser } from '@/server/services/notification-access';
 import { getWebPushPayload } from '@/server/services/web-push';
@@ -15,6 +15,10 @@ import { deadlinesTool } from '@/server/ai/reception-assistant';
 import { executeFrontiV2ReadTool } from '@/server/ai/fronti-v2/read-tools';
 import { changeHousekeepingRequest, createHousekeepingRequest } from '@/server/services/housekeeping';
 import { organizeLegacyHkWork } from '@/server/services/housekeeping-work';
+import {assertTaskSourceRecipients,assignTask} from '@/server/services/tasks';
+import {buildSupervisorReport} from '@/server/services/supervisor-reports';
+import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
+import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
 import { hotelDateKey } from '@/domain/time';
 
 let reception: CurrentUser, supervisor: CurrentUser, management: CurrentUser;
@@ -41,6 +45,52 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     management.departmentId=dept.id;
   });
 
+  it('bloquea la entrada ancestral de tareas derivadas durante la autorización de una reasignación',async()=>{
+    const e=await entry();
+    const alert=await prisma.alert.create({data:{entryId:e.id,title:'Origen derivado',type:'OTRO',level:'ATENCION'}});
+    const task=await prisma.task.create({data:{alertId:alert.id,title:'Trabajo derivado',createdById:supervisor.id,assigneeId:supervisor.id}});
+    let release!:()=>void;let ready!:()=>void;
+    const held=new Promise<void>(r=>release=r);const locked=new Promise<void>(r=>ready=r);
+    const writer=prisma.$transaction(async tx=>{await assertTaskSourceRecipients(tx,[management.id],task,true);ready();await held;});
+    await locked;
+    try {await expect(prisma.$transaction(tx=>tx.$queryRaw`SELECT id FROM "OperationalEntry" WHERE id=${e.id} FOR UPDATE NOWAIT`)).rejects.toMatchObject({code:'P2010',meta:{code:'55P03'}});}
+    finally {release();await writer;}
+    await hide(e.id,[managementArea]);
+    await expect(assignTask(supervisor,{id:task.id,assigneeId:management.id})).rejects.toThrow(/no puede acceder/);
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).assigneeId).toBe(supervisor.id);
+  });
+
+  it('no permite ocultar recordatorios activos hasta reconocerlos o cancelarlos mediante su motor',async()=>{
+    const e=await entry();
+    const task=await prisma.task.create({data:{entryId:e.id,title:'Origen de recordatorio',createdById:supervisor.id}});
+    const alarms=[];
+    for(const [sourceEntity,sourceId] of [['OperationalEntry',e.id],['Task',task.id]] as const)alarms.push(await createOperationalAlarm(supervisor,{kind:'RECORDATORIO',scope:'INDIVIDUAL',title:'Pendiente asignado',dueAt:new Date(Date.now()+60000),recipientIds:[management.id],sourceEntity,sourceId}));
+    const audits=await prisma.auditLog.count({where:{entity:'OperationalEntry',entityId:e.id}});
+    await expect(hide(e.id,[managementArea])).rejects.toThrow(/trabajo pendiente/);
+    expect(await prisma.auditLog.count({where:{entity:'OperationalEntry',entityId:e.id}})).toBe(audits);
+    await acknowledgeOperationalAlarm(management,alarms[0]!.recipients[0]!.id);
+    await expect(hide(e.id,[managementArea])).rejects.toThrow(/trabajo pendiente/);
+    await cancelOperationalAlarm(supervisor,alarms[1]!.id);
+    await hide(e.id,[managementArea]);
+    expect(await prisma.operationalAlarm.count({where:{id:{in:alarms.map(a=>a.id)}}})).toBe(2);
+  });
+
+  it('informes de estado y contexto de Fronti agregan sólo lo visible al lector, con override de Supervisión',async()=>{
+    const e=await entry();
+    const task=await prisma.task.create({data:{entryId:e.id,title:'Trabajo secreto',createdById:supervisor.id}});
+    await prisma.alert.create({data:{taskId:task.id,title:'Alerta secreta',type:'OTRO',level:'ATENCION'}});
+    await hide(e.id,[managementArea]);
+    const range={from:new Date(Date.now()-60000),to:new Date(Date.now()+60000)};
+    const report=await buildSupervisorReport(management,'estado',range);
+    expect(report.total).toBe(0);
+    expect(report.summary).toContain('Estado vigente ahora · registros abiertos 0 · tareas abiertas 0 · alertas activas 0');
+    expect((await buildSupervisorReport(supervisor,'estado',range)).total).toBe(3);
+    expect((await buildSupervisorReport(reception,'estado',range)).total).toBe(3);
+    const context=await executeFrontiPageContextTool(management,resolveFrontiPageContext({pathname:'/supervision/informes',search:'?reporte=estado'}));
+    expect(JSON.stringify(context)).toContain('registros abiertos 0');
+    expect(JSON.stringify(context)).not.toContain('registros abiertos 1');
+  });
+
   it('oculta alarmas directas e indirectas, cuenta, despacho y notificaciones sin borrar sus registros',async()=>{
     const e=await entry();
     const task=await prisma.task.create({data:{entryId:e.id,title:'Tarea del origen',createdById:supervisor.id}});
@@ -51,7 +101,9 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     expect(await countMyActiveOperationalAlarms(reception.id)).toBe(2);
     const notifications=[];
     for(const alarm of alarms) notifications.push(await prisma.notification.create({data:{userId:reception.id,type:'ALARMA',title:'Alarma confidencial',entity:'OperationalAlarmRecipient',entityId:alarm.recipients[0]!.id}}));
-    await hide(e.id,[receptionArea]);
+    await expect(hide(e.id,[receptionArea])).rejects.toThrow(/trabajo pendiente/);
+    // Historical anomaly only in synthetic fixtures; current writes must reject it above.
+    await prisma.operationalEntry.update({where:{id:e.id},data:{hiddenFromDepartments:{set:[{id:receptionArea}]}}});
     expect(await listMyOperationalAlarms(reception.id)).toEqual([]);
     expect(await countMyActiveOperationalAlarms(reception.id)).toBe(0);
     expect(JSON.stringify((await executeFrontiV2ReadTool(reception,'consultar_alertas',{})).result)).not.toContain('Alarma confidencial');
@@ -83,7 +135,8 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     auditIds.push(signal.id);
     const ordinary=await prisma.auditLog.create({data:{entity:'User',entityId:supervisor.id,action:'EDITAR',summary:'Auditoría sin origen de novedad'}});
     const signalNotification=await prisma.notification.create({data:{userId:management.id,type:'ACTUALIZACION_OPERATIVA',title:'Señal confidencial',entity:'FrontiProactiveSignal',entityId:signal.entityId}});
-    await hide(e.id,[managementArea]);
+    await expect(hide(e.id,[managementArea])).rejects.toThrow(/trabajo pendiente/);
+    await prisma.operationalEntry.update({where:{id:e.id},data:{hiddenFromDepartments:{set:[{id:managementArea}]}}});
     const visible=await prisma.auditLog.findMany({where:auditFollowUpReadWhere(management)});
     expect(visible.map(a=>a.id)).toContain(ordinary.id);
     expect(visible.map(a=>a.id).filter(id=>auditIds.includes(id))).toEqual([]);

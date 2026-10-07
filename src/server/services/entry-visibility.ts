@@ -84,18 +84,19 @@ export async function assertEntryWorkDestination(tx: Prisma.TransactionClient, s
  * Called under the canonical entry lock, shared by derived assignment writes. */
 export async function assertEntryLinkedWorkVisibility(tx: Prisma.TransactionClient, input: {id:string;createdById:string;hiddenDepartmentIds:string[]}) {
   if(!input.hiddenDepartmentIds.length)return;
-  const [tasks,followUps,hk,attentions]=await Promise.all([
+  const [tasks,followUps,hk,attentions,alarms]=await Promise.all([
     tx.task.findMany({where:{deletedAt:null,status:{in:TASK_OPEN_STATUSES},sourceEntries:{some:{entryId:input.id}}},select:{departmentId:true,assigneeId:true,participants:{where:{removedAt:null},select:{userId:true}}}}),
     tx.followUp.findMany({where:{deletedAt:null,status:{in:['PENDIENTE','VENCIDO']},sourceEntries:{some:{entryId:input.id}}},select:{ownerId:true}}),
     tx.housekeepingRequest.findMany({where:{status:{notIn:['RESUELTO','CANCELADO']},OR:[{sourceEntryId:input.id},{maintenanceEntryId:input.id}]},select:{departmentId:true,assignedToId:true}}),
     tx.subjectAreaAttention.findMany({where:{entryId:input.id,OR:[{status:{in:['POR_REVISAR','ACLARACION']}},{task:{deletedAt:null,status:{in:TASK_OPEN_STATUSES}}},{housekeeping:{status:{notIn:['RESUELTO','CANCELADO']}}}]},select:{departmentId:true,urgentContactId:true}}),
+    tx.operationalAlarm.findMany({where:{status:'ACTIVA',sourceEntries:{some:{entryId:input.id}}},select:{recipients:{where:{acknowledgedAt:null},select:{userId:true}}}}),
   ]);
   if([...tasks,...hk,...attentions].some(row=>row.departmentId&&input.hiddenDepartmentIds.includes(row.departmentId))) {
     throw new RuleError('Hay trabajo pendiente vinculado para un área que ocultarías. Derívalo o ciérralo antes de cambiar la visibilidad.');
   }
   const owners=new Set([
     ...tasks.flatMap(task=>[task.assigneeId,...task.participants.map(p=>p.userId)]),
-    ...followUps.map(f=>f.ownerId),...hk.map(h=>h.assignedToId),...attentions.map(a=>a.urgentContactId),
+    ...alarms.flatMap(a=>a.recipients.map(r=>r.userId)),...followUps.map(f=>f.ownerId),...hk.map(h=>h.assignedToId),...attentions.map(a=>a.urgentContactId),
   ].filter((id):id is string=>!!id));
   for(const ownerId of owners) {
     try { await assertEntryOwnerVisibility(tx,{ownerId,createdById:input.createdById,hiddenDepartmentIds:input.hiddenDepartmentIds}); }

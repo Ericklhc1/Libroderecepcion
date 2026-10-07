@@ -18,6 +18,7 @@ const notices = [
 ] as const;
 export function handover02Fixture(): HandoverPrintProps {
   const fixture: HandoverPrintProps = {
+    handoverStatus: 'ENVIADA',
     title: 'Entrega de turno DÍA · 02-10-2026', participants: 'Javier Recepción, Vicente Recepción, Erick Supervisión y Priscilla Recepción',
     issuer: 'Priscilla Recepción', issuedAt: '02-10-2026 21:29', status: 'Enviada · en bandeja', receiver: null, receivedAt: null, supervisor: null,
     items: [
@@ -45,6 +46,7 @@ export function handover02Fixture(): HandoverPrintProps {
 }
 export function confirmedHandover02Fixture() {
   const fixture = handover02Fixture();
+  fixture.handoverStatus='RECIBIDA'; fixture.status='Recibida';
   fixture.receiver = 'Vicente Recepción'; fixture.receivedAt = '03-10-2026 08:00';
   fixture.cash.confirmed = { ...fixture.cash.declared!, countedByName: 'Vicente Recepción',
     statuses: fundStatuses([{currency:'CLP',minorAmount:100000},{currency:'USD',minorAmount:15000}], [{currency:'CLP',minorValue:100000,quantity:1},{currency:'USD',minorValue:12500,quantity:1}]) };

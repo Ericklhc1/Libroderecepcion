@@ -27,7 +27,9 @@ describe('anular un turno libera la participación', () => {
     const cancelAction = shiftActions.slice(start, end);
 
     expect(cancelAction).toContain('ShiftStatus.ANULADO');
-    expect(cancelAction).toContain('endShiftParticipation(tx, shift.id, now)');
+    expect(cancelAction).toContain('endShiftLifecycle(tx, shift.id, now)');
+    expect(service).toContain('await endShiftParticipation(tx, shiftId, at)');
+    expect(service).toContain('await cancelShiftTimers(tx, shiftId, at)');
   });
 
   it('la anulación desde INICIADO libera la entrega sólo antes de confirmar custodia', () => {
@@ -36,13 +38,15 @@ describe('anular un turno libera la participación', () => {
     const cancelAction = shiftActions.slice(start, end);
 
     expect(cancelAction).toContain('ShiftStatus.INICIADO');
-    expect(cancelAction).toContain("kind: 'CONFIRMADO'");
-    expect(cancelAction).toContain('confirmed: true');
-    expect(cancelAction).toContain('missingApprovedAt');
-    expect(cancelAction).toContain('toShiftId: null');
-    expect(cancelAction).toContain('receiverBriefingReviewedAt: null');
-    expect(cancelAction).toContain('receiverCustodyReviewedAt: null');
-    expect(cancelAction).toContain('receiverFinalReviewAt: null');
+    expect(cancelAction).toContain('releaseIncompleteShiftReception(tx, shift.id, shift.status, user, input.reason)');
+    const release = service.slice(service.indexOf('export async function releaseIncompleteShiftReception'), service.indexOf('============================ TURNOS'));
+    expect(release).toContain("kind: 'CONFIRMADO'");
+    expect(release).toContain('confirmed: true');
+    expect(release).toContain('missingApprovedAt');
+    expect(release).toContain('toShiftId: null');
+    expect(release).toContain('receiverBriefingReviewedAt: null');
+    expect(release).toContain('receiverCustodyReviewedAt: null');
+    expect(release).toContain('receiverFinalReviewAt: null');
   });
 
   it('el retiro forzado del Administrador también libera la participación', () => {

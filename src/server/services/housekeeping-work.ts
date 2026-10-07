@@ -1,6 +1,7 @@
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import {sourceStakeholders,notifyNativeWork} from './work-notifications';
 import 'server-only';
+import { randomUUID } from 'node:crypto';
 import { maintenanceAllowsContinuation } from '@/domain/housekeeping-continuity';
 import { Prisma, type Priority, type Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -258,9 +259,9 @@ export async function prepareHkDay(user: CurrentUser, departmentId:string, date:
     const present=new Set(existing.map(r=>r.routineId));const missing=routines.filter(r=>!present.has(r.id));
     if(!missing.length)return{created:0};
     const batchKey=`hk_prepare_${user.id}_${Date.now()}`;
-    const result=await tx.housekeepingRequest.createMany({data:missing.map(r=>({id:`hk_routine_${r.id}_${date}`,requestKey:`hk_routine_${r.id}_${date}`,routineId:r.id,workDate:date,departmentId,workflowVersion:1,workKind:'ZONA_COMUN',title:r.title,description:r.description,location:r.location,effortMinutes:r.effortMinutes,requiresInspection:r.requiresInspection,createdById:user.id,blockReason:null})),skipDuplicates:true});
+    const result=await tx.housekeepingRequest.createMany({data:missing.map(r=>({id:randomUUID(),requestKey:`hk_routine_${r.id}_${date}`,routineId:r.id,workDate:date,departmentId,workflowVersion:1,workKind:'ZONA_COMUN',title:r.title,description:r.description,location:r.location,effortMinutes:r.effortMinutes,requiresInspection:r.requiresInspection,createdById:user.id,blockReason:null})),skipDuplicates:true});
     // A transaction-scoped advisory lock serializes preparation for this area/day.
-    const created=await tx.housekeepingRequest.findMany({where:{id:{in:missing.map(r=>`hk_routine_${r.id}_${date}`)},events:{none:{}}},select:{id:true,humanId:true}});
+    const created=await tx.housekeepingRequest.findMany({where:{requestKey:{in:missing.map(r=>`hk_routine_${r.id}_${date}`)},events:{none:{}}},select:{id:true,humanId:true}});
     if(created.length){await tx.housekeepingEvent.createMany({data:created.map(r=>({requestId:r.id,actorId:user.id,action:'CREAR',toStatus:'PENDIENTE',note:'Rutina incorporada al día tras confirmación del supervisor.'}))});await tx.auditLog.createMany({data:created.map(r=>({entity:'HousekeepingWork',entityId:r.id,action:'CREAR' as const,userId:user.id,sessionId:user.sessionId,summary:`Housekeeping #${r.humanId}: rutina del día`} ))});
     const team=await coordinatingTeam(tx, departmentId, ['housekeeping.assign','housekeeping.plan','housekeeping.manage']);
     await notify(team.filter(u=>u.id!==user.id).map(u=>({userId:u.id,type:'ACTUALIZACION_OPERATIVA' as const,title:`Housekeeping: ${result.count} rutinas preparadas para ${date}`,link:`/housekeeping?area=${departmentId}&fecha=${date}`,entity:'HousekeepingWork',entityId:batchKey})),tx);}

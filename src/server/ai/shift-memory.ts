@@ -28,6 +28,7 @@ export async function getSharedShiftMemoryContext(
     SELECT summary, entity_type, entity_id, importance, updated_at
       FROM ai_memory
      WHERE scope = 'TURNO'
+       AND "deletedAt" IS NULL
        AND shift_id = ${shift.id}
        AND user_id <> ${user.id}
        AND expires_at > NOW()

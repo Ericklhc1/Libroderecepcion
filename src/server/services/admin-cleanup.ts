@@ -1,4 +1,5 @@
 import 'server-only';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -40,6 +41,7 @@ export async function cleanupAdminRecord(user: CurrentUser, raw: z.input<typeof 
       if (!row) throw new NotFoundError();
       if ((row.editedAt ?? row.createdAt).toISOString() !== input.revision) throw new RuleError('El mensaje cambió. Recarga antes de eliminar.');
       changed = (await tx.chatMessage.updateMany({ where: { id: row.id, deletedAt: null, editedAt: row.editedAt }, data: { deletedAt: data.deletedAt } })).count;
+      await tx.chatConversation.update({ where: { id: row.conversationId }, data: { updatedAt: data.deletedAt } });
       before = { conversationId: row.conversationId, author: row.author };
       entity = 'ChatMessage';
     } else if (input.kind === 'notification') {
@@ -68,8 +70,11 @@ export async function cleanupAdminRecord(user: CurrentUser, raw: z.input<typeof 
       const row = await tx.housekeepingRequest.findFirst({ where: { id: input.id, deletedAt: null } });
       if (!row) throw new NotFoundError();
       if (String(row.version) !== input.revision) throw new RuleError('El trabajo cambió. Recarga antes de eliminar.');
-      changed = (await tx.housekeepingRequest.updateMany({ where: { id: row.id, version: row.version, deletedAt: null }, data: { ...data, version: { increment: 1 } } })).count;
-      before = { humanId: row.humanId, version: row.version, status: row.status, sourceEntryId: row.sourceEntryId };
+      // Free active lifecycle keys; snapshot linked text to satisfy the native content invariant.
+      // Original links/keys remain in the mandatory audit, while the physical row and events survive.
+      const source = row.sourceEntryId ? await tx.operationalEntry.findUnique({ where: { id: row.sourceEntryId }, select: { title: true, description: true } }) : null;
+      changed = (await tx.housekeepingRequest.updateMany({ where: { id: row.id, version: row.version, deletedAt: null }, data: { ...data, requestKey: `deleted:${randomUUID()}`, sourceEntryId: null, routineId: null, title: row.title ?? source?.title, description: row.description ?? source?.description, version: { increment: 1 } } })).count;
+      before = { humanId: row.humanId, version: row.version, status: row.status, sourceEntryId: row.sourceEntryId, departmentId: row.departmentId, requestKey: row.requestKey, routineId: row.routineId, workDate: row.workDate };
       entity = 'HousekeepingRequest';
     }
     if (changed !== 1) throw new RuleError('El registro cambió o ya fue eliminado. Recarga la página.');

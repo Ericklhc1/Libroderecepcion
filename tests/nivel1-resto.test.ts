@@ -10,6 +10,10 @@ import { createEntry, getSubjectEntry } from '@/server/services/entries';
 import { getBookItems } from '@/server/services/book';
 import { getCoordinationBoard } from '@/server/services/coordination';
 import { getLiveCashState, insertCashMovement } from '@/server/services/live-cash';
+import { getSharedShiftMemoryContext } from '@/server/ai/shift-memory';
+import { getChatGlobalVersion } from '@/server/services/chat';
+import { createHkWork, prepareHkDay } from '@/server/services/housekeeping-work';
+import { hotelDateKey } from '@/domain/time';
 import { removeShiftMember } from '@/server/services/shifts';
 import { cleanupAdminRecord, type CleanupKind } from '@/server/services/admin-cleanup';
 import { cleanupAdminRecordAction, cleanupShiftMemberAction } from '@/server/actions/admin-cleanup';
@@ -151,6 +155,95 @@ describe('Nivel 1: permisos, visibilidad y limpieza individual sobre motores vig
     expect(await prisma.operationalEntry.count({ where: { id: e.id } })).toBe(1);
     expect(await prisma.housekeepingRequest.count({ where: { id: work.id, deletedAt: { not: null } } })).toBe(1);
   });
+  it.each(['INICIADO', 'ACTIVO'] as const)('retiro final %s termina temporizadores y libera sólo la recepción incompleta', async status => {
+    const outgoing = await createShift({userId: supervisor.id, type:'NOCHE', status:'CERRADO'});
+    const incoming = await createShift({userId: reception.id, type:'DIA', status});
+    await prisma.shiftAssignment.updateMany({where:{shiftId:incoming.id},data:{activatedAt:new Date()}});
+    const handover = await prisma.shiftHandover.create({data:{fromShiftId:outgoing.id,toShiftId:incoming.id,status:status==='INICIADO'?'ENVIADA':'RECIBIDA',issuedById:supervisor.id,receivedAt:status==='ACTIVO'?new Date():null,receiverBriefingReviewedAt:new Date()}});
+    const timer = await prisma.operationalAlarm.create({data:{kind:'TIMER',scope:'INDIVIDUAL',title:'Temporizador sintético',createdById:reception.id,originShiftId:incoming.id,dueAt:new Date(Date.now()+60000)}});
+    await removeShiftMember(admin,{shiftId:incoming.id,userId:reception.id,adminCleanup:true,reason:'Turno de prueba vacío'});
+    expect((await prisma.operationalAlarm.findUniqueOrThrow({where:{id:timer.id}})).status).toBe('CANCELADA');
+    const after = await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
+    expect(after.toShiftId).toBe(status==='INICIADO'?null:incoming.id);
+    expect(after.receiverBriefingReviewedAt===null).toBe(status==='INICIADO');
+    expect((await prisma.shift.findUniqueOrThrow({where:{id:incoming.id}})).status).toBe('ANULADO');
+  });
+  it('rechaza el retiro final si la recepción confirmó Caja y conserva toda la transición', async () => {
+    const outgoing = await createShift({userId:supervisor.id,type:'NOCHE',status:'CERRADO'});
+    const incoming = await createShift({userId:reception.id,type:'DIA',status:'INICIADO'});
+    await prisma.shiftAssignment.updateMany({where:{shiftId:incoming.id},data:{activatedAt:new Date()}});
+    const handover = await prisma.shiftHandover.create({data:{fromShiftId:outgoing.id,toShiftId:incoming.id,status:'ENVIADA',issuedById:supervisor.id}});
+    await prisma.cashCount.create({data:{handoverId:handover.id,kind:'CONFIRMADO',countedById:reception.id}});
+    await expect(removeShiftMember(admin,{shiftId:incoming.id,userId:reception.id,adminCleanup:true,reason:'Limpieza de prueba'})).rejects.toThrow('confirmó Caja');
+    expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}})).toShiftId).toBe(incoming.id);
+    expect((await prisma.shift.findUniqueOrThrow({where:{id:incoming.id}})).status).toBe('INICIADO');
+    expect(await prisma.shiftAssignment.count({where:{shiftId:incoming.id,leftAt:null}})).toBe(1);
+  });
+  it('la limpieza de memoria TURNO deja de inyectarla a otro participante y conserva recuerdos vigentes', async () => {
+    const shift = await createShift({userId:reception.id,type:'DIA',status:'ACTIVO'});
+    await prisma.shiftAssignment.updateMany({where:{shiftId:shift.id},data:{activatedAt:new Date()}});
+    const c = await prisma.ai_conversation.create({data:{id:randomUUID(),user_id:admin.id,session_id:randomUUID(),expires_at:new Date(Date.now()+86400000)}});
+    const m = await prisma.ai_message.create({data:{id:randomUUID(),conversation_id:c.id,role:'assistant',content:'Borrar memoria compartida',expires_at:c.expires_at}});
+    await prisma.ai_memory.create({data:{id:randomUUID(),conversation_id:c.id,user_id:admin.id,scope:'TURNO',shift_id:shift.id,summary:'Recuerdo eliminado',expires_at:c.expires_at}});
+    await prisma.ai_memory.create({data:{id:randomUUID(),user_id:admin.id,scope:'TURNO',shift_id:shift.id,summary:'Recuerdo vigente',expires_at:c.expires_at}});
+    expect(await getSharedShiftMemoryContext(reception)).toContain('Recuerdo eliminado');
+    await clean('fronti',m.id,m.created_at.toISOString());
+    const context = await getSharedShiftMemoryContext(reception);
+    expect(context).not.toContain('Recuerdo eliminado');
+    expect(context).toContain('Recuerdo vigente');
+  });
+  it('el permiso exclusivo de contenido no permite campos operativos, incluidos vacíos; ambos permisos sí', async () => {
+    const e = await entry();
+    auth.current.mockResolvedValue({...admin,isSystemAdmin:false,permissions:['entry.content.edit']});
+    for (const [key,value] of [['ownerId',reception.id],['departmentId',area],['priority','ALTA'],['dueAt',''],['requiresFollowUp','true'],['severity','BAJA']] as const) {
+      const form = new FormData();form.set('id',e.id);form.set(key,value);
+      expect((await updateEntryAction(null,form)).ok).toBe(false);
+    }
+    const form = new FormData();form.set('id',e.id);form.set('title','Texto permitido de prueba');
+    expect((await updateEntryAction(null,form)).ok).toBe(true);
+    expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}})).ownerId).toBe(supervisor.id);
+    auth.current.mockResolvedValue(admin);form.set('ownerId',reception.id);
+    expect((await updateEntryAction(null,form)).ok).toBe(true);
+    expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}})).ownerId).toBe(reception.id);
+  });
+  it('recrea atención HK con el mismo requestKey y origen conservando fila y claves originales en auditoría', async () => {
+    const e = await entry();
+    const input = {requestKey:randomUUID(),sourceEntryId:e.id,departmentId:area,workDate:hotelDateKey(new Date()),workKind:'ATENCION' as const,priority:'MEDIA' as const,title:'Atención sintética',description:'Prueba de recreación',effortMinutes:20,requiresInspection:false,location:'Recepción'};
+    const first = await createHkWork(admin,input);
+    await clean('housekeeping',first.id,String(first.version));
+    const replacement = await createHkWork(admin,input);
+    expect(replacement.id).not.toBe(first.id);
+    expect(replacement.sourceEntryId).toBe(e.id);
+    const history = await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:first.id}});
+    expect(history.deletedAt).not.toBeNull();
+    expect(history.sourceEntryId).toBeNull();
+    expect(history.title).toBe(e.title);
+    expect(history.description).toBe(e.description);
+    const audit = await prisma.auditLog.findFirstOrThrow({where:{entityId:first.id,action:'ELIMINAR'}});
+    expect(audit.before).toMatchObject({requestKey:input.requestKey,sourceEntryId:e.id,departmentId:area});
+  });
+  it('preparar el mismo día regenera una rutina eliminada y conserva una única instancia activa', async () => {
+    const date = hotelDateKey(new Date());
+    const routine = await prisma.housekeepingRoutine.create({data:{departmentId:area,title:'Rutina de prueba',description:'Prueba de recreación',location:'Recepción'}});
+    expect((await prepareHkDay(admin,area,date)).created).toBe(1);
+    const first = await visiblePrisma.housekeepingRequest.findFirstOrThrow({where:{routineId:routine.id,workDate:date}});
+    await clean('housekeeping',first.id,String(first.version));
+    expect((await prepareHkDay(admin,area,date)).created).toBe(1);
+    expect((await prepareHkDay(admin,area,date)).created).toBe(0);
+    const second = await visiblePrisma.housekeepingRequest.findFirstOrThrow({where:{routineId:routine.id,workDate:date}});
+    expect(second.id).not.toBe(first.id);
+    expect(await prisma.housekeepingRequest.count({where:{id:first.id,deletedAt:{not:null}}})).toBe(1);
+    expect(await prisma.housekeepingEvent.count({where:{requestId:second.id,action:'CREAR'}})).toBe(1);
+  });
+  it('limpiar Fronti en Chat cambia la versión visible al participante sin otro evento', async () => {
+    const c = await prisma.chatConversation.create({data:{type:'FRONTI',createdById:reception.id,updatedAt:new Date(Date.now()-10000),participants:{create:{userId:reception.id}}}});
+    const m = await prisma.chatMessage.create({data:{conversationId:c.id,author:'FRONTI',body:'Mensaje de prueba'}});
+    const version = await getChatGlobalVersion(reception);
+    await clean('frontiChat',m.id,m.createdAt.toISOString());
+    expect(await getChatGlobalVersion(reception)).not.toBe(version);
+    expect((await prisma.chatConversation.findUniqueOrThrow({where:{id:c.id}})).lastMessageAt).toEqual(c.lastMessageAt);
+  });
+
 });
 
 describe('Supervisión: cancelar apertura propia o desde SysAdmin sin borrar evidencia', () => {

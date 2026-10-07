@@ -251,6 +251,83 @@ export async function endShiftParticipation(
   });
 }
 
+/** Shared atomic terminal lifecycle: participation and timers always end together. */
+export async function endShiftLifecycle(tx: Prisma.TransactionClient, shiftId: string, at: Date) {
+  await endShiftParticipation(tx, shiftId, at);
+  await cancelShiftTimers(tx, shiftId, at);
+}
+
+/** Release only an incomplete reception, preserving confirmed custody and cash. */
+export async function releaseIncompleteShiftReception(
+  tx: Prisma.TransactionClient, shiftId: string, status: ShiftStatus, user: CurrentUser, reason: string,
+) {
+  const linkedReception =
+    status === ShiftStatus.INICIADO
+      ? await tx.shiftHandover.findFirst({
+          where: { toShiftId: shiftId, receivedAt: null },
+          select: { id: true },
+        })
+      : null;
+
+  if (linkedReception) {
+    await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id = ${linkedReception.id} FOR UPDATE`;
+    const currentHandover = await tx.shiftHandover.findUnique({
+      where: { id: linkedReception.id },
+      select: { id: true, receivedAt: true, status: true },
+    });
+    if (!currentHandover || currentHandover.receivedAt) {
+      throw new RuleError(
+        'La recepción ya cambió de estado. Actualiza la pantalla antes de intentar anular el inicio.',
+      );
+    }
+
+    const [confirmedCash, confirmedCustody] = await Promise.all([
+      tx.cashCount.count({
+        where: { handoverId: currentHandover.id, kind: 'CONFIRMADO' },
+      }),
+      tx.handoverElement.count({
+        where: {
+          handoverId: currentHandover.id,
+          OR: [{ confirmed: true }, { missingApprovedAt: { not: null } }],
+        },
+      }),
+    ]);
+
+    if (confirmedCash > 0 || confirmedCustody > 0) {
+      throw new RuleError(
+        'La recepción ya confirmó Caja o custodia física. Para conservar la trazabilidad, completa o regulariza el relevo en lugar de cancelar el inicio.',
+      );
+    }
+
+    await tx.shiftHandover.update({
+      where: { id: currentHandover.id },
+      data: {
+        toShiftId: null,
+        receiverBriefingReviewedAt: null,
+        receiverCustodyReviewedAt: null,
+        receiverFinalReviewAt: null,
+        receiverUrgentAcknowledgedAt: null,
+        receiverSessionId: null,
+      },
+    });
+
+    await recordAudit(
+      {
+        entity: 'ShiftHandover',
+        entityId: currentHandover.id,
+        action: AuditAction.CAMBIO_ESTADO,
+        summary: `Recepción liberada al anular el inicio del turno por ${user.name}`,
+        user,
+        before: { toShiftId: shiftId, receiving: true },
+        after: { toShiftId: null, receiving: false },
+        reason,
+      },
+      tx,
+    );
+  }
+
+}
+
 /**
  * ============================ TURNOS: EL MODELO =============================
  *
@@ -1662,6 +1739,7 @@ export async function removeShiftMember(
       SELECT pg_advisory_xact_lock(1279873620) IS NULL AS "locked"
     `;
 
+    await tx.$queryRaw`SELECT id FROM "Shift" WHERE id = ${input.shiftId} FOR UPDATE`;
     const shift = await tx.shift.findUnique({
       where: { id: input.shiftId },
       include: {
@@ -1705,6 +1783,8 @@ export async function removeShiftMember(
         : null;
     const now = new Date();
     if (input.adminCleanup && remaining.length === 0) {
+      await releaseIncompleteShiftReception(tx, shift.id, shift.status, actor, input.reason!);
+      await endShiftLifecycle(tx, shift.id, now);
       await tx.shift.update({ where: { id: shift.id }, data: { status: ShiftStatus.ANULADO, actualEnd: now } });
     }
 
@@ -2693,8 +2773,7 @@ export async function closeShift(
       throw new RuleError('Ese turno acaba de cambiar de estado. Actualiza la pantalla.');
     }
 
-    await endShiftParticipation(tx, shift.id, now);
-    await cancelShiftTimers(tx, shift.id, now);
+    await endShiftLifecycle(tx, shift.id, now);
 
     const emergencySuccessors = await tx.shift.findMany({
       where: {

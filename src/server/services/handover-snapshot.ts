@@ -54,8 +54,18 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
 }
 
 /** Sanitizes both native items and the historic JSON photograph without rewriting either. */
-export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T):Promise<T>{
-  const items=await visibleSnapshotItems(user,handover.items,true);
+export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T & {status?:string}):Promise<T>{
+  let sourceItems=handover.items;
+  const photo=handover.snapshot;
+  if(handover.status&&handover.status!=='BORRADOR'&&photo&&typeof photo==='object'&&!Array.isArray(photo)&&Array.isArray(photo.items)&&photo.items.every(i=>i&&typeof i==='object'&&!Array.isArray(i)&&typeof i.title==='string'&&typeof i.section==='string'&&typeof i.level==='string')){
+    // Retained draft evidence is not an item actually included in the signed act.
+    // Match a multiset so repeated rows keep exactly the photographed quantity.
+    const key=(i:{level?:unknown;section?:unknown;title?:unknown;detail?:unknown;refType?:unknown;refId?:unknown})=>JSON.stringify([i.level,i.section,i.title,i.detail??null,i.refType??null,i.refId??null]);
+    const remaining=new Map<string,number>();
+    for(const i of photo.items){const k=key(i as Prisma.JsonObject);remaining.set(k,(remaining.get(k)??0)+1);}
+    sourceItems=sourceItems.filter(i=>{const k=key(i);const n=remaining.get(k)??0;if(!n)return false;remaining.set(k,n-1);return true;});
+  }
+  const items=await visibleSnapshotItems(user,sourceItems,true);
   let snapshot=handover.snapshot;
   if(snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)&&Array.isArray(snapshot.items)){
     const historical=snapshot.items.map(value=>{

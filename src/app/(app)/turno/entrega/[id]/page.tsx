@@ -3,7 +3,7 @@ import { closurePrintValidation } from '@/domain/handover-print';
 import { HandoverPrint } from '@/components/operational/handover-print';
 import { ClosureReviewLink } from '@/components/supervision/closure-review-form';
 import { ClearHandoverDrafts } from '@/components/operational/form-draft-session';
-import {visibleSnapshotItems} from '@/server/services/handover-snapshot';
+import {visibleHandover} from '@/server/services/handover-snapshot';
 import { handoverElementPending } from '@/domain/handover-custody';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -80,7 +80,7 @@ export default async function HandoverPage({
     },
   });
   if (!handover) notFound();
-  handover.items=await visibleSnapshotItems(user,handover.items,true);
+  Object.assign(handover,await visibleHandover(user,handover));
 
   const [history, cashState, denominations, formalCashClosure, legacyValidation, closureReviewer] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id },user),

@@ -1653,8 +1653,10 @@ export async function addShiftMember(
  */
 export async function removeShiftMember(
   actor: CurrentUser,
-  input: { shiftId: string; userId: string },
+  input: { shiftId: string; userId: string; adminCleanup?: boolean; reason?: string },
 ): Promise<void> {
+  if (input.adminCleanup && (!actor.isSystemAdmin || actor.roleKey !== 'ADMINISTRADOR_SISTEMA')) throw new RuleError('Sólo SysAdmin puede retirar personas desde Administración.');
+  if (input.adminCleanup && (!input.reason || input.reason.trim().length < 5)) throw new RuleError('Indica el motivo de la limpieza.');
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw<Array<{ locked: boolean }>>`
       SELECT pg_advisory_xact_lock(1279873620) IS NULL AS "locked"
@@ -1690,7 +1692,7 @@ export async function removeShiftMember(
     if (!target) {
       throw new RuleError('Esa persona ya no participa activamente en este turno.');
     }
-    if (activeAssignments.length <= 1) {
+    if (activeAssignments.length <= 1 && !input.adminCleanup) {
       throw new RuleError(
         'No puedes sacar a la única persona activa del turno. Debes cerrar o reasignar la operación antes.',
       );
@@ -1702,6 +1704,9 @@ export async function removeShiftMember(
         ? remaining.find((assignment) => assignment.role === AssignmentRole.APOYO) ?? remaining[0]!
         : null;
     const now = new Date();
+    if (input.adminCleanup && remaining.length === 0) {
+      await tx.shift.update({ where: { id: shift.id }, data: { status: ShiftStatus.ANULADO, actualEnd: now } });
+    }
 
     await tx.shiftAssignment.update({
       where: { id: target.id },
@@ -1742,7 +1747,10 @@ export async function removeShiftMember(
       tx,
     );
 
-    if (actor.id !== target.userId) {
+    if (input.adminCleanup) {
+      await tx.auditLog.create({ data: { entity: 'ShiftAssignment', entityId: target.id, action: 'ELIMINAR', userId: actor.id, sessionId: actor.sessionId, reason: input.reason, summary: 'Persona retirada desde Administración; turno e historial conservados', before: { shiftId: shift.id, userId: target.userId, status: shift.status }, after: { leftAt: now.toISOString(), promotedUserId: replacement?.userId ?? null, status: remaining.length ? shift.status : 'ANULADO' } } });
+    }
+    if (!input.adminCleanup && actor.id !== target.userId) {
       await notify(
         [
           {

@@ -16,9 +16,10 @@ import {
   zRequiredString,
   type ActionState,
 } from '@/server/action';
-import { requirePermission } from '@/server/auth/guard';
+import { requirePermission, requireUser } from '@/server/auth/guard';
 import {
   beginSupervisionOpening,
+  cancelSupervisionOpening,
   completeSupervisionOpening,
   createSupervisionNote,
   deliverSupervisionShift,
@@ -389,5 +390,15 @@ export async function addPerformanceObservationAction(
     });
     refresh();
     return { ok: true as const, message: 'Observación registrada.', id: observation.id };
+  });
+}
+
+export async function cancelSupervisionOpeningAction(_state: ActionState | null, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requireUser();
+    const input = parseOrThrow(z.object({shiftId:z.string().min(1),reason:z.string().trim().min(5).max(500),confirmation:z.literal('CANCELAR')}), formDataToObject(formData));
+    await cancelSupervisionOpening(user,input);
+    refresh();
+    return {ok:true as const,message:'Apertura cancelada. Se conserva toda la evidencia y puedes iniciar una nueva apertura.'};
   });
 }

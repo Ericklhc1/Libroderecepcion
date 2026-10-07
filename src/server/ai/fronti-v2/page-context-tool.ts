@@ -551,6 +551,10 @@ async function adminSnapshot(user: CurrentUser, page: FrontiResolvedPageContext)
   );
 
   switch (page.sectionKey) {
+    case 'limpieza': {
+      if (!user.isSystemAdmin) throw new Error('Sólo SysAdmin puede consultar la limpieza individual.');
+      return { note: 'Limpieza individual con eliminación lógica, confirmación escrita y motivo obligatorio. Conserva auditoría y datos originales. Personas de turnos se retiran desde Historial de turnos. Fronti no elimina datos ni confirma estas acciones.' };
+    }
     case 'mantenimiento': {
       if (!user.isSystemAdmin) throw new Error('Sólo el Administrador de sistema puede consultar este control.');
       const state = await getMaintenanceState();

@@ -63,7 +63,7 @@ import {
 import { HK_WORK_LABELS } from '@/domain/housekeeping-work';
 import { canAccessHousekeeping } from '@/domain/housekeeping';
 import { SHIFT_TYPE_LABEL } from '@/domain/shift';
-import { formatDate, formatDateTime, relativeTime, toDateTimeInput } from '@/lib/format';
+import { formatCalendarDate, formatDateTime, relativeTime, toDateTimeInput } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -238,7 +238,7 @@ export default async function EntryDetailPage({
               <dt className="text-xs font-medium text-slate-500">Turno</dt>
               <dd className="text-petrol-900">
                 {entry.shift
-                  ? `${SHIFT_TYPE_LABEL[entry.shift.type]} · ${formatDate(entry.shift.date)}`
+                  ? `${SHIFT_TYPE_LABEL[entry.shift.type]} · ${formatCalendarDate(entry.shift.date)}`
                   : 'Sin turno'}
               </dd>
             </div>
@@ -278,7 +278,7 @@ export default async function EntryDetailPage({
             : <a href="#historial-asunto" className="rounded-md px-3 py-2 text-sm font-semibold">Ver resultado e historial</a>
           } more={<>
 
-            {user.permissions.includes('entry.edit') ? (
+            {user.permissions.includes('entry.content.edit') ? (
               <EditEntryDialog
                 entry={{
                   id: entry.id,

@@ -65,7 +65,7 @@ export async function updateEntryAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('entry.edit');
+    const user = await requirePermission('entry.content.edit');
     const input = parseOrThrow(entryUpdateWithContextSchema, formDataToObject(formData));
     const entry = await updateEntry(user, input, revisionFromForm(formData));
     refreshOperationalViews(entry.id);

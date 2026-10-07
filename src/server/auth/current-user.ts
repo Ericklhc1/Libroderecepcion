@@ -4,7 +4,7 @@ import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
 import { SESSION_COOKIE, readSessionToken } from './session';
 import type { PermissionKey } from '@/lib/permissions';
-import { ROLE_KEYS } from '@/lib/permissions';
+import { ROLE_KEYS, effectiveRolePermissions } from '@/lib/permissions';
 
 export type CurrentUser = {
   id: string;
@@ -48,9 +48,9 @@ export async function getCurrentUserFresh(): Promise<CurrentUser | null> {
     roleOperational: user.role.operational,
     departmentId: user.departmentId,
     mustChangePassword: user.mustChangePassword,
-    permissions: user.role.permissions.map(
+    permissions: effectiveRolePermissions(user.role.key, user.role.permissions.map(
       (rp) => rp.permission.key as PermissionKey,
-    ),
+    )),
     isSystemAdmin: user.role.key === ROLE_KEYS.SYSTEM_ADMIN,
     frontiAccessEnabled: user.frontiAccessEnabled,
   };

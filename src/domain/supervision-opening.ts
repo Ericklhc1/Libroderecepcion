@@ -1,3 +1,4 @@
+import { hotelDateKey } from '@/domain/time';
 export const SUPERVISION_OPERATIONAL_PRIMARY_REPORT = 'ACTIVIDAD' as const;
 
 export const SUPERVISION_OPERATIONAL_FALLBACK_REPORTS = [
@@ -47,3 +48,8 @@ export const SUPERVISION_REPORT_LABELS: Record<string, string> = {
 
 export type RequiredSupervisionOpeningReport =
   (typeof REQUIRED_SUPERVISION_OPENING_REPORTS)[number];
+
+/** Expiry follows the hotel calendar, not host UTC nor a fixed 24-hour duration. */
+export function supervisionOpeningExpired(startedAt: Date, now = new Date()): boolean {
+  return hotelDateKey(startedAt) < hotelDateKey(now);
+}

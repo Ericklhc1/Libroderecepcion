@@ -7,6 +7,7 @@ import { Badge, Chip } from '@/components/ui/badge';
 import { DisclosureCard, CardScroll, EmptyState } from '@/components/ui/card';
 import { ListFilterBar } from '@/components/ui/list-controls';
 import type { RawSearchParams } from '@/lib/search-params';
+import { CleanupShiftMemberDialog } from '../limpieza/cleanup-dialog';
 import { ArchiveShiftDialog } from './cancel-shift';
 import {
   ASSIGNMENT_ROLE_LABEL,
@@ -181,7 +182,7 @@ export default async function ShiftAdminPage({
                     {windowHours(shift.plannedStart, shift.plannedEnd)} h) ·{' '}
                     {shift.assignments.length > 0
                       ? shift.assignments
-                          .map((a) => `${a.user.name} (${ASSIGNMENT_ROLE_LABEL[a.role]})`)
+                          .map((a) => `${a.user.name} (${ASSIGNMENT_ROLE_LABEL[a.role]}${a.leftAt ? ", retirado" : ""})`)
                           .join(' · ')
                       : 'sin personal asignado'}
                   </p>
@@ -199,6 +200,8 @@ export default async function ShiftAdminPage({
                       {shift.handoverOut.status === 'RECIBIDA' ? 'Ver / imprimir' : 'Ver entrega'}
                     </Link>
                   ) : null}
+                  {user.isSystemAdmin && !shift.archivedAt && ['INICIADO','ACTIVO'].includes(shift.status)
+                    ? shift.assignments.filter(a => a.activatedAt && !a.leftAt).map(a => <CleanupShiftMemberDialog key={a.id} shiftId={shift.id} userId={a.userId} name={a.user.name}/>) : null}
                   <ArchiveShiftDialog
                     shiftId={shift.id}
                     archived={shift.archivedAt !== null}

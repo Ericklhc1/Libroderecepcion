@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CancelSupervisionOpeningDialog } from './cancel-opening';
 import {
   ClipboardCheck,
   KeyRound,
@@ -33,9 +34,13 @@ export function SupervisionOpeningPanel({
       <Card>
         <CardHeader
           title="Apertura operacional de Supervisión"
-          action={<Badge tone="pendiente">Preparación</Badge>}
+          action={<Badge tone={readiness.shift.expired ? "critico" : "pendiente"}>{readiness.shift.expired ? "Preparación vencida" : "Preparación"}</Badge>}
         />
         <div className="space-y-3 px-4 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600">Preparación desde {formatDateTime(readiness.shift.startedAt)}{readiness.shift.expired ? ' · Vencida: corresponde a un día anterior del hotel.' : ''}</p>
+            <CancelSupervisionOpeningDialog shiftId={readiness.shift.id}/>
+          </div>
           <div className="flex gap-3 rounded-xl bg-gold-50 px-3 py-3 ring-1 ring-gold-200">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-gold-700" aria-hidden="true" />
             <div>

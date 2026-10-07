@@ -27,7 +27,6 @@ import {
   type Tone,
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
-import { RECEPTION_DESK_ROLE_KEYS } from '@/lib/permissions';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 
@@ -82,7 +81,7 @@ export type BookFilters = {
   kinds?: BookKind[];
   onlyOpen?: boolean;
   includeDeleted?: boolean;
-  /** Vista operativa de Novedades: sólo registros humanos de Recepción en gestión. */
+  /** Vista operativa de Novedades: novedades e incidencias en gestión. */
   receptionEntriesOnly?: boolean;
   /** Oculta alertas internas de validación de cierre a vistas no supervisoras. */
   hideClosureValidation?: boolean;
@@ -153,7 +152,6 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
       and.push({
         type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
         status: { in: ENTRY_OPEN_STATUSES },
-        createdBy: { role: { key: { in: [...RECEPTION_DESK_ROLE_KEYS] } } },
       });
     }
 

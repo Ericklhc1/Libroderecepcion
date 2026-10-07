@@ -18,6 +18,7 @@ export const PERMISSIONS = {
   'schedule.configure': { group: 'Equipo y horarios', name: 'Administrar alcance por área y feriados' },
   'workday.manage': { group: 'Mi jornada', name: 'Iniciar y cerrar mi jornada de jefatura en mis áreas' },
   'entry.create': { group: 'Libro operativo', name: 'Crear registros' },
+  'entry.content.edit': { group: 'Libro operativo', name: 'Editar el contenido de registros' },
   'entry.edit': { group: 'Libro operativo', name: 'Editar registros' },
   'entry.delete': { group: 'Libro operativo', name: 'Eliminar registros' },
   'entry.close': { group: 'Libro operativo', name: 'Cerrar registros' },
@@ -257,6 +258,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     'inventory.manage',
     'laundry.manage',
     ...OPERATIONAL_BASE,
+    'entry.content.edit',
     'entry.reopen',
     'entry.delete',
     'incident.manage',
@@ -311,6 +313,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLE_KEYS.RESERVATIONS_CENTER]: [
     'guest.view',
     'guest.manage',
+    'entry.content.edit',
     'room.view',
     'metrics.view',
     'entry.create',
@@ -421,3 +424,8 @@ export const ROLE_DEFINITIONS: Array<{
   { key: ROLE_KEYS.HK_MANAGER, name: 'Ama de llaves', description: 'Dirige Housekeeping, planifica rutinas, horarios y coberturas temporales de sus áreas.', level: 65, operational: true },
 
 ];
+
+/** Recepción no consulta auditoría global, aunque conserve una concesión histórica. */
+export function effectiveRolePermissions(roleKey: string, permissions: PermissionKey[]): PermissionKey[] {
+  return isReceptionDeskRole(roleKey) ? permissions.filter(p => p !== 'audit.view') : permissions;
+}

@@ -23,7 +23,7 @@ export function housekeepingAuditVisibility(user: Pick<CurrentUser, 'roleKey' | 
 }
 
 function housekeepingVisibility(user: CurrentUser): Prisma.HousekeepingRequestWhereInput {
-  return user.roleKey === 'ADMINISTRADOR_SISTEMA' ? {} : { isDemo: false };
+  return { deletedAt: null, ...(user.roleKey === 'ADMINISTRADOR_SISTEMA' ? {} : { isDemo: false }) };
 }
 
 const include = {
@@ -73,7 +73,7 @@ export async function getHousekeepingSources(user: CurrentUser, query = '') {
   const number = /^#?\d+$/.test(text) ? Number(text.replace('#', '')) : undefined;
   return prisma.operationalEntry.findMany({
     where: {
-      deletedAt: null, housekeepingRequests: {none:{}},
+      deletedAt: null, housekeepingRequests: {none:{deletedAt:null}},
       status: { notIn: ['CERRADO', 'RESUELTO'] },
       ...(text ? { OR: [{ title: { contains: text, mode: 'insensitive' as const } }, { room: { number: { contains: text } } }, ...(number && Number.isSafeInteger(number) ? [{ humanId: number }] : [])] } : {}),
     },

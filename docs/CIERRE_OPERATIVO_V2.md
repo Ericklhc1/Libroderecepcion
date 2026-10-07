@@ -1,4 +1,4 @@
-> Vigente desde 1.64.0: la validación posterior es una acción del mismo Shift en el Centro de Supervisión, no una tarea/alerta operativa. Recepción no hereda tareas ni acciones de Supervisión; la visibilidad por área y en entrega es explícita y auditada. Diseño y pruebas de impresión: [IMPRESION_ENTREGA_1_64.md](IMPRESION_ENTREGA_1_64.md). Las referencias anteriores a publicación de tareas/alertas de validación se conservan como historia y quedan sustituidas por esta regla.
+> Vigente desde 1.64.0: la validación posterior es una acción del mismo Shift en el Centro de Supervisión, no una tarea/alerta operativa. Recepción no hereda tareas ni acciones de Supervisión; la visibilidad por área y en entrega es explícita y auditada. Diseño y pruebas de impresión: [IMPRESION_ENTREGA_1_64.md](IMPRESION_ENTREGA_1_64.md).
 
 # Cierre Operativo — contrato vigente de Recepción
 
@@ -110,7 +110,7 @@ borrador todavía no se imprime.
 Debe identificar y dejar espacio de firma para:
 - **Recepcionista saliente**;
 - **Recepcionista entrante**;
-- **Validación / auditoría de cierre**: Erick Herrera o auditor designado por él.
+- **Validación / auditoría de cierre**: Supervisión o auditor designado por Supervisión.
 
 El informe conserva la evidencia de Caja, garantías, responsables, fechas y
 trazabilidad de la entrega. La validación administrativa puede ser posterior y
@@ -118,9 +118,11 @@ no bloquea el inicio del siguiente turno una vez terminada la recepción.
 
 ## Validación de cierre
 
-Cada cierre genera la validación posterior existente de prioridad crítica,
-asignada a Erick Herrera. La validación/auditoría no se publica como una
-“Novedad” de Recepción.
+Cada cierre registra una acción posterior pendiente en el Shift existente,
+con auditoría, visible en el Centro de Supervisión para Supervisor/SysAdmin
+autorizados. Se identifica por fecha, turno y folio; no tiene responsable
+nominal fijo ni se publica como tarea, alerta o novedad de Recepción.
+Validar la retira de pendientes; Observar la mantiene.
 
 Un auditor designado puede efectuar la revisión física/documental según la
 delegación operativa de Supervisión; el informe impreso dispone del espacio

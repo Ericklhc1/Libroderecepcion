@@ -11,7 +11,7 @@ import { getHistory } from '@/server/services/history';
 import { getManagementCockpit } from '@/server/services/management';
 import { getManagementEvidence } from '@/server/services/management-evidence';
 import { getAssignmentBoard } from '@/server/services/assignment-board';
-import { deadlinesTool } from '@/server/ai/reception-assistant';
+import { deadlinesTool, roomTool } from '@/server/ai/reception-assistant';
 import { executeFrontiV2ReadTool } from '@/server/ai/fronti-v2/read-tools';
 import { changeHousekeepingRequest, createHousekeepingRequest } from '@/server/services/housekeeping';
 import { organizeLegacyHkWork } from '@/server/services/housekeeping-work';
@@ -19,6 +19,9 @@ import {assertTaskSourceRecipients,assignTask} from '@/server/services/tasks';
 import {buildSupervisorReport} from '@/server/services/supervisor-reports';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
+import {getReservationOperationalContext,getReservationOperationalContextByCode,reservationModuleSignals} from '@/server/services/reservation-context';
+import {getRoomDetail} from '@/server/services/rooms';
+import {getMetrics,defaultRange} from '@/server/services/metrics';
 import { hotelDateKey } from '@/domain/time';
 
 let reception: CurrentUser, supervisor: CurrentUser, management: CurrentUser;
@@ -43,6 +46,63 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     managementArea=dept.id;
     await prisma.user.update({where:{id:management.id},data:{departmentId:dept.id}});
     management.departmentId=dept.id;
+  });
+
+  it('reserva y Fronti no exponen entradas ni comentarios y trabajo derivados de un origen oculto',async()=>{
+    const reservation=await prisma.reservationReference.create({data:{code:'SYNTHETIC-164-PRIVATE'}});
+    const secret=await entry();const visible=await entry({title:'Contexto público',description:'Detalle público'});
+    // Native legacy links, only synthetic rows: createEntry no longer creates PMS links.
+    await prisma.operationalEntry.updateMany({where:{id:{in:[secret.id,visible.id]}},data:{reservationId:reservation.id}});
+    await addComment(supervisor,{entryId:secret.id,body:'Comentario confidencial en reserva'});
+    const hiddenAlert=await prisma.alert.create({data:{entryId:secret.id,reservationId:reservation.id,title:'Alerta confidencial en reserva',type:'OTRO'}});
+    const crossTask=await prisma.task.create({data:{entryId:visible.id,alertId:hiddenAlert.id,title:'Derivado confidencial en padre público',createdById:supervisor.id}});
+    await addComment(supervisor,{taskId:crossTask.id,body:'Comentario derivado confidencial'});
+    await prisma.followUp.create({data:{entryId:visible.id,sourceEntity:'Task',sourceId:crossTask.id,action:'Seguimiento confidencial',createdById:supervisor.id,ownerId:supervisor.id}});
+    await hide(secret.id,[managementArea]);
+    for(const context of [await getReservationOperationalContext(reservation.id,management),await getReservationOperationalContextByCode(reservation.code,management)]){
+      expect(context!.entries.map(e=>e.id)).toEqual([visible.id]);
+      expect(reservationModuleSignals(context!)).toMatchObject({book:1,tasks:0,followUps:0,alerts:0,comments:0});
+      expect(JSON.stringify(context)).not.toContain('confidencial');
+    }
+    expect(reservationModuleSignals((await getReservationOperationalContext(reservation.id,supervisor))!)).toMatchObject({book:2,tasks:1,followUps:1,alerts:1,comments:2});
+    for(const pathname of [`/reservas/${reservation.code}`,`/huespedes/reservas/${reservation.id}`])expect(JSON.stringify(await executeFrontiPageContextTool(management,resolveFrontiPageContext({pathname})))).not.toContain('confidencial');
+    expect(await prisma.comment.count()).toBe(2);
+  });
+
+  it('habitación, roomTool y contexto Fronti cuentan sólo incidencias visibles al lector',async()=>{
+    const room=await prisma.room.findUniqueOrThrow({where:{number:'404'}});
+    const e=await entry({type:'INCIDENCIA',severity:'BAJA',roomId:room.id});await hide(e.id,[managementArea]);
+    expect(await getRoomDetail('404',management)).toMatchObject({openIncidents:0});
+    expect(await getRoomDetail('404',supervisor)).toMatchObject({openIncidents:1});
+    expect(await roomTool(management,{roomNumber:'404'})).toMatchObject({openIncidents:0});
+    const context=await executeFrontiPageContextTool(management,resolveFrontiPageContext({pathname:'/habitaciones/404'}));
+    expect(JSON.stringify(context)).toContain('"openIncidents":0');
+    expect(await prisma.operationalEntry.findUnique({where:{id:e.id}})).not.toBeNull();
+  });
+
+  it('indicadores de alarmas respetan el área del lector y son independientes de inclusión en entrega',async()=>{
+    const hidden=await entry();const publicEntry=await entry({title:'Visible fuera del relevo',includeInReceptionHandover:false});
+    for(const e of [hidden,publicEntry])await createOperationalAlarm(supervisor,{kind:'RECORDATORIO',scope:'INDIVIDUAL',title:'Indicador por lector',dueAt:new Date(Date.now()+60000),recipientIds:[supervisor.id],sourceEntity:'OperationalEntry',sourceId:e.id});
+    await hide(hidden.id,[managementArea]);
+    expect((await getMetrics(defaultRange(),management)).alerts.live).toBe(1);
+    expect((await getMetrics(defaultRange(),supervisor)).alerts.live).toBe(2);
+    expect((await getMetrics(defaultRange(),reception)).alerts.live).toBe(2);
+    const context=await executeFrontiPageContextTool(management,resolveFrontiPageContext({pathname:'/indicadores'}));
+    expect(JSON.stringify(context)).toContain('"live":1');
+  });
+
+  it('conserva restricciones de áreas ya ocultas desactivadas y rechaza agregar otras desactivadas',async()=>{
+    const e=await entry();await hide(e.id,[managementArea]);
+    await prisma.department.update({where:{id:managementArea},data:{active:false}});
+    try{
+      const before=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});
+      const updated=await updateEntryVisibility(supervisor,{id:e.id,revision:before.updatedAt.toISOString(),hiddenDepartmentIds:[managementArea,receptionArea],includeInReceptionHandover:false});
+      expect(updated.hiddenFromDepartments.map(d=>d.id).sort()).toEqual([managementArea,receptionArea].sort());
+      expect(await prisma.operationalEntry.count({where:{id:e.id,AND:[(await import('@/server/services/entry-visibility')).entryReadWhere(management)]}})).toBe(0);
+      const other=await entry();
+      await expect(hide(other.id,[managementArea])).rejects.toThrow(/áreas vigentes/);
+      expect(await prisma.auditLog.findFirst({where:{entityId:e.id,action:'EDITAR'},orderBy:{createdAt:'desc'}})).toMatchObject({after:{hiddenDepartmentIds:[managementArea,receptionArea],includeInReceptionHandover:false}});
+    }finally{await prisma.department.update({where:{id:managementArea},data:{active:true}});}
   });
 
   it('bloquea la entrada ancestral de tareas derivadas durante la autorización de una reasignación',async()=>{

@@ -99,7 +99,7 @@ export async function getMetrics(range: MetricsRange, user?:EntryReader) {
     prisma.task.count({
       where: { AND:[visibleTasks], deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
     }),
-    prisma.operationalAlarm.count({ where: { AND:[operationalAlarmReadWhere(sharedReader,true)], status: OperationalAlarmStatus.ACTIVA } }),
+    prisma.operationalAlarm.count({ where: { AND:[operationalAlarmReadWhere(user??{...sharedReader,isSystemAdmin:false,roleKey:'RECEPCIONISTA'})], status: OperationalAlarmStatus.ACTIVA } }),
     // La continuidad es inherente: todo registro abierto sigue vigente entre
     // turnos hasta resolverse o cerrarse. No existe una categoría separada de
     // «heredados» ni un umbral horario artificial.

@@ -238,7 +238,7 @@ async function detailSnapshot(
 
   if (page.entityType === 'ReservationReference') {
     requireAny(user, ['guest.view', 'guest.manage'], 'No tienes permiso para consultar reservas.');
-    const reservation = await getReservationOperationalContext(page.entityId);
+    const reservation = await getReservationOperationalContext(page.entityId,user);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 
@@ -248,13 +248,13 @@ async function detailSnapshot(
       ['room.view', 'guest.view', 'guest.manage'],
       'No tienes permiso para consultar reservas.',
     );
-    const reservation = await getReservationOperationalContextByCode(page.entityId);
+    const reservation = await getReservationOperationalContextByCode(page.entityId,user);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 
   if (page.entityType === 'RoomNumber') {
     requireAny(user, ['room.view'], 'No tienes permiso para consultar habitaciones.');
-    const room = await getRoomDetail(page.entityId).catch(() => null);
+    const room = await getRoomDetail(page.entityId,user).catch(() => null);
     if (!room) return { found: false };
     return {
       found: true,

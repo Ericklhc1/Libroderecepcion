@@ -33,7 +33,7 @@ export function HandoverPrint(props: HandoverPrintProps) {
   const rows = handoverPrintRows(props.items);
   const counts = handoverPrintCounts(rows);
   const cash = props.cash;
-  const guaranteeCount = cash.declared ?? cash.confirmed;
+  const guaranteeCount = props.handoverStatus===HandoverStatus.RECIBIDA ? cash.confirmed ?? cash.declared : cash.declared ?? cash.confirmed;
   const guaranteesUnavailable=!guaranteeCount?.guaranteeSnapshotRecorded;
   const guarantees = guaranteeCount?.guaranteeSnapshotRecorded ? guaranteeCount.validatedGuarantees.map(g => ({
     ...g, humanId:g.humanId, amount:fromMinor(g.amountMinor,g.currency), dueAt:g.dueAt ? new Date(g.dueAt) : null,

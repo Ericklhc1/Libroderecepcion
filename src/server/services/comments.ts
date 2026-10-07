@@ -1,6 +1,7 @@
-import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord } from './entry-visibility';
+import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, type EntryReader } from './entry-visibility';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
+import type {Prisma} from '@prisma/client';
 import { AuditAction, NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -251,15 +252,19 @@ export async function softDeleteComment(
 }
 
 /** Comentarios de un objeto, del más antiguo al más reciente. */
+export function commentReadWhere(user:EntryReader):Prisma.CommentWhereInput {
+  return {AND:[
+    {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
+    {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
+    {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
+    {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
+  ]};
+}
+
 export async function listComments(target: CommentTarget,user:CurrentUser) {
   return prisma.comment.findMany({
     where: {
-      deletedAt: null,AND:[
-        {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
-        {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
-        {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
-        {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
-      ],
+      deletedAt: null,AND:[commentReadWhere(user)],
       ...(target.entryId ? { entryId: target.entryId } : {}),
       ...(target.taskId ? { taskId: target.taskId } : {}),
       ...(target.followUpId ? { followUpId: target.followUpId } : {}),

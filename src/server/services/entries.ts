@@ -34,7 +34,7 @@ import {
 import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-scheduler';
 
 export const entryInclude = {
-  hiddenFromDepartments: { select: { id: true } },
+  hiddenFromDepartments: { select: { id: true, name:true, active:true } },
   housekeepingRequests: { where: { deletedAt: null }, orderBy: {createdAt:'desc'}, select: { humanId:true, departmentId:true, status:true, resolution:true, resolvedAt:true, isDemo:true, requiresInspection:true, inspectedAt:true, inspectedBy:{select:{name:true}} } },
   createdBy: { select: { id: true, name: true } },
   owner: { select: { id: true, name: true } },
@@ -635,7 +635,7 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     if (!canManageEntryVisibility(user, current.createdById)) throw new RuleError('Sólo quien creó la novedad o Supervisión puede cambiar su visibilidad.');
     if (current.updatedAt.toISOString() !== input.revision) throw new RuleError('La novedad cambió. Actualiza antes de guardar.');
     const ids = [...new Set(input.hiddenDepartmentIds)];
-    if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, active: true } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
+    if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, OR:[{active:true},{id:{in:current.hiddenFromDepartments.map(d=>d.id)}}] } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
     await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
     await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
     const updated = await tx.operationalEntry.update({ where: { id: input.id }, data: {

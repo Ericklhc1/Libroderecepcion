@@ -266,9 +266,9 @@ function compactStay(stay: { id: string; reservationId: string; guestNames: stri
     : null;
 }
 
-async function roomTool(user: CurrentUser, args: Record<string, unknown>) {
+export async function roomTool(user: CurrentUser, args: Record<string, unknown>) {
   requireToolPermission(user, 'room.view');
-  const room = await getRoomDetail(cleanRoomNumber(args.roomNumber));
+  const room = await getRoomDetail(cleanRoomNumber(args.roomNumber),user);
   return {
     room: room.number,
     state: room.snapshot.state,
@@ -594,7 +594,7 @@ async function checkoutsProposalTool(user: CurrentUser, args: Record<string, unk
   const roomNumbers = Array.from(new Set(raw.map(cleanRoomNumber).filter(Boolean))).slice(0, 20);
   if (!roomNumbers.length) throw new Error('Indica al menos una habitación.');
 
-  const rooms = await Promise.all(roomNumbers.map((roomNumber) => getRoomDetail(roomNumber)));
+  const rooms = await Promise.all(roomNumbers.map((roomNumber) => getRoomDetail(roomNumber,user)));
   const invalid = rooms.filter((room) => !room.snapshot.outgoing);
   if (invalid.length) {
     return {
@@ -1366,7 +1366,7 @@ export async function executeReceptionConfirmation(
   requireToolPermission(user, 'room.manage');
   const validated: Array<{ roomNumber: string; stayId: string }> = [];
   for (const roomNumber of pending.args.roomNumbers) {
-    const room = await getRoomDetail(roomNumber);
+    const room = await getRoomDetail(roomNumber,user);
     if (!room.snapshot.outgoing) {
       throw new Error(`La habitación ${roomNumber} ya no tiene una salida pendiente. No se ejecutó el lote.`);
     }

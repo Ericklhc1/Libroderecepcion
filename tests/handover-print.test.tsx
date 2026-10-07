@@ -21,6 +21,16 @@ describe('impresión de entrega 02-10-2026', () => {
     expect(rows.find(r => r.ref === '1424')?.due).toBe('05-10-26 11:00');
   });
 
+  for(const declaredLegacy of [false,true])it(`entrega recibida prefiere custodia confirmada, declarada antigua=${declaredLegacy}`,()=>{
+    const fixture=confirmedHandover02Fixture();
+    fixture.cash.declared!.guaranteeSnapshotRecorded=!declaredLegacy;
+    fixture.cash.confirmed!.validatedGuarantees=[{...fixture.cash.declared!.validatedGuarantees[0]!,guestName:'Custodia confirmada distinta',reference:'CONFIRMED-164-ONLY'}];
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture} />);
+    expect(html).toContain('CONFIRMED-164-ONLY');expect(html).toContain('Custodia confirmada distinta');
+    expect(html).not.toContain('7541967');expect(html).not.toContain('Fotografía histórica de garantías no disponible');
+    expect(fixture.cash.declared!.validatedGuarantees).toHaveLength(3);
+  });
+
   it('imprime la custodia fotografiada aunque las garantías actuales cambien', () => {
     const fixture=handover02Fixture(); fixture.cash.cashGuarantees=[];
     const html=renderToStaticMarkup(<HandoverPrint {...fixture} />);

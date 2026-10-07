@@ -163,6 +163,14 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     expect((await sendHandover(reception,{shiftId:shift.id})).snapshot).toMatchObject({counts:{urgente:1}});
   });
 
+  it('el resumen activo, resuelto y la lectura histórica sólo incluyen NOVEDAD/INCIDENCIA como entradas',async()=>{
+    const shift=await createShift({userId:reception.id,type:'DIA'});const rows=[];
+    for(const type of Object.values(EntryType))for(const resolved of [false,true])rows.push(await prisma.operationalEntry.create({data:{type,title:`TIPO_${type}_${resolved?'RESUELTO':'ACTIVO'}`,description:'Contenido sintético por tipo',createdById:supervisor.id,shiftId:shift.id,status:resolved?'RESUELTO':'ABIERTO',closedAt:resolved?new Date():null}}));
+    const snapshot=await buildHandoverSnapshot(reception,new Date(),{shiftId:shift.id});const allowed=rows.filter(e=>e.type==='NOVEDAD'||e.type==='INCIDENCIA');expect(snapshot.filter(i=>i.refType==='entry').map(i=>i.refId).sort()).toEqual(allowed.map(e=>e.id).sort());
+    const historical=rows.map(e=>({refType:'entry',refId:e.id,title:e.title,detail:e.description,section:'Novedades activas',level:'URGENTE' as const}));
+    expect((await visibleSnapshotItems(reception,historical,true)).map(i=>i.refId).sort()).toEqual(allowed.map(e=>e.id).sort());expect(await prisma.operationalEntry.count()).toBe(rows.length);
+  });
+
   it('el cierre real con trigger nuevo crea una única acción y auditoría, sin alerta, tarea ni novedad',async()=>{
     const {shift,handover}=await sentShift();
     const closed=await closeShift(reception,{shiftId:shift.id});

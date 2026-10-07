@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
-import { outstandingAmount } from '@/domain/guarantees';
+import { outstandingAmount,OPEN_GUARANTEE_STATES,CASH_SETTLEMENT_GUARANTEE_STATES } from '@/domain/guarantees';
 import { Card, CardHeader } from '@/components/ui/card';
 import { EditCashGuaranteeForm, ChargeCashGuaranteeForm, ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
 import { formatDateTime, toDateTimeInput } from '@/lib/format';
@@ -18,7 +18,8 @@ export default async function GuaranteePage({ params }: { params: Promise<{ id: 
   ]);
   if(!g) notFound();
   const balance = outstandingAmount({ amount:Number(g.amount), appliedAmount:Number(g.appliedAmount??0), penaltyAmount:Number(g.penaltyAmount??0), returnedAmount:Number(g.returnedAmount??0) });
-  const open = ['PENDIENTE','VIGENTE','APLICADA_PARCIALMENTE'].includes(g.state);
+  const open = OPEN_GUARANTEE_STATES.includes(g.state);
+  const canSettle=CASH_SETTLEMENT_GUARANTEE_STATES.includes(g.state)&&balance>0;
   return <div className="mx-auto max-w-4xl space-y-4">
     <Link href="/supervision">Volver al Centro de Supervisión</Link>
     <Card><CardHeader title={`Garantía #${g.humanId} · ${g.reference ?? g.guestName ?? 'Sin referencia'}`} />
@@ -29,7 +30,7 @@ export default async function GuaranteePage({ params }: { params: Promise<{ id: 
         {g.notes ? <p>{g.notes}</p> : null}
         {g.kind === 'EFECTIVO' && open && gate.mode === 'ACTIVE' ? <div className="flex flex-wrap gap-2">
           {user.permissions.includes('cash.guarantee_in') ? <EditCashGuaranteeForm guaranteeId={g.id} humanId={g.humanId} currency={g.currency} amount={Number(g.amount)} guestName={g.guestName} roomNumber={g.roomNumber} reference={g.reference} dueAt={g.dueAt?toDateTimeInput(g.dueAt):''} notes={g.notes} /> : null}
-          {user.permissions.includes('cash.guarantee_out') ? <><ChargeCashGuaranteeForm guaranteeId={g.id} requestKey={randomUUID()} humanId={g.humanId} reference={g.reference??g.guestName} currency={g.currency} amount={balance} guestName={g.guestName} roomNumber={g.roomNumber} /><ReturnCashGuaranteeForm guaranteeId={g.id} requestKey={randomUUID()} reference={g.reference??g.guestName} currency={g.currency} amount={balance} guestName={g.guestName} roomNumber={g.roomNumber} /></> : null}
+          {canSettle && user.permissions.includes('cash.guarantee_out') ? <><ChargeCashGuaranteeForm guaranteeId={g.id} requestKey={randomUUID()} humanId={g.humanId} reference={g.reference??g.guestName} currency={g.currency} amount={balance} guestName={g.guestName} roomNumber={g.roomNumber} /><ReturnCashGuaranteeForm guaranteeId={g.id} requestKey={randomUUID()} reference={g.reference??g.guestName} currency={g.currency} amount={balance} guestName={g.guestName} roomNumber={g.roomNumber} /></> : null}
         </div> : null}
       </div>
     </Card>

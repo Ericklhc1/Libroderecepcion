@@ -244,7 +244,7 @@ export default async function HandoverPage({
       : formatCalendarDate(shiftStartDate);
   const shiftParticipants =
     new Intl.ListFormat('es-CL', { style: 'long', type: 'conjunction' }).format(
-      handover.fromShift.assignments.map((assignment) => assignment.user.name),
+      handover.fromShift.assignments.filter(assignment=>!assignment.removedExplicitly).map((assignment) => assignment.user.name),
     ) || handover.issuedBy.name;
   const shiftTypeTitle = SHIFT_TYPE_LABEL[handover.fromShift.type].toUpperCase();
 
@@ -966,7 +966,7 @@ export default async function HandoverPage({
                 <p className="mt-1 text-xs text-slate-600">
                   {closureValidation?.resolvedBy?.name
                     ? `Validado por ${closureValidation.resolvedBy.name}`
-                    : 'Erick Herrera o auditor designado'}
+                    : 'Supervisión / Administrador de sistema'}
                 </p>
                 <p className="mt-1 text-[0.7rem] text-slate-500">
                   {closureValidation?.resolvedAt

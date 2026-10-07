@@ -30,6 +30,8 @@ export type SnapshotItem = {
   refId: string | null;
 };
 
+const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={...receptionHandoverEntryWhere,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
+
 /** Preserve historical evidence and controls; redact reserved content for the current reader. */
 export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[], shared=false, db:Prisma.TransactionClient=prisma):Promise<T[]> {
   const ids=(kind:string)=>items.filter(i=>i.refType===kind&&i.refId).map(i=>i.refId!);
@@ -37,7 +39,7 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
     db.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user,shared)]},select:{id:true}}),
     db.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true,shared)]},select:{id:true}}),
     db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}]},select:{id:true}}),
-    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverEntryWhere},select:{id:true}}),
+    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere},select:{id:true}}),
   ]);
   const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
   const receptionEntries=new Set(entries.map(e=>e.id));
@@ -168,7 +170,7 @@ export async function buildHandoverSnapshot(
     resolvedEntries,
   ] = await Promise.all([
     db.operationalEntry.findMany({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverEntryWhere },
+      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere },
       select: {
         id: true,
         humanId: true,
@@ -223,7 +225,7 @@ export async function buildHandoverSnapshot(
     currentShiftId
       ? db.operationalEntry.findMany({
           where: {
-            ...receptionHandoverEntryWhere,
+            ...receptionHandoverNoticeWhere,
             shiftId: currentShiftId,
             deletedAt: null,
             status: { in: [EntryStatus.RESUELTO, EntryStatus.CERRADO] },

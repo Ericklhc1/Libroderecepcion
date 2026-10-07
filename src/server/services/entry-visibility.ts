@@ -19,6 +19,7 @@ export function entryReadWhere(user: EntryReader): Prisma.OperationalEntryWhereI
     { createdById: user.id },
     { hiddenFromDepartments: { none: { OR: [
       { users: { some: { id: user.id } } },
+      {scheduleMemberships:{some:{active:true,collaborator:{active:true,userId:user.id}}}},
       ...(user.departmentId ? [{ id: user.departmentId }] : []),
       ...(user.roleKey && isReceptionDeskRole(user.roleKey) ? [{ key: 'RECEPCION' }] : []),
     ] } } },
@@ -42,6 +43,7 @@ export function entryReadSql(user: EntryReader) {
     SELECT 1 FROM "_EntryHiddenAreas" h JOIN "Department" d ON d.id=h."A"
     WHERE h."B"=e.id AND (d.id=${user.departmentId ?? null}
       OR EXISTS (SELECT 1 FROM "User" u WHERE u.id=${user.id} AND u."departmentId"=d.id)
+      OR EXISTS (SELECT 1 FROM "ScheduleMembership" m JOIN "ScheduleCollaborator" c ON c.id=m."collaboratorId" WHERE m.active AND c.active AND c."userId"=${user.id} AND m."departmentId"=d.id)
       OR (d.key='RECEPCION' AND ${!!user.roleKey && isReceptionDeskRole(user.roleKey)}))
   ))`;
 }
@@ -54,7 +56,7 @@ export async function assertEntryVisibleForWrite(tx: Prisma.TransactionClient, u
 
 /** Locks every native ancestor before authorizing a derived mutation. */
 export async function lockEntrySourcesForRecord(tx: Prisma.TransactionClient, user: EntryReader, kind: 'task'|'alert'|'followup'|'operationalalarm', id: string) {
-  const rows=await tx.$queryRaw<{id:string}[]>`SELECT e.id FROM "OperationalEntry" e WHERE e.id IN (SELECT "entryId" FROM "native_entry_origin_ids"(${kind},${id})) ORDER BY e.id FOR UPDATE`;
+  const rows=await tx.$queryRaw<{id:string}[]>`SELECT e.id FROM "OperationalEntry" e WHERE e.id IN (SELECT "entryId" FROM "bounded_native_entry_origin_ids"(${kind},${id})) ORDER BY e.id FOR UPDATE`;
   if(rows.length && await tx.operationalEntry.count({where:{id:{in:rows.map(r=>r.id)},AND:[entryReadWhere(user)]}})!==rows.length) throw new NotFoundError('El registro de origen no está visible para tu área.');
 }
 
@@ -65,7 +67,7 @@ export async function assertEntryOwnerVisibility(tx: Prisma.TransactionClient, i
   const owner=await tx.user.findFirst({where:{id:input.ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
   if(!owner)throw new RuleError('El responsable no está disponible.');
   if(owner.id===input.createdById || ['SUPERVISOR','ADMINISTRADOR_SISTEMA'].includes(owner.role.key))return;
-  if(await tx.department.count({where:{id:{in:input.hiddenDepartmentIds},OR:[{id:owner.departmentId??''},{users:{some:{id:owner.id}}},...(isReceptionDeskRole(owner.role.key)?[{key:'RECEPCION'}]:[])]}}))throw new RuleError('El responsable no podrá ver la novedad. Reasigna o quita al responsable antes de ocultarla a su área.');
+  if(await tx.department.count({where:{id:{in:input.hiddenDepartmentIds},OR:[{id:owner.departmentId??''},{users:{some:{id:owner.id}}},{scheduleMemberships:{some:{active:true,collaborator:{active:true,userId:owner.id}}}},...(isReceptionDeskRole(owner.role.key)?[{key:'RECEPCION'}]:[])]}}))throw new RuleError('El responsable no podrá ver la novedad. Reasigna o quita al responsable antes de ocultarla a su área.');
 }
 
 /** Native Housekeeping work cannot expose an entry hidden from its reader. */

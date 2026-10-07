@@ -1410,7 +1410,7 @@ export async function confirmReceptionReviewStep(
           },
         },
       },
-      items: { select: { level: true } },
+      items: true,
     },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
@@ -1519,7 +1519,7 @@ export async function confirmReceptionReviewStep(
     throw new RuleError('Quedan elementos físicos declarados sin confirmar.');
   }
 
-  const hasUrgent = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgent = (await visibleSnapshotItems(user,handover.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgent && !params.urgentAcknowledged) {
     throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
   }
@@ -2131,7 +2131,7 @@ export async function receiveHandover(
   if (!incoming.receiverFinalReviewAt) {
     throw new RuleError('Primero confirma la revisión final de la recepción.');
   }
-  const hasUrgentItems = incoming.items.some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgentItems = (await visibleSnapshotItems(user,incoming.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgentItems && !incoming.receiverUrgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso en la recepción.');
   }
@@ -2402,7 +2402,7 @@ export async function confirmHandoverReviewStep(
     where: { id: params.handoverId },
     include: {
       fromShift: { include: { assignments: true } },
-      items: { select: { level: true } },
+      items: true,
     },
   });
   if (!handover) throw new NotFoundError('La entrega no existe.');
@@ -2424,7 +2424,7 @@ export async function confirmHandoverReviewStep(
   if (await isCashEnabled()) await assertShiftCashClosed(handover.fromShiftId);
 
   const now = new Date();
-  const hasUrgent = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgent = (await visibleSnapshotItems(user,handover.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
 
   if (params.step === 'FINAL' && !handover.pendingsReviewedAt) {
     throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
@@ -2514,7 +2514,7 @@ export async function sendHandover(
   if (!handover.finalReviewAt) {
     throw new RuleError('Antes de enviar, confirma la revisión final de la entrega.');
   }
-  const hasUrgentItems = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgentItems = (await visibleSnapshotItems(user,handover.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgentItems && !handover.urgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
   }
@@ -2526,6 +2526,7 @@ export async function sendHandover(
       orderBy: [{ level: 'asc' }, { order: 'asc' }],
     });
     const items = await visibleSnapshotItems(user, originalItems, true, tx);
+    if(items.some(item=>item.level===HandoverLevel.URGENTE)&&!handover.urgentAcknowledgedAt)throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
     const now = new Date();
     const sent = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },

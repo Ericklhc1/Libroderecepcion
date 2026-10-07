@@ -48,6 +48,31 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
   beforeAll(seedCatalog);
   beforeEach(async()=>{await resetOperationalData(); reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});});
 
+  for(const kind of ['task','closure','excluded-entry'] as const)it(`un urgente histórico ${kind} excluido no bloquea FINAL ni envío, sin regenerar ni borrar evidencia`,async()=>{
+    const shift=await createShift({userId:reception.id,type:ShiftType.DIA});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});
+    const handover=await prepareHandover(reception,shift.id);
+    let refType='task',refId:string|null=null,title='Urgente de tarea histórica';
+    if(kind==='closure'){const alert=await prisma.alert.create({data:{type:'OTRO',level:'CRITICA',title:'Validar cierre de turno',dedupeKey:'shift-validation:synthetic-old-draft'}});refType='alert';refId=alert.id;title=alert.title;}
+    if(kind==='excluded-entry'){const e=await notice(supervisor,{includeInReceptionHandover:false});refType='entry';refId=e.id;title=e.title;}
+    const old=await prisma.handoverItem.create({data:{handoverId:handover.id,level:'URGENTE',section:kind==='task'?'Tareas pendientes':'Novedades activas',title,refType,refId,order:0}});
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});
+    const final=await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
+    expect(final.urgentAcknowledgedAt).toBeNull();
+    const sent=await sendHandover(reception,{shiftId:shift.id});
+    expect(sent.status).toBe('ENVIADA');expect(sent.snapshot).toMatchObject({counts:{urgente:0}});
+    expect(await prisma.handoverItem.findUnique({where:{id:old.id}})).not.toBeNull();
+    expect(await visibleSnapshotItems(reception,[old],true)).toEqual([]);
+  });
+
+  it('un urgente visible todavía exige reconocimiento y se cuenta al enviar',async()=>{
+    await notice(supervisor,{priority:'CRITICA'});
+    const shift=await createShift({userId:reception.id,type:ShiftType.DIA});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});
+    const handover=await prepareHandover(reception,shift.id);await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});
+    await expect(confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'})).rejects.toThrow(/Hay puntos urgentes/);
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});
+    expect((await sendHandover(reception,{shiftId:shift.id})).snapshot).toMatchObject({counts:{urgente:1}});
+  });
+
   it('el cierre real con trigger nuevo crea una única acción y auditoría, sin alerta, tarea ni novedad',async()=>{
     const {shift,handover}=await sentShift();
     const closed=await closeShift(reception,{shiftId:shift.id});

@@ -4024,6 +4024,7 @@ view ScopedTaskSourceEntry {
   source Task @relation(fields: [taskId], references: [id])
   entry OperationalEntry @relation(fields: [entryId], references: [id])
   @@unique([taskId, entryId])
+  @@map("BoundedTaskSourceEntry")
 }
 
 view ScopedAlertSourceEntry {
@@ -4032,6 +4033,7 @@ view ScopedAlertSourceEntry {
   source Alert @relation(fields: [alertId], references: [id])
   entry OperationalEntry @relation(fields: [entryId], references: [id])
   @@unique([alertId, entryId])
+  @@map("BoundedAlertSourceEntry")
 }
 
 view ScopedFollowUpSourceEntry {
@@ -4040,6 +4042,7 @@ view ScopedFollowUpSourceEntry {
   source FollowUp @relation(fields: [followUpId], references: [id])
   entry OperationalEntry @relation(fields: [entryId], references: [id])
   @@unique([followUpId, entryId])
+  @@map("BoundedFollowUpSourceEntry")
 }
 
 view ScopedAlarmSourceEntry {
@@ -4048,6 +4051,7 @@ view ScopedAlarmSourceEntry {
   source OperationalAlarm @relation(fields: [alarmId], references: [id])
   entry OperationalEntry @relation(fields: [entryId], references: [id])
   @@unique([alarmId, entryId])
+  @@map("BoundedAlarmSourceEntry")
 }
 
 view ScopedAuditSourceEntry {
@@ -4056,6 +4060,7 @@ view ScopedAuditSourceEntry {
   source AuditLog @relation(fields: [auditLogId], references: [id])
   entry OperationalEntry @relation(fields: [entryId], references: [id])
   @@unique([auditLogId, entryId])
+  @@map("BoundedAuditSourceEntry")
 }
 
 view ScopedNotificationSourceEntry {
@@ -4064,4 +4069,5 @@ view ScopedNotificationSourceEntry {
   source Notification @relation(fields: [notificationId], references: [id])
   entry OperationalEntry @relation(fields: [entryId], references: [id])
   @@unique([notificationId, entryId])
+  @@map("BoundedNotificationSourceEntry")
 }

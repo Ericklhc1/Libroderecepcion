@@ -3,7 +3,7 @@ import { createUser, createShift, prisma, resetOperationalData, ROLE_KEYS, seedC
 import type { CurrentUser } from '@/server/auth/current-user';
 import { createEntry, updateEntryVisibility } from '@/server/services/entries';
 import { acknowledgeOperationalAlarm, cancelOperationalAlarm, createOperationalAlarm, countMyActiveOperationalAlarms, dispatchDueAlarmsForUser, listMyOperationalAlarms } from '@/server/services/operational-alarms';
-import { auditFollowUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
+import { auditFollowUpReadWhere, followUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
 import { markReadableNotifications, notificationWhereForUser } from '@/server/services/notification-access';
 import { getWebPushPayload } from '@/server/services/web-push';
 import { addComment, listComments } from '@/server/services/comments';
@@ -15,13 +15,16 @@ import { deadlinesTool, roomTool } from '@/server/ai/reception-assistant';
 import { executeFrontiV2ReadTool } from '@/server/ai/fronti-v2/read-tools';
 import { changeHousekeepingRequest, createHousekeepingRequest } from '@/server/services/housekeeping';
 import { organizeLegacyHkWork } from '@/server/services/housekeeping-work';
-import {assertTaskSourceRecipients,assignTask} from '@/server/services/tasks';
+import {assertTaskSourceRecipients,assignTask,changeTaskStatus,createTask,updateTask} from '@/server/services/tasks';
 import {buildSupervisorReport} from '@/server/services/supervisor-reports';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
 import {getReservationOperationalContext,getReservationOperationalContextByCode,reservationModuleSignals} from '@/server/services/reservation-context';
 import {getRoomDetail} from '@/server/services/rooms';
 import {getMetrics,defaultRange} from '@/server/services/metrics';
+import {entryReadWhere,entryReadSql,housekeepingEntryReadWhere} from '@/server/services/entry-visibility';
+import {getAreaAttention,listAreaAttentions} from '@/server/services/subject-distribution';
+import {Prisma} from '@prisma/client';
 import { hotelDateKey } from '@/domain/time';
 
 let reception: CurrentUser, supervisor: CurrentUser, management: CurrentUser;
@@ -46,6 +49,67 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     managementArea=dept.id;
     await prisma.user.update({where:{id:management.id},data:{departmentId:dept.id}});
     management.departmentId=dept.id;
+  });
+
+  it('una atención informada no revela el origen oculto a miembros de su área, incluido acceso directo y paginado',async()=>{
+    const hk=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const worker=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});await prisma.user.update({where:{id:worker.id},data:{departmentId:hk.id}});worker.departmentId=hk.id;
+    const e=await entry();const attention=await prisma.subjectAreaAttention.create({data:{requestKey:'completed-attention-164',entryId:e.id,departmentId:hk.id,createdById:supervisor.id,status:'INFORMADA'}});
+    expect((await getAreaAttention(worker,attention.id)).entry.title).toBe(e.title);
+    expect((await listAreaAttentions(worker,{entryId:e.id})).rows.map(a=>a.id)).toEqual([attention.id]);
+    await hide(e.id,[hk.id]);
+    await expect(getAreaAttention(worker,attention.id)).rejects.toThrow();
+    expect(await listAreaAttentions(worker,{entryId:e.id})).toMatchObject({rows:[],hasMore:false});
+    expect((await getAreaAttention(supervisor,attention.id)).entry.id).toBe(e.id);
+    expect(await prisma.subjectAreaAttention.findUnique({where:{id:attention.id}})).not.toBeNull();
+  });
+
+  for(const [closed,reopened] of [['VALIDADA','DEVUELTA'],['COMPLETADA','EN_CURSO'],['CANCELADA','PENDIENTE']] as const)it(`reactivar ${closed}→${reopened} exige responsables visibles y no modifica tarea/auditoría al rechazar`,async()=>{
+    const e=await entry();const alert=await prisma.alert.create({data:{entryId:e.id,title:'Origen de reactivación',type:'OTRO'}});
+    const task=await prisma.task.create({data:{alertId:alert.id,title:'Trabajo cerrado',status:closed,createdById:supervisor.id,assigneeId:management.id,participants:{create:{userId:management.id,assignedById:supervisor.id,role:'PRINCIPAL'}}}});
+    await hide(e.id,[managementArea]);const audits=await prisma.auditLog.count({where:{entity:'Task',entityId:task.id}});
+    await expect(changeTaskStatus(supervisor,{id:task.id,status:reopened,reason:'Reactivación sintética'})).rejects.toThrow(/no puede acceder/);
+    expect((await prisma.task.findUniqueOrThrow({where:{id:task.id}})).status).toBe(closed);
+    expect(await prisma.auditLog.count({where:{entity:'Task',entityId:task.id}})).toBe(audits);
+    await assignTask(supervisor,{id:task.id,assigneeId:supervisor.id,reason:'Responsable autorizado'});
+    expect((await changeTaskStatus(supervisor,{id:task.id,status:reopened,reason:'Reactivar con acceso'})).status).toBe(reopened);
+  });
+
+  it('reactivar también protege colaboradores y el destino, y crear/editar no permite destinos ocultos',async()=>{
+    const e=await entry();
+    const task=await prisma.task.create({data:{entryId:e.id,title:'Cerrada con colaborador',status:'CANCELADA',createdById:supervisor.id,assigneeId:supervisor.id,departmentId:managementArea,participants:{create:{userId:management.id,assignedById:supervisor.id,role:'COLABORADOR'}}}});
+    await hide(e.id,[managementArea]);
+    await expect(changeTaskStatus(supervisor,{id:task.id,status:'PENDIENTE',reason:'Reactivar'})).rejects.toThrow(/oculta al área de destino/);
+    await prisma.task.update({where:{id:task.id},data:{departmentId:null}}); // Isolate historical collaborator evidence in this synthetic fixture.
+    await expect(changeTaskStatus(supervisor,{id:task.id,status:'PENDIENTE',reason:'Reactivar'})).rejects.toThrow(/no puede acceder/);
+    await expect(createTask(supervisor,{entryId:e.id,title:'Destino no visible',priority:'MEDIA',departmentId:managementArea,assigneeId:supervisor.id,tags:[],checklist:[]})).rejects.toThrow(/oculta al área de destino/);
+    const open=await createTask(supervisor,{entryId:e.id,title:'Destino permitido',priority:'MEDIA',assigneeId:supervisor.id,tags:[],checklist:[]});
+    await expect(updateTask(supervisor,{id:open.id,departmentId:managementArea})).rejects.toThrow(/oculta al área de destino/);
+    await hide(e.id,[]);
+    expect((await changeTaskStatus(supervisor,{id:task.id,status:'PENDIENTE',reason:'Origen visible otra vez'})).status).toBe('PENDIENTE');
+  });
+
+  it('pertenencias adicionales activas protegen ORM, SQL, HK y responsables incluso sin departamento primario',async()=>{
+    const hk=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const worker=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});await prisma.user.update({where:{id:worker.id},data:{departmentId:null}});worker.departmentId=null;
+    const c=await prisma.scheduleCollaborator.create({data:{employeeCode:'SYNTHETIC-MEMBER-164',name:'Membresía sintética',functionName:'HK',userId:worker.id,memberships:{create:{departmentId:hk.id}}}});
+    const receptionC=await prisma.scheduleCollaborator.create({data:{employeeCode:'SYNTHETIC-CROSS-164',name:'Recepción adicional',functionName:'Recepción',userId:reception.id,memberships:{create:{departmentId:hk.id}}}});
+    const e=await entry();
+    const sys=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const request=await createHousekeepingRequest(sys,{requestKey:'membership-164',sourceEntryId:e.id,departmentId:hk.id,location:'Prueba sintética',priority:'MEDIA'});
+    await changeHousekeepingRequest(sys,{id:request.id,version:request.version,action:'CANCELAR',note:'Fixture histórica terminada'});
+    const task=await createTask(supervisor,{entryId:e.id,title:'Trabajo de miembro adicional',assigneeId:reception.id,priority:'MEDIA',tags:[],checklist:[]});
+    await expect(hide(e.id,[hk.id])).rejects.toThrow(/trabajo pendiente/);
+    await changeTaskStatus(supervisor,{id:task.id,status:'COMPLETADA',reason:'Fixture terminada'});
+    await hide(e.id,[hk.id]);
+    for(const reader of [worker,reception]){
+      expect(await prisma.operationalEntry.count({where:{id:e.id,AND:[entryReadWhere(reader)]}})).toBe(0);
+      expect(await prisma.$queryRaw(Prisma.sql`SELECT e.id FROM "OperationalEntry" e WHERE e.id=${e.id} AND (${entryReadSql(reader)})`)).toEqual([]);
+      expect(await prisma.housekeepingRequest.count({where:{id:request.id,AND:[housekeepingEntryReadWhere(reader)]}})).toBe(0);
+    }
+    await prisma.scheduleMembership.update({where:{collaboratorId_departmentId:{collaboratorId:c.id,departmentId:hk.id}},data:{active:false}});
+    expect(await prisma.operationalEntry.count({where:{id:e.id,AND:[entryReadWhere(worker)]}})).toBe(1);
+    await prisma.scheduleCollaborator.update({where:{id:receptionC.id},data:{active:false}});
+    expect(await prisma.operationalEntry.count({where:{id:e.id,AND:[entryReadWhere(reception)]}})).toBe(1);
   });
 
   it('reserva y Fronti no exponen entradas ni comentarios y trabajo derivados de un origen oculto',async()=>{
@@ -326,7 +390,7 @@ describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=
     const client=new PrismaClient({log:[{level:'query',emit:'event'}]});client.$on('query',q=>queries.push(q));
     try {
       expect(await client.task.findFirst({where:{id:task.id,AND:[taskFollowUpReadWhere(management)]},select:{id:true}})).toEqual({id:task.id});
-      const query=queries.find(q=>q.query.includes('ScopedTaskSourceEntry'))!;
+      const query=queries.find(q=>q.query.includes('BoundedTaskSourceEntry'))!;
       const rows=await client.$queryRawUnsafe<Record<string,unknown>[]>(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.query}`,...JSON.parse(query.params));
       const plan=(rows[0]!['QUERY PLAN'] as {Plan:Record<string,unknown>}[])[0]!.Plan;
       const buffers=Number(plan['Shared Hit Blocks']??0)+Number(plan['Shared Read Blocks']??0);
@@ -335,4 +399,29 @@ describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=
       expect(await client.scopedTaskSourceEntry.findMany({where:{taskId:task.id}})).toMatchObject([{taskId:task.id,entryId:e.id}]);
     } finally { await client.$disconnect(); }
   });
+  it('los conteos anidados del Libro preservan la reserva sin compilar cada recorrido de origen en el SQL padre',async()=>{
+    const {PrismaClient}=await import('@prisma/client');
+    const e=await entry();const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const reserved=await prisma.followUp.create({data:{entryId:e.id,action:'Seguimiento privado',visibility:'PRIVADO',createdById:supervisor.id,ownerId:supervisor.id}});
+    await prisma.comment.create({data:{entryId:e.id,followUpId:reserved.id,authorId:supervisor.id,body:'Comentario reservado'}});
+    const queries:{query:string;params:string}[]=[];
+    const client=new PrismaClient({log:[{level:'query',emit:'event'}]});client.$on('query',q=>queries.push(q));
+    const read=(user:CurrentUser)=>client.operationalEntry.findMany({where:{deletedAt:null},orderBy:{occurredAt:'desc'},take:60,include:{_count:{select:{comments:{where:{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]}},followUps:{where:followUpReadWhere(user)}}}}});
+    try {
+      expect((await read(admin))[0]!._count).toEqual({comments:0,followUps:0});
+      expect((await read(management))[0]!._count).toEqual({comments:0,followUps:0});
+      expect((await read(supervisor))[0]!._count).toEqual({comments:1,followUps:1});
+      const query=queries.find(q=>q.query.includes('BoundedFollowUpSourceEntry'))!;
+      // Force expression compilation on this isolated connection only, so the
+      // regression cannot hide behind warm plans or CI's table-statistics mix.
+      await client.$executeRawUnsafe('SET jit_above_cost=0');
+      const rows=await client.$queryRawUnsafe<{'QUERY PLAN':{Plan:Record<string,unknown>;JIT?:{Functions:number};'Execution Time':number}[]}[]>(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.query}`,...JSON.parse(query.params));
+      const plan=rows[0]!['QUERY PLAN'][0]!;
+      expect(Number(plan.Plan['Total Cost'])).toBeLessThan(10000);
+      expect(plan.JIT?.Functions??0).toBeLessThan(1000);
+      expect(plan['Execution Time']).toBeLessThan(4000);
+      expect(await prisma.followUp.findUnique({where:{id:reserved.id}})).not.toBeNull();
+    } finally {await client.$disconnect();}
+  });
+
 });

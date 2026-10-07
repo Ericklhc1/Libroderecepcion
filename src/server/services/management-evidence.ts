@@ -1,3 +1,4 @@
+import { entryReadWhere, type EntryReader } from './entry-visibility';
 import 'server-only';
 import { EntryType, Priority, Severity, type Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -7,8 +8,9 @@ import { metricPeriod, signedMoney, type MetricRange } from '@/domain/operationa
 import { taskFollowUpReadWhere } from './followup-access';
 
 export const sharedMetricTasks = taskFollowUpReadWhere({ id: '', permissions: [] }, true);
-export const overdueTasksWhere = (now: Date): Prisma.TaskWhereInput => ({ deletedAt: null, AND: [sharedMetricTasks], status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } });
-export const criticalIncidentsWhere = (): Prisma.OperationalEntryWhereInput => ({ deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_OPEN_STATUSES }, priority: Priority.CRITICA });
+export const managementMetricTasks=(user:EntryReader):Prisma.TaskWhereInput=>taskFollowUpReadWhere({id:'',permissions:[]},true,entryReadWhere(user));
+export const overdueTasksWhere = (now: Date,user?:EntryReader): Prisma.TaskWhereInput => ({ deletedAt: null, AND: [user?managementMetricTasks(user):sharedMetricTasks], status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } });
+export const criticalIncidentsWhere = (user?:EntryReader): Prisma.OperationalEntryWhereInput => ({ ...(user?{AND:[entryReadWhere(user)]}:{}), deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_OPEN_STATUSES }, priority: Priority.CRITICA });
 export const criticalFindingsWhere = (): Prisma.AuditFindingWhereInput => ({ deletedAt: null, confirmed: true, severity: Severity.CRITICA, OR: [{ correctiveMeasures: { none: { deletedAt: null } } }, { correctiveMeasures: { some: { deletedAt: null, status: { notIn: ['VALIDADA', 'CANCELADA'] } } } }] });
 export const overdueCorrectivesWhere = (now: Date): Prisma.CorrectiveMeasureWhereInput => ({ deletedAt: null, status: { notIn: ['VALIDADA', 'CANCELADA'] }, dueAt: { lt: now } });
 export const cashDifferencesWhere = (range: MetricRange): Prisma.CashAuditWhereInput => ({ createdAt: { gte: range.from, lte: range.to }, difference: { not: 0 } });
@@ -43,11 +45,11 @@ export async function getManagementEvidence(user: CurrentUser, input: { kind: st
   let rows: EvidenceRow[] = [];
   let total = 0;
   if (kind === 'tasks-overdue') {
-    const where = overdueTasksWhere(now);
+    const where = overdueTasksWhere(now,user);
     const [count, items] = await Promise.all([prisma.task.count({ where }), prisma.task.findMany({ where, ...pagination, orderBy: [{ dueAt: 'asc' }, { id: 'asc' }], select: { id: true, humanId: true, title: true, dueAt: true, assignee: { select: { name: true } } } })]);
     total = count; rows = items.map(r => ({ id: r.id, label: `Tarea #${r.humanId} · ${r.title}`, detail: r.assignee?.name ?? 'Sin responsable', at: r.dueAt, href: `/tareas/${r.id}` }));
   } else if (kind === 'critical-incidents') {
-    const where = criticalIncidentsWhere();
+    const where = criticalIncidentsWhere(user);
     const [count, items] = await Promise.all([prisma.operationalEntry.count({ where }), prisma.operationalEntry.findMany({ where, ...pagination, orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }], select: { id: true, humanId: true, title: true, occurredAt: true, owner: { select: { name: true } } } })]);
     total = count; rows = items.map(r => ({ id: r.id, label: `Incidencia #${r.humanId} · ${r.title}`, detail: r.owner?.name ?? 'Sin responsable', at: r.occurredAt, href: `/libro/${r.id}` }));
   } else if (kind === 'critical-findings') {

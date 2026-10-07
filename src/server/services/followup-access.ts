@@ -37,7 +37,7 @@ export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & P
 }
 
 export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, shared=false): Prisma.OperationalAlarmWhereInput {
-  return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}};
+  return {AND:[{sourceEntries:{none:{entry:{NOT:shared?receptionHandoverEntryWhere:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}},{sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}}]};
 }
 
 /** Same reserved-source policy for the existing PostgreSQL search view.
@@ -49,7 +49,7 @@ export function directFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permission
     (f."visibility" = 'PRIVADO' AND f."createdById" = ${user.id}) OR
     (f."visibility" = 'SUPERVISION' AND ${manager}) OR
     (f."visibility" = 'OPERATIVO' AND (${manager} OR f."ownerId" = ${user.id} OR f."createdById" = ${user.id}))
-  ) AND NOT EXISTS (SELECT 1 FROM "OperationalEntry" e WHERE EXISTS (SELECT 1 FROM "OperationalSourceEntry" origin WHERE origin.kind='followup' AND origin.id=f.id AND origin."entryId"=e.id) AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})}))`;
+  ) AND NOT EXISTS (SELECT 1 FROM "OperationalEntry" e WHERE EXISTS (SELECT 1 FROM "NativeEntryProvenance" origin WHERE origin.kind='followup' AND origin.id=f.id AND origin."entryId"=e.id) AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})}))`;
 }
 
 export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted=false) {
@@ -60,21 +60,21 @@ export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & 
 }
 
 export function taskFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>) {
-  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "OperationalSourceEntry" origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE origin.kind='task' AND origin.id=t.id AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "NativeEntryProvenance" origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE origin.kind='task' AND origin.id=t.id AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."taskId"=t.id AND NOT (${directFollowUpReadSql(user,true)}))`;
 }
 
 export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>) {
-  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "OperationalSourceEntry" origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE origin.kind='alert' AND origin.id=a.id AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "AlertSourceFollowUp" origin
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "NativeEntryProvenance" origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE origin.kind='alert' AND origin.id=a.id AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "AlertSourceFollowUp" origin
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."alertId"=a.id AND NOT (${directFollowUpReadSql(user,true)}))`;
 }
 
-export function auditFollowUpReadWhere(user: Pick<CurrentUser,'id'|'permissions'>): Prisma.AuditLogWhereInput {
-  return {sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}};
+export function auditFollowUpReadWhere(user: Pick<CurrentUser,'id'|'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'departmentId'|'isSystemAdmin'>>): Prisma.AuditLogWhereInput {
+  return {AND:[{sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}},{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}}]};
 }
 
-export function notificationReadWhere(user: Pick<CurrentUser,'id'|'permissions'>): Prisma.NotificationWhereInput {
-  return {sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}};
+export function notificationReadWhere(user: Pick<CurrentUser,'id'|'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'departmentId'|'isSystemAdmin'>>): Prisma.NotificationWhereInput {
+  return {AND:[{sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}},{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}}]};
 }

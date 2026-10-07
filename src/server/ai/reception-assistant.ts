@@ -1,3 +1,4 @@
+import { entryReadWhere } from '@/server/services/entry-visibility';
 import {prepareSubjectIntent} from './fronti-v2/subject-intent';
 import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import 'server-only';
@@ -316,7 +317,7 @@ async function prioritiesTool(user: CurrentUser) {
   };
 }
 
-async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
+export async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
   const canTasks =
     user.isSystemAdmin ||
     ['task.create', 'task.assign', 'task.edit', 'task.close', 'metrics.view'].some((permission) =>
@@ -403,7 +404,7 @@ async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
       : Promise.resolve([]),
     canEntries
       ? prisma.operationalEntry.findMany({
-          where: {
+          where: { AND:[entryReadWhere(user)],
             deletedAt: null,
             status: { in: ENTRY_OPEN_STATUSES },
             dueAt: { not: null, lte: until },

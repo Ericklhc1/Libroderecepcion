@@ -224,6 +224,7 @@ export async function softDeleteComment(
 ) {
   const comment = await prisma.comment.findFirst({
     where: { id: input.id, deletedAt: null,AND:[
+      {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
       {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
       {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
       {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
@@ -254,6 +255,7 @@ export async function listComments(target: CommentTarget,user:CurrentUser) {
   return prisma.comment.findMany({
     where: {
       deletedAt: null,AND:[
+        {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
         {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
         {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
         {OR:[{alertId:null},{alert:alertReadWhere(user)}]},

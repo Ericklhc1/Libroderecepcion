@@ -149,7 +149,10 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
     catch (error) { throw new RuleError((error as Error).message); }
     const transfer = input.action === 'DERIVAR';
     if (transfer && !input.departmentId) throw new RuleError('Selecciona el área que recibirá el aviso.');
-    if (transfer) await validateDestination(tx, input.departmentId, input.assignedToId);
+    if (transfer) {
+      await validateDestination(tx, input.departmentId, input.assignedToId);
+      if(current.sourceEntryId)await assertEntryWorkDestination(tx,current.sourceEntryId,input.departmentId!,input.assignedToId);
+    }
     const confirm = input.action === 'CONFIRMAR' || input.action === 'TOMAR';
     const reopen = input.action === 'REABRIR';
     const update = await tx.housekeepingRequest.updateMany({

@@ -115,7 +115,7 @@ export async function getAssignmentBoard(user: CurrentUser): Promise<AssignmentB
           select: { priority: true, dueAt: true },
         },
         entriesOwned: {
-          where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+          where: { AND:[entryReadWhere(user)], deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
           select: { priority: true, dueAt: true },
         },
       },

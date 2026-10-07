@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import {
@@ -1125,7 +1126,7 @@ async function resolveSupervisionSource(user: CurrentUser, sourceEntity: Supervi
   switch (sourceEntity) {
     case 'OperationalEntry': {
       const row = await prisma.operationalEntry.findFirst({
-        where: { id: sourceId, deletedAt: null },
+        where: { id: sourceId, deletedAt: null,AND:[entryReadWhere(user)] },
         select: { id: true, humanId: true, title: true },
       });
       if (!row) throw new NotFoundError('La novedad de origen ya no existe.');
@@ -1489,7 +1490,7 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
     sinceLastShift
       ? Promise.all([
           prisma.operationalEntry.count({
-            where: { deletedAt: null, createdAt: { gt: sinceLastShift } },
+            where: { AND:[entryReadWhere(user)],deletedAt: null, createdAt: { gt: sinceLastShift } },
           }),
           prisma.task.count({
             where: { AND:[taskFollowUpReadWhere(user)],

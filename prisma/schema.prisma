@@ -1398,6 +1398,12 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  nativeTaskOrigins NativeTaskSourceEntry[]
+  nativeAlertOrigins NativeAlertSourceEntry[]
+  nativeFollowUpOrigins NativeFollowUpSourceEntry[]
+  nativeAlarmOrigins NativeAlarmSourceEntry[]
+  nativeAuditOrigins NativeAuditSourceEntry[]
+  nativeNotificationOrigins NativeNotificationSourceEntry[]
   taskSourceRows TaskSourceEntry[]
   alertSourceRows AlertSourceEntry[]
   followUpSourceRows FollowUpSourceEntry[]
@@ -1570,7 +1576,8 @@ model HousekeepingEvent {
 }
 
 model Task {
-  sourceEntries TaskSourceEntry[]
+  legacySourceEntries TaskSourceEntry[]
+  sourceEntries NativeTaskSourceEntry[]
   areaAttention SubjectAreaAttention?
   sourceFollowUps TaskSourceFollowUp[]
   procedureOccurrenceKey String? @unique
@@ -1698,7 +1705,8 @@ model TaskChecklistItem {
 }
 
 model FollowUp {
-  sourceEntries FollowUpSourceEntry[]
+  legacySourceEntries FollowUpSourceEntry[]
+  sourceEntries NativeFollowUpSourceEntry[]
   sourceFollowUps FollowUpSourceFollowUp[] @relation("derivedFollowUp")
   derivedFollowUps FollowUpSourceFollowUp[] @relation("originFollowUp")
   sourceNotifications NotificationSourceFollowUp[]
@@ -1760,7 +1768,8 @@ model FollowUp {
 }
 
 model Alert {
-  sourceEntries AlertSourceEntry[]
+  legacySourceEntries AlertSourceEntry[]
+  sourceEntries NativeAlertSourceEntry[]
   sourceFollowUps AlertSourceFollowUp[]
   id           String      @id @default(cuid())
   humanId      Int         @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
@@ -1992,6 +2001,7 @@ model LostFoundEvent {
 // ========================= TRAZABILIDAD Y SISTEMA =========================
 
 model AuditLog {
+  sourceEntries NativeAuditSourceEntry[]
   sourceFollowUps AuditSourceFollowUp[]
   id        String      @id @default(cuid())
   entity    String
@@ -2162,6 +2172,7 @@ model ChatMediaPreference {
 }
 
 model Notification {
+  sourceEntries NativeNotificationSourceEntry[]
   deletedAt DateTime?
   deletedById String?
   deletionReason String?
@@ -2274,6 +2285,7 @@ model SupportRequestAttachment {
 }
 
 model OperationalAlarm {
+  sourceEntries NativeAlarmSourceEntry[]
   sourceFollowUps AlarmSourceFollowUp[]
   id            String                 @id @default(cuid())
   kind          OperationalAlarmKind
@@ -3944,4 +3956,52 @@ view FollowUpSourceEntry {
   followUp FollowUp @relation(fields: [followUpId], references: [id])
   entry OperationalEntry @relation(fields: [entryId], references: [id])
   @@unique([followUpId, entryId])
+}
+
+view NativeTaskSourceEntry {
+  taskId String
+  entryId String
+  source Task @relation(fields: [taskId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([taskId, entryId])
+}
+
+view NativeAlertSourceEntry {
+  alertId String
+  entryId String
+  source Alert @relation(fields: [alertId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alertId, entryId])
+}
+
+view NativeFollowUpSourceEntry {
+  followUpId String
+  entryId String
+  source FollowUp @relation(fields: [followUpId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([followUpId, entryId])
+}
+
+view NativeAlarmSourceEntry {
+  alarmId String
+  entryId String
+  source OperationalAlarm @relation(fields: [alarmId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alarmId, entryId])
+}
+
+view NativeAuditSourceEntry {
+  auditLogId String
+  entryId String
+  source AuditLog @relation(fields: [auditLogId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([auditLogId, entryId])
+}
+
+view NativeNotificationSourceEntry {
+  notificationId String
+  entryId String
+  source Notification @relation(fields: [notificationId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([notificationId, entryId])
 }

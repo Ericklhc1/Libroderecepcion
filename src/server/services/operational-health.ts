@@ -1,6 +1,9 @@
 import 'server-only';
 
-import type { Prisma } from '@prisma/client';
+import {Prisma} from '@prisma/client';
+import type {OperationalMetricEvent} from '@prisma/client';
+import {entryReadWhere,entryReadSql} from './entry-visibility';
+import type {EntryReader} from './entry-visibility';
 import { prisma } from '@/lib/prisma';
 import { addHotelCalendarDays, hotelDayStart } from '@/domain/time';
 import type { OperationalEventType } from '@/server/observability/operational';
@@ -49,20 +52,14 @@ const FAILURE_EVENTS = [
   'HANDOVER_SEND_FAILED',
 ] as const satisfies readonly OperationalEventType[];
 
-export async function getOperationalHealth(range: OperationalHealthRange) {
-  const events = await prisma.operationalMetricEvent.findMany({
-    where: {
-      createdAt: { gte: range.from, lte: range.to },
-    },
-    select: {
-      eventType: true,
-      correlationId: true,
-      durationMs: true,
-      metadata: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+type HealthEvent=Pick<OperationalMetricEvent,'eventType'|'correlationId'|'durationMs'|'metadata'|'createdAt'>;
+function metricVisibilitySql(user:EntryReader){
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"(lower(event."entityType"),event."entityId") origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE NOT (${entryReadSql(user)}))`;
+}
+
+export async function getOperationalHealth(range: OperationalHealthRange,user:EntryReader) {
+  const visibility=metricVisibilitySql(user);
+  const events=await prisma.$queryRaw<HealthEvent[]>`SELECT event."eventType",event."correlationId",event."durationMs",event.metadata,event."createdAt" FROM "OperationalMetricEvent" event WHERE event."createdAt">=${range.from} AND event."createdAt"<=${range.to} AND (${visibility}) ORDER BY event."createdAt" ASC`;
 
   const count = (eventType: OperationalEventType) =>
     events.filter((event) => event.eventType === eventType).length;
@@ -131,13 +128,7 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
   const completedCorrelations = startCorrelations.length
     ? new Set(
         (
-          await prisma.operationalMetricEvent.findMany({
-            where: {
-              eventType: 'SHIFT_CLOSE_COMPLETED',
-              correlationId: { in: startCorrelations },
-            },
-            select: { correlationId: true },
-          })
+          await prisma.$queryRaw<{correlationId:string|null}[]>`SELECT event."correlationId" FROM "OperationalMetricEvent" event WHERE event."eventType"='SHIFT_CLOSE_COMPLETED' AND event."correlationId" IN (${Prisma.join(startCorrelations)}) AND (${visibility})`
         )
           .map((event) => event.correlationId)
           .filter((value): value is string => Boolean(value)),
@@ -147,15 +138,12 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
   const createdIn = { gte: range.from, lte: range.to };
   const [entriesCreated, entriesResolved, firstObserved] = await Promise.all([
     prisma.operationalEntry.count({
-      where: { deletedAt: null, createdAt: createdIn },
+      where: { deletedAt: null, createdAt: createdIn,AND:[entryReadWhere(user)] },
     }),
     prisma.operationalEntry.count({
-      where: { deletedAt: null, closedAt: createdIn },
+      where: { deletedAt: null, closedAt: createdIn,AND:[entryReadWhere(user)] },
     }),
-    prisma.operationalMetricEvent.findFirst({
-      orderBy: { createdAt: 'asc' },
-      select: { createdAt: true },
-    }),
+    prisma.$queryRaw<{createdAt:Date}[]>`SELECT event."createdAt" FROM "OperationalMetricEvent" event WHERE (${visibility}) ORDER BY event."createdAt" ASC LIMIT 1`,
   ]);
 
   const failures = events.filter((event) =>
@@ -170,7 +158,7 @@ export async function getOperationalHealth(range: OperationalHealthRange) {
 
   return {
     range,
-    observedSince: firstObserved?.createdAt ?? null,
+    observedSince: firstObserved[0]?.createdAt ?? null,
     shifts: {
       started: count('SHIFT_STARTED') + count('SHIFT_CONTINGENCY_COMPLETED'),
       closed: count('SHIFT_CLOSE_COMPLETED'),

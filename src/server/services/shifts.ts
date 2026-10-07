@@ -1525,8 +1525,12 @@ export async function confirmReceptionReviewStep(
   }
 
   return prisma.$transaction(async (tx) => {
+      await lockReceptionSummary(tx);
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
+      const currentHasUrgent=(await visibleHandover(user,fresh,tx)).items.some(item=>item.level===HandoverLevel.URGENTE);
+      if(currentHasUrgent&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
       const now = new Date();
       if (params.step !== 'BRIEFING') {
         if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
@@ -1538,7 +1542,7 @@ export async function confirmReceptionReviewStep(
       where: { id: handover.id },
       data: {
         receiverFinalReviewAt: now,
-        receiverUrgentAcknowledgedAt: hasUrgent ? now : null,
+        receiverUrgentAcknowledgedAt: currentHasUrgent ? now : null,
       },
     });
     await recordAudit(
@@ -1546,14 +1550,14 @@ export async function confirmReceptionReviewStep(
         entity: 'ShiftHandover',
         entityId: handover.id,
         action: AuditAction.CAMBIO_ESTADO,
-        summary: hasUrgent
+        summary: currentHasUrgent
           ? `Revisión final de recepción confirmada por ${user.name}, con puntos urgentes reconocidos`
           : `Revisión final de recepción confirmada por ${user.name}`,
         user,
         after: {
           receptionStep: 'FINAL',
           reviewedAt: now,
-          urgentAcknowledged: hasUrgent,
+          urgentAcknowledged: currentHasUrgent,
         },
       },
       tx,
@@ -2152,10 +2156,13 @@ export async function receiveHandover(
   }
 
   await prisma.$transaction(async (tx) => {
+    await lockReceptionSummary(tx);
     await lockHandover(tx, incoming.id);
     const current = await assertElementActor(tx, user, incoming.id, 'confirmed');
+    const fresh = await tx.shiftHandover.findUniqueOrThrow({where:{id:incoming.id},include:{items:true}});
+    const currentHasUrgent=(await visibleHandover(user,fresh,tx)).items.some(item=>item.level===HandoverLevel.URGENTE);
     if (!current.receiverBriefingReviewedAt || !current.receiverCustodyReviewedAt || !current.receiverFinalReviewAt ||
-      (hasUrgentItems && !current.receiverUrgentAcknowledgedAt)) {
+      (currentHasUrgent && !current.receiverUrgentAcknowledgedAt)) {
       throw new RuleError('La custodia cambió. Revisa de nuevo la recepción antes de continuar.');
     }
     const blockers = await cashBlockersForReceiving(incoming.id, tx);

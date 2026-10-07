@@ -5,7 +5,7 @@ import { getShiftBriefing, prepareHandover, receiveHandover, confirmHandoverRevi
 import { listPendingClosureReviews, reviewShiftClosure } from '@/server/services/closure-review';
 import { getSupervisionData } from '@/server/services/supervision';
 import { createEntry, getSubjectEntry, updateEntryVisibility, updateEntry } from '@/server/services/entries';
-import { buildHandoverSnapshot, visibleSnapshotItems,visibleHandover } from '@/server/services/handover-snapshot';
+import { lockReceptionSummary,buildHandoverSnapshot, visibleSnapshotItems,visibleHandover } from '@/server/services/handover-snapshot';
 import { getBookItems } from '@/server/services/book';
 import { getCoordinationBoard } from '@/server/services/coordination';
 import { searchOperationalRecords } from '@/server/services/global-search';
@@ -103,6 +103,33 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     await receiveHandover(other,{handoverId:handover.id});
     expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({status:'RECIBIDA',snapshot:before.snapshot});
     expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(1);
+  });
+
+  for(const action of ['FINAL','RECEIVE'] as const)for(const terminal of [false,true])it(`visibilidad concurrente serializa ${action} de receptor con urgente fotografiado ${terminal?'resuelto':'activo'}`,async()=>{
+    const e=await notice(supervisor,{priority:'CRITICA'});const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});const handover=await prepareHandover(reception,shift.id);
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});await sendHandover(reception,{shiftId:shift.id});await closeShift(reception,{shiftId:shift.id});
+    if(terminal)await prisma.operationalEntry.update({where:{id:e.id},data:{status:'RESUELTO',closedAt:new Date()}});
+    let current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});await updateEntryVisibility(supervisor,{id:e.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:false});
+    const incoming=await startReceptionShift(other,{handoverId:handover.id,type:'NOCHE'});await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'BRIEFING'});await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'CUSTODY'});
+    if(action==='RECEIVE')await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'FINAL'});
+    let ready!:()=>void;let release!:()=>void;const locked=new Promise<void>(r=>{ready=r;});const gate=new Promise<void>(r=>{release=r;});
+    const holder=prisma.$transaction(async tx=>{await lockReceptionSummary(tx);ready();await gate;});await locked;
+    current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});
+    const enable=updateEntryVisibility(supervisor,{id:e.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:true});
+    let attempt:Promise<{ok:boolean;error?:unknown}>|undefined;
+    try {
+      // Wait for the actual visibility transaction to queue first on PostgreSQL's lock.
+      let waiting=0;for(let i=0;i<50&&!waiting;i++){const rows=await prisma.$queryRaw<{count:number}[]>`SELECT COUNT(*)::int AS count FROM pg_locks WHERE locktype='advisory' AND NOT granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND objid=(hashtext('aroh.reception-handover-summary')::bigint & 4294967295)::oid`;waiting=rows[0]!.count;if(!waiting)await new Promise(r=>setTimeout(r,20));}
+      expect(waiting).toBeGreaterThan(0);
+      let completed=false;
+      attempt=(action==='FINAL'?confirmReceptionReviewStep(other,{handoverId:handover.id,step:'FINAL'}):receiveHandover(other,{handoverId:handover.id})).then(()=>({ok:true}),error=>({ok:false,error})).finally(()=>{completed=true;});
+      let receptionWaiting=0;for(let i=0;i<50&&receptionWaiting<2&&!completed;i++){const rows=await prisma.$queryRaw<{count:number}[]>`SELECT COUNT(*)::int AS count FROM pg_locks WHERE locktype='advisory' AND NOT granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND objid=(hashtext('aroh.reception-handover-summary')::bigint & 4294967295)::oid`;receptionWaiting=rows[0]!.count;if(receptionWaiting<2)await new Promise(r=>setTimeout(r,20));}
+      expect(receptionWaiting).toBe(2);expect(completed).toBe(false);
+    } finally {release();await holder;}
+    await enable;const result=await attempt!;expect(result.ok).toBe(false);expect(String(result.error)).toMatch(/urgentes|custodia cambió/);
+    expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({status:'ENVIADA',receivedAt:null,receiverUrgentAcknowledgedAt:null});expect(await prisma.shift.findUnique({where:{id:incoming.id}})).toMatchObject({status:'INICIADO'});
+    expect(await prisma.auditLog.count({where:{entity:'ShiftHandover',entityId:handover.id,action:'TURNO_RECIBIR'}})).toBe(0);
+    await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});await receiveHandover(other,{handoverId:handover.id});expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({status:'RECIBIDA'});
   });
 
   it('habilitar una novedad después de enviar conserva íntegra la fotografía enviada',async()=>{

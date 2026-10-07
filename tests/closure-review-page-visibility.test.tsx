@@ -51,6 +51,14 @@ describe('cierre histórico: evidencia vigente en ficha, Centro y Fronti',()=>{
     expect(await prisma.auditLog.count({where:{entity:'Shift',entityId:shift.id,summary:{startsWith:'Cierre validado'},reason:'Caja y evidencias revisadas'}})).toBe(1);
     expect(await prisma.alert.findUnique({where:{id:legacy.id}})).toMatchObject({status:'NUEVA'});
   });
+  for(const reviewer of [true,false])it(`el enlace histórico usa permisos de revisión y no de alertas: reviewer=${reviewer}`,async()=>{
+    const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const shift=await createShift({userId:reception.id,type:'DIA'});
+    await prisma.shift.update({where:{id:shift.id},data:{status:'CERRADO',actualEnd:new Date()}});await prisma.shift.update({where:{id:shift.id},data:{closureReviewRequestedAt:null}});await prisma.alert.create({data:{type:'OTRO',title:'Validar cierre de turno',dedupeKey:`shift-validation:${shift.id}`}});
+    auth.user={...supervisor,permissions:supervisor.permissions.filter(p=>p!==(reviewer?'alert.manage':'shift.manage'))};
+    const html=renderToStaticMarkup(await AlertsPage({searchParams:Promise.resolve({})}));
+    if(reviewer){expect(html).toContain(`/supervision/cierres/${shift.id}`);expect(html).toContain('Validar / Observar');}else{expect(html).not.toContain(`/supervision/cierres/${shift.id}`);expect(html).not.toContain('Validar / Observar');}
+    expect(html).not.toContain('Crear tarea desde la alerta');
+  });
   for(const status of ['NUEVA','RESUELTA'] as const)it(`una alerta eliminada ${status} no habilita revisión ni acredita validación`,async()=>{
     const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});auth.user=supervisor;
     const shift=await createShift({userId:reception.id,type:'DIA'});

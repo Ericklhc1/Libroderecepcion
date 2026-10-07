@@ -441,7 +441,7 @@ async function supervisionSectionSnapshot(
       page.filters.periodo === '7d' || page.filters.periodo === '30d'
         ? page.filters.periodo
         : 'today';
-    return getOperationalHealth(operationalHealthRange(period));
+    return getOperationalHealth(operationalHealthRange(period),user);
   }
 
   if (page.sectionKey === 'rendimiento') {

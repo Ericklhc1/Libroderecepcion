@@ -43,9 +43,10 @@ export default async function AlertsPage({
   const params = await searchParams;
   const canManage = user.permissions.includes('alert.manage');
   const canApproveCash = user.permissions.includes('cash.approve');
-  const canValidateShift = user.roleKey === 'SUPERVISOR' || user.isSystemAdmin;
+  const canValidateShift = (user.roleKey === 'SUPERVISOR' || user.isSystemAdmin) && user.permissions.includes('shift.manage');
+  const canValidateElements = user.roleKey === 'SUPERVISOR' || user.isSystemAdmin;
 
-  if (!canManage && !canApproveCash && !canValidateShift) {
+  if (!canManage && !canApproveCash && !canValidateShift && !canValidateElements) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
         No tienes acciones internas pendientes habilitadas para tu perfil.
@@ -66,12 +67,8 @@ export default async function AlertsPage({
           { dedupeKey: { startsWith: 'cash-manual:' } },
         ]
       : []),
-    ...(canValidateShift
-      ? [
-          { dedupeKey: { startsWith: 'handover-elements-none:' } },
-          { dedupeKey: { startsWith: 'shift-validation:' } },
-        ]
-      : []),
+    ...(canValidateElements ? [{dedupeKey:{startsWith:'handover-elements-none:'}}] : []),
+    ...(canValidateShift ? [{dedupeKey:{startsWith:'shift-validation:'}}] : []),
   ];
   const accessFilter: Prisma.AlertWhereInput | null = canManage
     ? null
@@ -279,7 +276,7 @@ export default async function AlertsPage({
                   </div>
                 </div>
 
-                {canManage && alert.status !== AlertStatus.RESUELTA ? (
+                {(alert.dedupeKey?.startsWith('shift-validation:') ? canValidateShift : canManage) && alert.status !== AlertStatus.RESUELTA ? (
                   <div className="flex flex-wrap items-end gap-2 border-t border-slate-200 px-4 py-3 no-print">
                     {alert.dedupeKey?.startsWith('shift-validation:') ? (
                       <Link className="font-medium text-petrol-600 hover:underline" href={`/supervision/cierres/${alert.dedupeKey.slice('shift-validation:'.length)}`}>Abrir cierre · Validar / Observar</Link>

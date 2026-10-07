@@ -54,7 +54,7 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
 }
 
 /** Sanitizes both native items and the historic JSON photograph without rewriting either. */
-export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T & {status?:string}):Promise<T>{
+export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T & {status?:string},db:Prisma.TransactionClient=prisma):Promise<T>{
   let sourceItems=handover.items;
   const photo=handover.snapshot;
   if(handover.status&&handover.status!=='BORRADOR'&&photo&&typeof photo==='object'&&!Array.isArray(photo)&&Array.isArray(photo.items)&&photo.items.every(i=>i&&typeof i==='object'&&!Array.isArray(i)&&typeof i.title==='string'&&typeof i.section==='string'&&typeof i.level==='string')){
@@ -65,14 +65,14 @@ export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:P
     for(const i of photo.items){const k=key(i as Prisma.JsonObject);remaining.set(k,(remaining.get(k)??0)+1);}
     sourceItems=sourceItems.filter(i=>{const k=key(i);const n=remaining.get(k)??0;if(!n)return false;remaining.set(k,n-1);return true;});
   }
-  const items=await visibleSnapshotItems(user,sourceItems,true);
+  const items=await visibleSnapshotItems(user,sourceItems,true,db);
   let snapshot=handover.snapshot;
   if(snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)&&Array.isArray(snapshot.items)){
     const historical=snapshot.items.map(value=>{
       if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.title!=='string')return {title:'Asunto reservado',detail:'La evidencia original requiere revisión.',refType:null,refId:null};
       return {...value,title:value.title,detail:typeof value.detail==='string'?value.detail:null,refType:typeof value.refType==='string'?value.refType:null,refId:typeof value.refId==='string'?value.refId:null};
     });
-    snapshot={...snapshot,items:await visibleSnapshotItems(user,historical,true)};
+    snapshot={...snapshot,items:await visibleSnapshotItems(user,historical,true,db)};
   }
   return {...handover,items,snapshot};
 }

@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import { assertElementActor, lockHandover } from './handover-elements';
 import 'server-only';
@@ -454,7 +455,7 @@ export async function getShiftBriefing(user: CurrentUser, shift: { id: string; d
     await Promise.all([
       getPendingHandover(shift.id),
       prisma.operationalEntry.findMany({
-        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
         include: {
           owner: { select: { id: true, name: true } },
           department: { select: { name: true } },

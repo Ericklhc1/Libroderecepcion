@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import 'server-only';
 import { activeRuleOverrides } from './automation-policy-scope';
@@ -73,7 +74,7 @@ export async function getHousekeepingSources(user: CurrentUser, query = '') {
   const number = /^#?\d+$/.test(text) ? Number(text.replace('#', '')) : undefined;
   return prisma.operationalEntry.findMany({
     where: {
-      deletedAt: null, housekeepingRequests: {none:{deletedAt:null}},
+      deletedAt: null, housekeepingRequests: {none:{deletedAt:null}}, AND:[entryReadWhere(user)],
       status: { notIn: ['CERRADO', 'RESUELTO'] },
       ...(text ? { OR: [{ title: { contains: text, mode: 'insensitive' as const } }, { room: { number: { contains: text } } }, ...(number && Number.isSafeInteger(number) ? [{ humanId: number }] : [])] } : {}),
     },
@@ -99,7 +100,7 @@ export async function createHousekeepingRequest(user: CurrentUser, input: Create
       }
       const departmentId = input.departmentId || (await tx.department.findUnique({ where: { key: 'HOUSEKEEPING' }, select: { id: true } }))?.id;
       await validateDestination(tx, departmentId, input.assignedToId);
-      const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] } } }) : null;
+      const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] }, AND:[entryReadWhere(user)] } }) : null;
       if (input.sourceEntryId && !source) throw new NotFoundError('La novedad ya no está disponible para vincular.');
       const request = await tx.housekeepingRequest.create({ data: {
         requestKey: input.requestKey, sourceEntryId: source?.id, isDemo: false,

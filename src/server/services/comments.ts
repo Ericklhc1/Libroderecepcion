@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import { AuditAction, NotificationType } from '@prisma/client';
@@ -80,7 +81,7 @@ export async function addComment(
 
   if (input.entryId) {
     const entry = await tx.operationalEntry.findFirst({
-      where: { id: input.entryId, deletedAt: null },
+      where: { id: input.entryId, deletedAt: null, AND:[entryReadWhere(user)] },
       select: { id: true, humanId: true, title: true, createdById: true, ownerId: true },
     });
     if (!entry) throw new NotFoundError('El registro no existe.');

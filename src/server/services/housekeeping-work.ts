@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import {sourceStakeholders,notifyNativeWork} from './work-notifications';
 import 'server-only';
@@ -72,8 +73,8 @@ async function coordinatingTeam(tx: Tx, departmentId: string, permissions: strin
   return tx.user.findMany({where:{...membership(departmentId),AND:[{OR:[{role:{key:ADMIN}},{role:{permissions:{some:{permission:{key:{in:permissions}}}}}},{id:{in:delegated.map(d=>d.userId)}}]}]},select:{id:true}});
 }
 function sourceScope(user: CurrentUser, departmentId: string, canAssign: boolean): Prisma.OperationalEntryWhereInput {
-  if (user.roleKey === ADMIN || user.permissions.includes('entry.create')) return {};
-  return canAssign ? { OR: [{ departmentId }, { createdById: user.id }, {areaAttentions:{some:{departmentId}}}] } : { createdById: user.id };
+  const scope = user.roleKey === ADMIN || user.permissions.includes('entry.create') ? { id: { not: '' } } : canAssign ? { OR: [{ departmentId }, { createdById: user.id }, {areaAttentions:{some:{departmentId}}}] } : { createdById: user.id };
+  return { AND:[entryReadWhere(user), scope] };
 }
 export async function notifyHkWork(tx: Tx, request: { id: string; humanId: number; departmentId: string | null; assignedToId: string | null; createdById: string | null; requiresInspection: boolean; status: string }, actorId: string, message: string, previousAssigneeId?:string|null,internalOnly=false) {
   if (!request.departmentId) return;
@@ -300,7 +301,7 @@ export async function revokeHkDelegation(user:CurrentUser,id:string){return pris
 export async function getHkSources(user:CurrentUser,departmentId:string,query=''){
   hasAccess(user);const assign=await hkCapability(user,departmentId,'housekeeping.assign');if(!assign&&!hkHas(user,'housekeeping.request'))throw new ForbiddenError();
   const number=/^#?\d+$/.test(query)?Number(query.replace('#','')):undefined;
-  return prisma.operationalEntry.findMany({where:{deletedAt:null,housekeepingRequests:{none:{departmentId,deletedAt:null}},status:{notIn:['CERRADO','RESUELTO']},...sourceScope(user,departmentId,assign),...(query.trim()?{AND:[{OR:[{title:{contains:query.trim(),mode:'insensitive'}},{room:{number:{contains:query.trim()}}},...(number&&Number.isSafeInteger(number)?[{humanId:number}]:[])]}]}:{})},select:{id:true,humanId:true,title:true,description:true,room:{select:{id:true,number:true}}},orderBy:{createdAt:'desc'},take:25});
+  return prisma.operationalEntry.findMany({where:{deletedAt:null,housekeepingRequests:{none:{departmentId,deletedAt:null}},status:{notIn:['CERRADO','RESUELTO']},...sourceScope(user,departmentId,assign),...(query.trim()?{AND:[sourceScope(user,departmentId,assign),{OR:[{title:{contains:query.trim(),mode:'insensitive'}},{room:{number:{contains:query.trim()}}},...(number&&Number.isSafeInteger(number)?[{humanId:number}]:[])]}]}:{})},select:{id:true,humanId:true,title:true,description:true,room:{select:{id:true,number:true}}},orderBy:{createdAt:'desc'},take:25});
 }
 export async function organizeLegacyHkWork(user:CurrentUser,input:{id:string;version:number;departmentId:string;workDate:string;workKind:HkWorkKind;roomId?:string;effortMinutes:number;requiresInspection:boolean;assignedToId?:string;note:string}){
   validDate(input.workDate);await requireCapability(user,input.departmentId,'housekeeping.assign');

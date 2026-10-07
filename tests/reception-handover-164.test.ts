@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AuditAction, EntryType, ShiftType, ShiftStatus } from '@prisma/client';
 import { createUser, createShift, openShiftAs, seedCatalog, resetOperationalData, prisma, ROLE_KEYS } from './helpers';
-import { prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift } from '@/server/services/shifts';
+import { getShiftBriefing, prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift } from '@/server/services/shifts';
 import { listPendingClosureReviews, reviewShiftClosure } from '@/server/services/closure-review';
 import { getSupervisionData } from '@/server/services/supervision';
 import { createEntry, getSubjectEntry, updateEntryVisibility } from '@/server/services/entries';
@@ -10,6 +10,8 @@ import { getBookItems } from '@/server/services/book';
 import { getCoordinationBoard } from '@/server/services/coordination';
 import { searchOperationalRecords } from '@/server/services/global-search';
 import { notificationWhereForUser } from '@/server/services/notification-access';
+import { getHkSources } from '@/server/services/housekeeping-work';
+import { addComment } from '@/server/services/comments';
 import { entryCreateSchema } from '@/server/schemas';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -111,6 +113,8 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     expect(await prisma.auditLog.findFirst({where:{entityId:e.id,action:'EDITAR'}})).toMatchObject({after:{hiddenDepartmentIds:[area.id],includeInReceptionHandover:false}});
     expect((await getBookItems({kinds:['entry']},other)).items.map(i=>i.id)).not.toContain(e.id);
     expect((await getCoordinationBoard(other)).rows.map(i=>i.id)).not.toContain(e.id);
+    expect((await getShiftBriefing(other,await createShift({userId:other.id,type:'DIA'}))).openEntries.map(i=>i.id)).not.toContain(e.id);
+    await expect(addComment(other,{entryId:e.id,body:'Comentario sobre un asunto oculto'})).rejects.toThrow();
     expect((await searchOperationalRecords(other,String(e.humanId))).map(i=>i.entityId)).not.toContain(e.id);
     await expect(getSubjectEntry(other,e.id)).rejects.toThrow(/visible/);
     expect((await getSubjectEntry(reception,e.id)).id).toBe(e.id);
@@ -129,6 +133,18 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     const visible=await prisma.notification.findMany({where:await notificationWhereForUser(other.id)});
     expect(visible.map(row=>row.id)).not.toContain(n.id); expect(visible.map(row=>row.id)).toContain(ordinary.id);
     expect(await prisma.notification.findUnique({where:{id:n.id}})).not.toBeNull();
+  });
+
+  it('el selector de fuentes de otra área no muestra novedades ocultas',async()=>{
+    const hk=await createUser({roleKey:ROLE_KEYS.HK_SUPERVISOR});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    await prisma.user.update({where:{id:hk.id},data:{departmentId:area.id}}); hk.departmentId=area.id;
+    const e=await notice(supervisor,{departmentId:area.id});
+    expect((await getHkSources(hk,area.id)).map(row=>row.id)).toContain(e.id);
+    await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    expect((await getHkSources(hk,area.id)).map(row=>row.id)).not.toContain(e.id);
+    expect((await getHkSources(hk,area.id,e.title)).map(row=>row.id)).not.toContain(e.id);
+    expect((await getBookItems({kinds:['entry']},reception)).items.map(row=>row.id)).toContain(e.id);
   });
 
   it('la creación rechaza áreas inexistentes y booleanos inválidos',async()=>{

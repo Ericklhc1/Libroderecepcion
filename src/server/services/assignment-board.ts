@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
@@ -74,7 +75,7 @@ export async function getAssignmentBoard(user: CurrentUser): Promise<AssignmentB
       take: 40,
     }),
     prisma.operationalEntry.findMany({
-      where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES } },
+      where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
       select: {
         id: true,
         humanId: true,
@@ -96,7 +97,7 @@ export async function getAssignmentBoard(user: CurrentUser): Promise<AssignmentB
       where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
     }),
     prisma.operationalEntry.count({
-      where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES } },
+      where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
     }),
         prisma.user.findMany({
       where: {

@@ -412,6 +412,9 @@ describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=
       expect((await read(management))[0]!._count).toEqual({comments:0,followUps:0});
       expect((await read(supervisor))[0]!._count).toEqual({comments:1,followUps:1});
       const query=queries.find(q=>q.query.includes('BoundedFollowUpSourceEntry'))!;
+      // The suite shares this synthetic DB and deletes fixtures between tests.
+      // Refresh estimates for this measured fixture, not earlier files' row counts.
+      await client.$executeRawUnsafe('ANALYZE "OperationalEntry", "FollowUp", "Task", "Alert", "Comment"');
       // Force expression compilation on this isolated connection only, so the
       // regression cannot hide behind warm plans or CI's table-statistics mix.
       await client.$executeRawUnsafe('SET jit_above_cost=0');

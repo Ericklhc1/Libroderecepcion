@@ -16,6 +16,8 @@ Compuerta 37661698954 falló únicamente por timeout de 30 s en el primer PDF re
 
 Cuarta revisión Codex sobre 32ac25b: corregidos los cinco P1 y el P2 adicionales. La migración aditiva 20261007183500 agrega una proyección de lectura del grafo nativo con alarmas, destinatarios, comentarios, HK, auditoría, notificaciones y señales históricas Fronti; las vistas y migraciones anteriores permanecen intactas, sin escrituras históricas. Alarmas comprueban rol/área vigente al leer, contar, crear y despachar; auditoría e historial filtran antes de paginar. Gerencia usa su propia área en indicadores/evidencias, Fronti en vencimientos y carga por responsable en el tablero. DERIVAR/organizar HK exige destino y responsable compatibles. Cinco nuevas regresiones PostgreSQL cubren las seis observaciones y conservación de evidencia. Suite focal: 78 pruebas/8 archivos, lint y tipos aprobados; verificación integral del nuevo árbol en curso. Compuerta 37665730785 sobre 32ac25b terminó íntegramente verde, incluidos recorridos de navegador. Se requiere nueva Compuerta y revisión para las correcciones posteriores.
 
+Verificación integral posterior detectó una fixture que agregaba un área sintética persistente y contaminaba el conteo del catálogo en install.test.ts. Se corrigió la fixture para usar ADMINISTRACION del catálogo existente, sin cambiar la prueba de instalación ni la política funcional. Se repite la verificación integral y la Compuerta sobre el árbol corregido.
+
 Git receive-pack devolvió 500; publicación equivalente mediante API, con árbol exacto comprobado y actualización fast-forward con expected_sha, sin force. Merge y verificación del sitio reservados al propietario.
 
 ## 2026-10-05 · Revisión focal Equipo del candidato b76e807

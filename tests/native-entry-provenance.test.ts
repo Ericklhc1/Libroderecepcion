@@ -35,7 +35,7 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
     management=await createUser({roleKey:ROLE_KEYS.MANAGEMENT});
     receptionArea=(await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}})).id;
-    const dept=await prisma.department.upsert({where:{key:'GERENCIA_TEST164'},create:{key:'GERENCIA_TEST164',name:'Gerencia sintética',active:true},update:{active:true}});
+    const dept=await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}});
     managementArea=dept.id;
     await prisma.user.update({where:{id:management.id},data:{departmentId:dept.id}});
     management.departmentId=dept.id;

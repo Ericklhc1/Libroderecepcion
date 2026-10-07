@@ -23,7 +23,6 @@ import {
   softDeleteEntry,
   updateEntry,
 } from '@/server/services/entries';
-import { ensureIncidentWorkflow } from '@/server/services/incident-workflow';
 import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
 
 function refreshOperationalViews(entryId?: string) {
@@ -48,8 +47,7 @@ export async function createEntryAction(
     const permission = input.type === EntryType.INCIDENCIA ? 'incident.create' : 'entry.create';
     const user = await requirePermission(permission);
 
-    const entry = await createEntry(user, input);
-    if (entry.type === EntryType.INCIDENCIA) await ensureIncidentWorkflow(entry.id);
+    const entry = await createEntry(user, input,{incidentWorkflow:true});
     await tryDeliverOperationalMail(`entry-created:${entry.id}`);
     refreshOperationalViews(entry.id);
     return {

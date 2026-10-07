@@ -1,4 +1,4 @@
-import { entryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
+import { entryReadWhere, housekeepingEntryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
 import {assertSubjectCanFinish} from './subject-completion';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
@@ -81,7 +81,7 @@ type EntryCreateInput = {
  * duplicados. Se exige gravedad para que una incidencia nunca quede sin
  * clasificar.
  */
-export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
+export async function createEntry(user: CurrentUser, input: EntryCreateInput, options:{incidentWorkflow?:boolean}={}) {
   if (input.ownerId) await assertAssignable(input.ownerId);
 
   if (input.type === EntryType.INCIDENCIA && !input.severity) {
@@ -155,6 +155,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
       },
       tx,
     );
+
+    if(options.incidentWorkflow&&created.type===EntryType.INCIDENCIA)await ensureIncidentWorkflow(created.id,tx);
 
     if (created.ownerId && created.ownerId !== user.id) {
       await notify(
@@ -278,7 +280,7 @@ export async function getEntry(id: string): Promise<EntryWithRelations> {
 
 /** Modelo de lectura del asunto: mantiene la reserva histórica antes de proyectar contexto. */
 export async function getSubjectEntry(user: EntryReader, id: string): Promise<EntryWithRelations> {
-  const native = await prisma.operationalEntry.findFirst({ where: { id, AND: [entryReadWhere(user)] }, include: entryInclude });
+  const native = await prisma.operationalEntry.findFirst({ where: { id, AND: [entryReadWhere(user)] }, include: {...entryInclude,housekeepingRequests:{...entryInclude.housekeepingRequests,where:{deletedAt:null,AND:[housekeepingEntryReadWhere(user)]}}} });
   if (!native) throw new NotFoundError('El registro no está visible para tu área.');
   const entry = {...native, housekeepingRequest:native.housekeepingRequests[0]??null};
   const housekeepingRequests=entry.housekeepingRequests.filter(work=>!work.isDemo||user.isSystemAdmin);

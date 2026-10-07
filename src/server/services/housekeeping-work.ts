@@ -1,4 +1,4 @@
-import { entryReadWhere, housekeepingEntryReadWhere, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
+import { entryReadWhere, housekeepingEntryReadWhere, assertHousekeepingWorkDestination, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import {sourceStakeholders,notifyNativeWork} from './work-notifications';
 import 'server-only';
@@ -147,6 +147,8 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     const permission = hkActionPermission(input.action, current.requiresInspection); await requireCapability(user, current.departmentId, permission, tx);
     if (permission === 'housekeeping.work' && current.assignedToId !== user.id) throw new ForbiddenError('Sólo puedes ejecutar tus trabajos asignados.');
     if ((permission === 'housekeeping.inspect') && current.assignedToId === user.id) throw new RuleError('La inspección debe realizarla otra persona.');
+    if(input.action==='REABRIR'&&current.assignedToId)await validateWorker(tx,current.departmentId,current.assignedToId,current.workDate??undefined);
+    if(['REABRIR','ASIGNAR'].includes(input.action))await assertHousekeepingWorkDestination(tx,user,input.action==='ASIGNAR'?{...current,assignedToId:input.assignedToId??null}:current);
     if (current.sourceEntryId) {
       await assertEntryVisibleForWrite(tx,user,current.sourceEntryId,true);
       current.sourceEntry = await tx.operationalEntry.findUnique({ where: { id: current.sourceEntryId }, select: { updatedAt: true, deletedAt: true,status:true } });
@@ -155,7 +157,7 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     const changed = !!current.acknowledgedAt && !!current.sourceEntry && current.sourceVersion?.getTime() !== current.sourceEntry.updatedAt.getTime();
     if (!hkAllowedActions(current.status, !!current.assignedToId, changed, current.requiresInspection).includes(input.action)) throw new RuleError(changed ? 'La instrucción cambió: el supervisor debe revisarla antes de continuar.' : 'Esta acción no corresponde al estado del trabajo.');
     if (current.sourceEntry?.deletedAt && input.action !== 'CANCELAR') throw new RuleError('El origen fue archivado. Revisa el caso y cancela con motivo.');
-    if (input.action === 'ASIGNAR') { if (!input.assignedToId) throw new RuleError('Selecciona un responsable.'); await validateWorker(tx, current.departmentId, input.assignedToId, current.workDate ?? undefined); if(current.sourceEntryId)await assertEntryWorkDestination(tx,current.sourceEntryId,current.departmentId,input.assignedToId); }
+    if (input.action === 'ASIGNAR') { if (!input.assignedToId) throw new RuleError('Selecciona un responsable.'); await validateWorker(tx, current.departmentId, input.assignedToId, current.workDate ?? undefined); }
     if (current.maintenanceEntryId && ['COMENZAR','RETOMAR','TERMINAR','RESOLVER','APROBAR'].includes(input.action)) {
       // Lock the dependency before the optimistic request update, as the native result publisher does.
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.maintenanceEntryId} FOR SHARE`;
@@ -325,7 +327,7 @@ export async function organizeLegacyHkWork(user:CurrentUser,input:{id:string;ver
     if(input.roomId&&!room||input.workKind==='LIMPIEZA'&&!room)throw new RuleError('Selecciona la habitación que requiere limpieza.');
     if(!room&&!current.location?.trim())throw new RuleError('Este aviso no tiene ubicación. Registra un trabajo nuevo con la zona e indica el folio de este aviso.');
     if(input.assignedToId)await validateWorker(tx,input.departmentId,input.assignedToId,input.workDate);
-    if(current.sourceEntryId){await assertEntryVisibleForWrite(tx,user,current.sourceEntryId,true);await assertEntryWorkDestination(tx,current.sourceEntryId,input.departmentId,input.assignedToId);}
+    await assertHousekeepingWorkDestination(tx,user,{...current,departmentId:input.departmentId,assignedToId:input.assignedToId??null});
     const result=await tx.housekeepingRequest.updateMany({where:{id:current.id,version:input.version,workflowVersion:0},data:{workflowVersion:1,departmentId:input.departmentId,workDate:input.workDate,workKind:input.workKind,roomId:room?.id,location:room?.number??current.location,effortMinutes:input.effortMinutes,requiresInspection:hkInspectionRequired(input.workKind,input.requiresInspection),assignedToId:input.assignedToId||null,workAssignedAt:input.assignedToId?new Date():null,status:'PENDIENTE',acknowledgedAt:null,sourceVersion:null,blockReason:null,resolution:null,version:{increment:1}}});
     if(!result.count)throw new RuleError('Otra persona organizó este aviso. Actualiza.');
     await tx.housekeepingEvent.create({data:{requestId:current.id,actorId:user.id,action:'ORGANIZAR',fromStatus:current.status,toStatus:'PENDIENTE',note:input.note}});await record(tx,user,current.id,current.humanId,'ORGANIZAR',input.note);return{id:current.id};

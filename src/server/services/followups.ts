@@ -481,7 +481,7 @@ export async function restoreFollowUp(
   if (!current) throw new NotFoundError('El seguimiento no está eliminado.');
   assertAuthorizedRevision(expectedRevision,{updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,scheduledAt:current.scheduledAt});
   return prisma.$transaction(async (tx) => {
-    if(['PENDIENTE','VENCIDO'].includes(current.status))await lockOpenSubjectForWork(tx,current);
+    if(['PENDIENTE','VENCIDO'].includes(current.status)){await assertDerivedFollowUpAccess(tx,user,current);await lockOpenSubjectForWork(tx,current);}
     const restored = await tx.followUp.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[followUpReadWhere(user,true)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },

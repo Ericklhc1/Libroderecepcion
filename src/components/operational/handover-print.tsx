@@ -32,7 +32,9 @@ export function HandoverPrint(props: HandoverPrintProps) {
   if(props.handoverStatus===HandoverStatus.BORRADOR)return null;
   const rows = handoverPrintRows(props.items);
   const counts = handoverPrintCounts(rows);
-  const cash = props.cash;
+  const received=props.handoverStatus===HandoverStatus.RECIBIDA;
+  const cash = {...props.cash,confirmed:received?props.cash.confirmed:null,discrepancies:received?props.cash.discrepancies:[]};
+  const receiver=received?props.receiver:null;
   const guaranteeCount = props.handoverStatus===HandoverStatus.RECIBIDA ? cash.confirmed ?? cash.declared : cash.declared ?? cash.confirmed;
   const guaranteesUnavailable=!guaranteeCount?.guaranteeSnapshotRecorded;
   const guarantees = guaranteeCount?.guaranteeSnapshotRecorded ? guaranteeCount.validatedGuarantees.map(g => ({
@@ -43,7 +45,7 @@ export function HandoverPrint(props: HandoverPrintProps) {
     <header className="handover-print-header">
       <strong>{props.title}</strong>
       <span>Entregan: {props.participants} · Emitida por {props.issuer}, {props.issuedAt}</span>
-      <span>{props.status} · {props.receiver ? `Receptor confirmado: ${props.receiver}, ${props.receivedAt ?? ''}` : 'Sin receptor confirmado'}</span>
+      <span>{props.status} · {receiver ? `Receptor confirmado: ${receiver}, ${props.receivedAt ?? ''}` : 'Sin receptor confirmado'}</span>
       <span className="handover-print-counts">Urgente {counts.urgente} · Importante {counts.importante} · Informativo {counts.informativo}</span>
     </header>
     <div className="handover-print-grid">
@@ -68,16 +70,16 @@ export function HandoverPrint(props: HandoverPrintProps) {
       </section>
       <section><h2>Elementos físicos</h2>
         <table><thead><tr><th>Elemento</th><th>Declarado</th><th>Confirmado</th></tr></thead>
-          <tbody>{cash.elements.map(e => <tr key={e.id}><td>{e.name}{e.notes ? ` · ${e.notes}` : ''}{e.missingReason ? ` · ${e.missingReason}` : ''}</td><td>{e.declared ? 'Sí' : 'No'}</td><td>{e.confirmed ? 'Sí' : 'Sin confirmar'}</td></tr>)}</tbody>
+          <tbody>{cash.elements.map(e => <tr key={e.id}><td>{e.name}{received&&e.notes ? ` · ${e.notes}` : ''}{received&&e.missingReason ? ` · ${e.missingReason}` : ''}</td><td>{e.declared ? 'Sí' : 'No'}</td><td>{received&&e.confirmed ? 'Sí' : 'Sin confirmar'}</td></tr>)}</tbody>
         </table>
       </section>
     </div>
     <ItemTable title="Novedades activas" rows={rows.filter(r => r.refType !== 'alert')} />
     <ItemTable title="Alertas operativas" rows={rows.filter(r => r.refType === 'alert')} />
     {props.notes ? <p>Nota de entrega: {props.notes}</p> : null}
-    {props.receiverObservations ? <p>Observaciones de recepción: {props.receiverObservations}</p> : null}
+    {received&&props.receiverObservations ? <p>Observaciones de recepción: {props.receiverObservations}</p> : null}
     <div className="handover-print-signatures">{[
-      ['Entrega', props.issuer], ['Recibe', props.receiver], ['Supervisión', props.supervisor],
+      ['Entrega', props.issuer], ['Recibe', receiver], ['Supervisión', props.supervisor],
     ].map(([label, name]) => <section key={label}><strong>{label}</strong><p>Nombre: {name ?? '________________________'}</p><p>Firma: ______________________________</p><p>Fecha / hora: ________________________</p></section>)}</div>
   </article>;
 }

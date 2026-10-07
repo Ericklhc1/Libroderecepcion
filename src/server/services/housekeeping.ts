@@ -1,4 +1,4 @@
-import { entryReadWhere, housekeepingEntryReadWhere, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
+import { entryReadWhere, housekeepingEntryReadWhere, assertHousekeepingWorkDestination, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import 'server-only';
 import { activeRuleOverrides } from './automation-policy-scope';
@@ -134,6 +134,7 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
   return prisma.$transaction(async (tx) => {
     const current = await tx.housekeepingRequest.findUnique({ where: { id: input.id }, include: { sourceEntry: { select: { updatedAt: true, deletedAt: true } } } });
     if (!current || (current.isDemo && user.roleKey !== 'ADMINISTRADOR_SISTEMA')) throw new NotFoundError();
+    if(['REABRIR','DERIVAR'].includes(input.action))await assertHousekeepingWorkDestination(tx,user,input.action==='DERIVAR'?{...current,departmentId:input.departmentId??null,assignedToId:input.assignedToId??null}:current);
     if (current.sourceEntryId) {
       // Freeze the exact source version during acknowledgement/transition.
       await assertEntryVisibleForWrite(tx,user,current.sourceEntryId,true);
@@ -151,10 +152,10 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
     if (transfer && !input.departmentId) throw new RuleError('Selecciona el área que recibirá el aviso.');
     if (transfer) {
       await validateDestination(tx, input.departmentId, input.assignedToId);
-      if(current.sourceEntryId)await assertEntryWorkDestination(tx,current.sourceEntryId,input.departmentId!,input.assignedToId);
     }
     const confirm = input.action === 'CONFIRMAR' || input.action === 'TOMAR';
     const reopen = input.action === 'REABRIR';
+    if(reopen){if(current.departmentId)await validateDestination(tx,current.departmentId,current.assignedToId??undefined);}
     const update = await tx.housekeepingRequest.updateMany({
       where: { id: current.id, version: input.version }, data: {
         status: next, version: { increment: 1 },

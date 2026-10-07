@@ -132,8 +132,12 @@ correspondiente para firma y fecha.
 
 La vista operativa de Novedades para Recepción contiene únicamente:
 - registros tipo `NOVEDAD` o `INCIDENCIA`;
-- creados por un recepcionista;
+- visibles para el área de Recepción, sin restringir el rol del autor (las
+  novedades de Supervisión también pueden incluirse);
 - todavía abiertos / en gestión.
+
+La entrega/impresión aplica además la selección «Incluir en entrega de Recepción».
+La visibilidad por área y esa selección son independientes y se auditan.
 
 Procesos internos, alertas técnicas y validaciones de cierre no deben mezclarse
 con Novedades. Los registros resueltos permanecen disponibles en Historial.

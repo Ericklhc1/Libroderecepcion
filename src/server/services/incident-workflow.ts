@@ -1,4 +1,5 @@
 import 'server-only';
+import {assertEntryWorkDestination} from './entry-visibility';
 import { EntryType, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
@@ -34,6 +35,11 @@ export async function ensureIncidentWorkflow(entryId: string, client?: Prisma.Tr
       where: { entryId: entry.id, deletedAt: null },
       select: { id: true },
     });
+    const followUp = await tx.followUp.findFirst({
+      where: { entryId: entry.id, deletedAt: null },
+      select: { id: true },
+    });
+    if(!task||!followUp)await assertEntryWorkDestination(tx,entry.id,entry.departmentId??'',ownerId??entry.createdById);
     const ensuredTask = task ?? await tx.task.create({
       data: {
         title: `Resolver incidencia: ${entry.title}`,
@@ -49,10 +55,6 @@ export async function ensureIncidentWorkflow(entryId: string, client?: Prisma.Tr
       select: { id: true },
     });
 
-    const followUp = await tx.followUp.findFirst({
-      where: { entryId: entry.id, deletedAt: null },
-      select: { id: true },
-    });
     if (!followUp) {
       await tx.followUp.create({
         data: {

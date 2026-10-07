@@ -1,4 +1,4 @@
-import {entryReadWhere} from './entry-visibility';
+import {entryReadWhere,assertEntryWorkDestination} from './entry-visibility';
 import {assertSubjectDistributionEnabled} from './subject-distribution-gate';
 import 'server-only';
 import {createHash} from 'node:crypto';
@@ -140,6 +140,7 @@ export async function decideAreaAttention(user:CurrentUser,input:{id:string;vers
       if(row.knownAt)return row;
       data={...data,knownAt:now,knownById:user.id};
     }else if(input.action==='REABRIR'){
+      await assertEntryWorkDestination(tx,row.entryId,row.departmentId,row.urgent?row.urgentContactId:null);
       if(row.task&&!['VALIDADA','COMPLETADA','CANCELADA'].includes(row.task.status)||row.housekeeping&&!['RESUELTO','CANCELADO'].includes(row.housekeeping.status)||!row.task&&!row.housekeeping&&row.status!=='INFORMADA')throw new RuleError('La intervención todavía está pendiente; continúa su atención vigente.');
       data={...data,status:'POR_REVISAR',knownAt:null,knownById:null,decisionAt:null,decidedById:null,decisionNote:`Nueva atención solicitada: ${note}`};
     }else if(responding){

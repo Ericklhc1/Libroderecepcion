@@ -570,11 +570,7 @@ export async function changeTaskStatus(
 
   return prisma.$transaction(async (tx) => {
     if(TASK_OPEN_STATUSES.includes(input.status)&&!TASK_OPEN_STATUSES.includes(current.status)) {
-      await lockEntrySourcesForRecord(tx,user,'task',current.id);
-      const participants=await tx.taskAssignment.findMany({where:{taskId:current.id,removedAt:null},select:{userId:true}});
-      const recipients=new Set([current.assigneeId,...participants.map(p=>p.userId)].filter((id):id is string=>!!id));
-      for(const id of recipients)await assertTaskAssignable(id,tx);
-      await assertTaskSourceRecipients(tx,recipients,{...current,status:input.status},true);
+      await assertTaskActivationRecipients(tx,user,{...current,status:input.status});
     }
     if(current.entryId){
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.entryId} FOR UPDATE`;
@@ -716,6 +712,14 @@ export async function softDeleteTask(
   });
 }
 
+async function assertTaskActivationRecipients(tx:Prisma.TransactionClient,user:CurrentUser,current:{id:string;status:TaskStatus;assigneeId:string|null;departmentId:string|null;entryId:string|null;alertId:string|null;followUpId:string|null}) {
+  await lockEntrySourcesForRecord(tx,user,'task',current.id);
+  const participants=await tx.taskAssignment.findMany({where:{taskId:current.id,removedAt:null},select:{userId:true}});
+  const recipients=new Set([current.assigneeId,...participants.map(p=>p.userId)].filter((id):id is string=>!!id));
+  for(const id of recipients)await assertTaskAssignable(id,tx);
+  await assertTaskSourceRecipients(tx,recipients,current,true);
+}
+
 export async function restoreTask(
   user: CurrentUser,
   input: { id: string; reason?: string | null },
@@ -727,7 +731,7 @@ export async function restoreTask(
   if (!current) throw new NotFoundError('La tarea no está eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
-    if(!['VALIDADA','COMPLETADA','CANCELADA'].includes(current.status))await lockOpenSubjectForWork(tx,current);
+    if(TASK_OPEN_STATUSES.includes(current.status)){await assertTaskActivationRecipients(tx,user,current);await lockOpenSubjectForWork(tx,current);}
     const restored = await tx.task.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },

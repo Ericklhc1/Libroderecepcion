@@ -74,12 +74,20 @@ export async function assertEntryOwnerVisibility(tx: Prisma.TransactionClient, i
 export function housekeepingEntryReadWhere(user: EntryReader): Prisma.HousekeepingRequestWhereInput {
   return {AND:[{OR:[{sourceEntryId:null},{sourceEntry:entryReadWhere(user)}]},{OR:[{maintenanceEntryId:null},{maintenanceEntry:entryReadWhere(user)}]}]};
 }
-export async function assertEntryWorkDestination(tx: Prisma.TransactionClient, sourceId: string, departmentId: string, assignedToId?: string|null) {
+export async function assertEntryWorkDestination(tx: Prisma.TransactionClient, sourceId: string, departmentId: string, assignedToId?: string|null, includeDeleted=false) {
   if(await tx.operationalEntry.count({where:{id:sourceId,hiddenFromDepartments:{some:{id:departmentId}}}}))throw new RuleError('La novedad está oculta al área de destino. Cambia su visibilidad antes de solicitar trabajo.');
   if(!assignedToId)return;
   const person=await tx.user.findFirst({where:{id:assignedToId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
   if(!person)throw new RuleError('El responsable no está disponible.');
-  await assertEntryVisibleForWrite(tx,{id:person.id,departmentId:person.departmentId,roleKey:person.role.key,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]},sourceId);
+  await assertEntryVisibleForWrite(tx,{id:person.id,departmentId:person.departmentId,roleKey:person.role.key,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]},sourceId,includeDeleted);
+}
+
+/** Native HK destination changes must preserve access through both entry sources. */
+export async function assertHousekeepingWorkDestination(tx:Prisma.TransactionClient,user:EntryReader,work:{sourceEntryId:string|null;maintenanceEntryId:string|null;departmentId:string|null;assignedToId:string|null}) {
+  for(const id of [...new Set([work.sourceEntryId,work.maintenanceEntryId].filter((id):id is string=>!!id))].sort()){
+    await assertEntryVisibleForWrite(tx,user,id,true);
+    await assertEntryWorkDestination(tx,id,work.departmentId??'',work.assignedToId,true);
+  }
 }
 
 /** A visibility change must not strand already assigned, still-active work.

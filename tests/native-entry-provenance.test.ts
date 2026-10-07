@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createUser, createShift, prisma, resetOperationalData, ROLE_KEYS, seedCatalog } from './helpers';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { createEntry, updateEntryVisibility } from '@/server/services/entries';
+import { createEntry, getSubjectEntry, updateEntryVisibility } from '@/server/services/entries';
 import { acknowledgeOperationalAlarm, cancelOperationalAlarm, createOperationalAlarm, countMyActiveOperationalAlarms, dispatchDueAlarmsForUser, listMyOperationalAlarms } from '@/server/services/operational-alarms';
 import { auditFollowUpReadWhere, followUpReadWhere, taskFollowUpReadWhere } from '@/server/services/followup-access';
 import { markReadableNotifications, notificationWhereForUser } from '@/server/services/notification-access';
@@ -15,7 +15,7 @@ import { deadlinesTool, roomTool } from '@/server/ai/reception-assistant';
 import { executeFrontiV2ReadTool } from '@/server/ai/fronti-v2/read-tools';
 import { changeHousekeepingRequest, createHousekeepingRequest } from '@/server/services/housekeeping';
 import { organizeLegacyHkWork } from '@/server/services/housekeeping-work';
-import {assertTaskSourceRecipients,assignTask,changeTaskStatus,createTask,updateTask} from '@/server/services/tasks';
+import {assertTaskSourceRecipients,assignTask,changeTaskStatus,createTask,updateTask,restoreTask} from '@/server/services/tasks';
 import {buildSupervisorReport} from '@/server/services/supervisor-reports';
 import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-tool';
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
@@ -23,8 +23,10 @@ import {getReservationOperationalContext,getReservationOperationalContextByCode,
 import {getRoomDetail} from '@/server/services/rooms';
 import {getMetrics,defaultRange} from '@/server/services/metrics';
 import {entryReadWhere,entryReadSql,housekeepingEntryReadWhere} from '@/server/services/entry-visibility';
-import {getAreaAttention,listAreaAttentions} from '@/server/services/subject-distribution';
+import {getAreaAttention,listAreaAttentions,decideAreaAttention} from '@/server/services/subject-distribution';
 import {Prisma} from '@prisma/client';
+import {restoreFollowUp} from '@/server/services/followups';
+import {changeHkWork} from '@/server/services/housekeeping-work';
 import { hotelDateKey } from '@/domain/time';
 
 let reception: CurrentUser, supervisor: CurrentUser, management: CurrentUser;
@@ -49,6 +51,86 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     managementArea=dept.id;
     await prisma.user.update({where:{id:management.id},data:{departmentId:dept.id}});
     management.departmentId=dept.id;
+  });
+
+
+  for(const kind of ['task-assignee','task-collaborator','task-department','followup-owner'] as const)it(`restaurar ${kind} revalida destinatarios sin alterar la evidencia al rechazar`,async()=>{
+    const e=await entry();const now=new Date();
+    const follow=kind==='followup-owner'?await prisma.followUp.create({data:{entryId:e.id,action:'Continuidad restaurable',ownerId:reception.id,createdById:supervisor.id,visibility:'OPERATIVO',deletedAt:now}}):null;
+    const task=follow?null:await prisma.task.create({data:{entryId:e.id,title:'Trabajo restaurable',createdById:supervisor.id,deletedAt:now,assigneeId:kind==='task-assignee'?reception.id:null,departmentId:kind==='task-department'?receptionArea:null,participants:kind==='task-collaborator'?{create:{userId:reception.id,assignedById:supervisor.id}}:undefined}});
+    const restore=()=>follow?restoreFollowUp(supervisor,{id:follow.id}):restoreTask(supervisor,{id:task!.id});
+    await hide(e.id,[receptionArea]);const audits=await prisma.auditLog.count();
+    await expect(restore()).rejects.toThrow(/origen|visible|oculta/);
+    expect(await prisma.auditLog.count()).toBe(audits);
+    expect(follow?await prisma.followUp.findUnique({where:{id:follow.id}}):await prisma.task.findUnique({where:{id:task!.id}})).toMatchObject({deletedAt:now,status:'PENDIENTE'});
+    await hide(e.id,[]);expect((await restore()).deletedAt).toBeNull();
+    expect(await prisma.auditLog.count({where:{entityId:follow?.id??task!.id,action:'RESTAURAR'}})).toBe(1);
+  });
+
+  for(const workflowVersion of [0,1])for(const hiddenOrigin of ['source','maintenance'] as const)it(`reabrir HK v${workflowVersion} protege el destino en ${hiddenOrigin}`,async()=>{
+    const sys=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const hk=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const source=await entry();const maintenance=await entry({title:'Dependencia de mantenimiento'});
+    const work=await prisma.housekeepingRequest.create({data:{requestKey:'reopen-hk-164',sourceEntryId:source.id,maintenanceEntryId:maintenance.id,workflowVersion,departmentId:hk.id,status:'RESUELTO',createdById:sys.id,title:'Atención sintética',description:'Instrucción',workKind:'ZONA_COMUN',workDate:hotelDateKey(new Date()),effortMinutes:15}});
+    const hidden=hiddenOrigin==='source'?source:maintenance;await hide(hidden.id,[hk.id]);const audits=await prisma.auditLog.count();
+    const reopen=()=>workflowVersion===1?changeHkWork(sys,{id:work.id,version:work.version,action:'REABRIR',note:'Reapertura sintética'}):changeHousekeepingRequest(sys,{id:work.id,version:work.version,action:'REABRIR',note:'Reapertura sintética'});
+    await expect(reopen()).rejects.toThrow(/oculta/);
+    expect(await prisma.housekeepingRequest.findUnique({where:{id:work.id}})).toMatchObject({status:'RESUELTO',version:work.version});expect(await prisma.auditLog.count()).toBe(audits);
+    await hide(hidden.id,[]);await reopen();expect(await prisma.housekeepingRequest.findUnique({where:{id:work.id}})).toMatchObject({status:'PENDIENTE',version:work.version+1});
+  });
+
+
+  it('reabrir HK revalida al responsable incluso cuando su área de destino sigue visible',async()=>{
+    const sys=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const hk=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});const worker=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});
+    await prisma.user.update({where:{id:worker.id},data:{departmentId:hk.id}});
+    await prisma.scheduleCollaborator.create({data:{employeeCode:`REOPEN-HK-${worker.id}`,name:'Colaborador sintético',functionName:'HK',userId:worker.id,memberships:{create:{departmentId:managementArea}}}});
+    const e=await entry();const work=await prisma.housekeepingRequest.create({data:{requestKey:'assigned-reopen-hk-164',sourceEntryId:e.id,departmentId:hk.id,assignedToId:worker.id,workflowVersion:1,status:'RESUELTO',createdById:sys.id,title:'Trabajo asignado',description:'Instrucción',workKind:'ZONA_COMUN',workDate:hotelDateKey(new Date()),effortMinutes:15}});
+    await hide(e.id,[managementArea]);const audits=await prisma.auditLog.count();
+    const reopen=()=>changeHkWork(sys,{id:work.id,version:work.version,action:'REABRIR',note:'Reapertura sintética'});
+    await expect(reopen()).rejects.toThrow();expect(await prisma.auditLog.count()).toBe(audits);expect(await prisma.housekeepingRequest.findUnique({where:{id:work.id}})).toMatchObject({status:'RESUELTO',version:work.version,assignedToId:worker.id});
+    await hide(e.id,[]);await reopen();expect(await prisma.housekeepingRequest.findUnique({where:{id:work.id}})).toMatchObject({status:'PENDIENTE',assignedToId:worker.id});
+  });
+
+
+  it('derivar un HK activo comprueba también la fuente de mantenimiento para el destino nuevo',async()=>{
+    const sys=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const hk=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});const source=await entry();const maintenance=await entry();
+    const work=await prisma.housekeepingRequest.create({data:{requestKey:'transfer-maintenance-164',sourceEntryId:source.id,maintenanceEntryId:maintenance.id,departmentId:hk.id,createdById:sys.id,location:'Zona sintética'}});
+    await hide(maintenance.id,[managementArea]);const audits=await prisma.auditLog.count();
+    await expect(changeHousekeepingRequest(sys,{id:work.id,version:work.version,action:'DERIVAR',departmentId:managementArea,note:'Derivación sintética'})).rejects.toThrow(/oculta/);
+    expect(await prisma.housekeepingRequest.findUnique({where:{id:work.id}})).toMatchObject({departmentId:hk.id,status:'PENDIENTE',version:work.version});expect(await prisma.auditLog.count()).toBe(audits);
+    await hide(maintenance.id,[]);await changeHousekeepingRequest(sys,{id:work.id,version:work.version,action:'DERIVAR',departmentId:managementArea,note:'Derivación sintética'});
+    expect(await prisma.housekeepingRequest.findUnique({where:{id:work.id}})).toMatchObject({departmentId:managementArea,version:work.version+1});
+  });
+
+  for(const contact of [false,true])it(`reabrir atención terminal revalida área y contacto urgente=${contact}`,async()=>{
+    const previous=process.env.AROH_SUBJECT_AREA_DISTRIBUTION_ENABLED;process.env.AROH_SUBJECT_AREA_DISTRIBUTION_ENABLED='true';
+    try{
+      const sys=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const hk=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});const e=await entry();
+      const attention=await prisma.subjectAreaAttention.create({data:{entryId:e.id,departmentId:hk.id,requestKey:'reopen-attention-164',createdById:supervisor.id,status:'INFORMADA',urgent:contact,urgentContactId:contact?reception.id:null}});
+      await hide(e.id,[contact?receptionArea:hk.id]);const audits=await prisma.auditLog.count();
+      const reopen=async()=>decideAreaAttention(sys,{id:attention.id,version:attention.version,sourceRevision:(await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}})).updatedAt.toISOString(),action:'REABRIR',note:'Reabrir atención'});
+      await expect(reopen()).rejects.toThrow(/oculta|visible/);
+      expect(await prisma.subjectAreaAttention.findUnique({where:{id:attention.id}})).toMatchObject({status:'INFORMADA',version:attention.version});expect(await prisma.auditLog.count()).toBe(audits);
+      await hide(e.id,[]);await reopen();expect(await prisma.subjectAreaAttention.findUnique({where:{id:attention.id}})).toMatchObject({status:'POR_REVISAR',version:attention.version+1});
+    }finally{if(previous===undefined)delete process.env.AROH_SUBJECT_AREA_DISTRIBUTION_ENABLED;else process.env.AROH_SUBJECT_AREA_DISTRIBUTION_ENABLED=previous;}
+  });
+
+  it('la ficha visible filtra atención HK con otro origen oculto y conserva el resultado histórico',async()=>{
+    const source=await entry({title:'Origen público'});const maintenance=await entry();
+    const work=await prisma.housekeepingRequest.create({data:{requestKey:'subject-hk-reader-164',sourceEntryId:source.id,maintenanceEntryId:maintenance.id,status:'RESUELTO',resolution:'MAINTENANCE_ONLY_SECRET',createdById:supervisor.id,inspectedById:supervisor.id}});
+    expect((await getSubjectEntry(management,source.id)).housekeepingRequest?.resolution).toBe('MAINTENANCE_ONLY_SECRET');
+    await hide(maintenance.id,[managementArea]);
+    const visible=await getSubjectEntry(management,source.id);expect(visible.title).toBe('Origen público');expect(visible.housekeepingRequests).toEqual([]);expect(visible.housekeepingRequest).toBeNull();expect(JSON.stringify(visible)).not.toContain('MAINTENANCE_ONLY_SECRET');
+    expect((await getSubjectEntry(supervisor,source.id)).housekeepingRequest?.resolution).toBe('MAINTENANCE_ONLY_SECRET');expect(await prisma.housekeepingRequest.findUnique({where:{id:work.id}})).toMatchObject({resolution:'MAINTENANCE_ONLY_SECRET',inspectedById:supervisor.id});
+  });
+
+  it('la incidencia automática valida destino bajo bloqueo y revierte novedad, hijos y auditoría juntos',async()=>{
+    const input={type:'INCIDENCIA' as const,title:'Incidencia automática sintética',description:'Contexto',priority:'MEDIA' as const,severity:'ALTA' as const,requiresFollowUp:false,tags:[],departmentId:managementArea,hiddenDepartmentIds:[managementArea]};
+    await expect(createEntry(supervisor,input,{incidentWorkflow:true})).rejects.toThrow(/oculta/);
+    expect(await prisma.operationalEntry.count()).toBe(0);expect(await prisma.task.count()).toBe(0);expect(await prisma.followUp.count()).toBe(0);expect(await prisma.auditLog.count()).toBe(0);
+    const source=await createEntry(supervisor,{...input,hiddenDepartmentIds:[]},{incidentWorkflow:true});
+    expect(await prisma.task.findFirst({where:{entryId:source.id}})).toMatchObject({departmentId:managementArea,assigneeId:supervisor.id,status:'PENDIENTE'});
+    expect(await prisma.followUp.findFirst({where:{entryId:source.id}})).toMatchObject({ownerId:supervisor.id,status:'PENDIENTE'});expect(await prisma.auditLog.count({where:{entityId:source.id,action:'CREAR'}})).toBe(1);
+    await expect(hide(source.id,[managementArea])).rejects.toThrow(/trabajo pendiente/);
   });
 
   it('una atención informada no revela el origen oculto a miembros de su área, incluido acceso directo y paginado',async()=>{

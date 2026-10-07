@@ -13,6 +13,21 @@ import ClosureReviewPage from '@/app/(app)/supervision/cierres/[id]/page';
 
 describe('cierre histórico: evidencia vigente en ficha, Centro y Fronti',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
+  it('un cierre archivado conserva la revisión obligatoria en Centro, ficha y Fronti hasta Validar',async()=>{
+    const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});auth.user=supervisor;
+    const shift=await createShift({userId:reception.id,type:'DIA'});
+    await prisma.shift.update({where:{id:shift.id},data:{status:'CERRADO',actualEnd:new Date(),closedById:reception.id}});
+    const archived=await prisma.shift.update({where:{id:shift.id},data:{archivedAt:new Date(),archivedById:supervisor.id}});
+    expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).toContain(shift.id);
+    expect(renderToStaticMarkup(await ClosureReviewPage({params:Promise.resolve({id:shift.id})}))).toContain('FORMULARIO_VALIDAR');
+    expect(await executeFrontiPageContextTool(supervisor,resolveFrontiPageContext({pathname:`/supervision/cierres/${shift.id}`}))).toMatchObject({snapshot:{pending:true}});
+    const observed=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'OBSERVADA',note:'Falta evidencia sintética',revision:archived.updatedAt.toISOString()});
+    expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).toContain(shift.id);
+    const validated=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'VALIDADA',note:'Evidencia sintética conforme',revision:observed.updatedAt.toISOString()});
+    expect(validated.archivedAt).toEqual(archived.archivedAt);
+    expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).not.toContain(shift.id);
+    expect(await prisma.auditLog.count({where:{entity:'Shift',entityId:shift.id,action:'CAMBIO_ESTADO'}})).toBe(2);
+  });
   for(const status of ['NUEVA','RESUELTA'] as const)it(`una alerta eliminada ${status} no habilita revisión ni acredita validación`,async()=>{
     const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});auth.user=supervisor;
     const shift=await createShift({userId:reception.id,type:'DIA'});

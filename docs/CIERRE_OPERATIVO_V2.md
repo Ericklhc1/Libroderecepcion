@@ -102,8 +102,10 @@ El recuento de Caja por sí solo no activa el turno entrante.
 
 ## Informe de Caja · entrega/recepción
 
-Después de que el entrante confirma la recepción se habilita la impresión del
-informe final de entrega/recepción.
+Desde que la entrega está enviada se habilita su impresión, aun sin receptor
+confirmado; el documento identifica explícitamente ese estado. Al confirmar la
+recepción, la impresión incorpora el recuento y la identidad del entrante. Un
+borrador todavía no se imprime.
 
 Debe identificar y dejar espacio de firma para:
 - **Recepcionista saliente**;

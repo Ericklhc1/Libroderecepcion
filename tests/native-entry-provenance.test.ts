@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createUser, prisma, resetOperationalData, ROLE_KEYS, seedCatalog } from './helpers';
+import { createUser, createShift, prisma, resetOperationalData, ROLE_KEYS, seedCatalog } from './helpers';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { createEntry, updateEntryVisibility } from '@/server/services/entries';
 import { createOperationalAlarm, countMyActiveOperationalAlarms, dispatchDueAlarmsForUser, listMyOperationalAlarms } from '@/server/services/operational-alarms';
@@ -138,8 +138,88 @@ describe('visibilidad por origen nativo · revisión AROH 1.64',()=>{
     await expect(changeHousekeepingRequest(sys,{id:request.id,version:request.version,action:'DERIVAR',departmentId:destination.id,note:'Derivación sintética'})).rejects.toThrow(/oculta/);
     expect(await prisma.housekeepingRequest.findUnique({where:{id:request.id}})).toMatchObject({departmentId:hk.id,version:request.version,workflowVersion:0});
     expect(await prisma.auditLog.count()).toBe(before);
-    await hide(e.id,[hk.id]);
+    await expect(hide(e.id,[hk.id])).rejects.toThrow(/trabajo pendiente/);
+    // Historical inconsistent fixture: the write guard must still reject its destination.
+    await prisma.operationalEntry.update({where:{id:e.id},data:{hiddenFromDepartments:{set:[{id:hk.id}]}}});
     await expect(organizeLegacyHkWork(sys,{id:request.id,version:request.version,departmentId:hk.id,workDate:hotelDateKey(new Date()),workKind:'ZONA_COMUN',effortMinutes:15,requiresInspection:false,note:'Organización sintética'})).rejects.toThrow(/oculta/);
     expect(await prisma.housekeepingRequest.findUnique({where:{id:request.id}})).toMatchObject({workflowVersion:0,version:request.version});
+  });
+});
+
+describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=>{
+  beforeAll(seedCatalog);
+  beforeEach(async()=>{
+    await resetOperationalData();reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});management=await createUser({roleKey:ROLE_KEYS.MANAGEMENT});
+    receptionArea=(await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}})).id;
+    managementArea=(await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}})).id;
+    await prisma.user.update({where:{id:management.id},data:{departmentId:managementArea}});management.departmentId=managementArea;
+  });
+
+  it('rechaza ocultar responsables activos de tareas indirectas, participantes y seguimientos; permite tras reasignar o finalizar',async()=>{
+    const e=await entry();const alert=await prisma.alert.create({data:{entryId:e.id,type:'OTRO',title:'Origen indirecto'}});
+    const task=await prisma.task.create({data:{alertId:alert.id,title:'Pendiente asignado',createdById:supervisor.id,assigneeId:reception.id}});
+    const participant=await prisma.taskAssignment.create({data:{taskId:task.id,userId:reception.id,assignedById:supervisor.id,role:'COLABORADOR'}});
+    const followUp=await prisma.followUp.create({data:{taskId:task.id,ownerId:reception.id,createdById:supervisor.id,action:'Pendiente vinculado'}});
+    const audits=await prisma.auditLog.count();
+    await expect(hide(e.id,[receptionArea])).rejects.toThrow(/responsable de trabajo pendiente/);
+    expect(await prisma.auditLog.count()).toBe(audits);
+    expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id},include:{hiddenFromDepartments:true}})).hiddenFromDepartments).toEqual([]);
+    await prisma.task.update({where:{id:task.id},data:{assigneeId:supervisor.id}});
+    await expect(hide(e.id,[receptionArea])).rejects.toThrow(/responsable de trabajo pendiente/);
+    await prisma.taskAssignment.update({where:{id:participant.id},data:{removedAt:new Date()}});
+    await expect(hide(e.id,[receptionArea])).rejects.toThrow(/responsable de trabajo pendiente/);
+    await prisma.followUp.update({where:{id:followUp.id},data:{status:'CUMPLIDO'}});
+    await prisma.task.update({where:{id:task.id},data:{departmentId:receptionArea}});
+    await expect(hide(e.id,[receptionArea])).rejects.toThrow(/trabajo pendiente vinculado para un área/);
+    await prisma.task.update({where:{id:task.id},data:{departmentId:null}});
+    await hide(e.id,[receptionArea]);
+    expect(await prisma.task.count({where:{id:task.id,AND:[taskFollowUpReadWhere(supervisor)]}})).toBe(1);
+    expect(await prisma.task.findUnique({where:{id:task.id}})).toMatchObject({assigneeId:supervisor.id,status:'PENDIENTE'});
+    expect(await prisma.followUp.findUnique({where:{id:followUp.id}})).toMatchObject({status:'CUMPLIDO'});
+  });
+
+  it('los comprobantes de distribución y la auditoría de atención heredan la visibilidad de su novedad sin hijos',async()=>{
+    const e=await entry();
+    const attention=await prisma.subjectAreaAttention.create({data:{entryId:e.id,departmentId:managementArea,requestKey:'native-attention-164',createdById:supervisor.id,status:'INFORMADA'}});
+    const audit=await prisma.auditLog.create({data:{entity:'SubjectAreaAttention',entityId:attention.id,userId:supervisor.id,action:'EDITAR',summary:'Atención confidencial',reason:'Motivo confidencial',after:{status:'INFORMADA',version:1,urgent:false,taskId:null,housekeepingId:null}}});
+    const receipt=await prisma.auditLog.create({data:{entity:'SubjectDistribution',entityId:'distribution:synthetic:164:receipt',userId:supervisor.id,action:'CREAR',summary:'Distribución confidencial',after:{attentionIds:[attention.id],departmentIds:[managementArea]}}});
+    await hide(e.id,[managementArea]);
+    expect(await prisma.auditLog.count({where:{id:{in:[audit.id,receipt.id]},AND:[auditFollowUpReadWhere(management)]}})).toBe(0);
+    expect(JSON.stringify((await executeFrontiV2ReadTool(management,'consultar_auditoria',{})).result)).not.toContain('confidencial');
+    expect(await prisma.auditLog.count({where:{id:{in:[audit.id,receipt.id]},AND:[auditFollowUpReadWhere(supervisor)]}})).toBe(2);
+    expect(await prisma.subjectAreaAttention.findUnique({where:{id:attention.id}})).not.toBeNull();
+  });
+
+  it('los comentarios directos de una entrada oculta se filtran antes del límite en el resumen de turno',async()=>{
+    const secret=await entry();const publicEntry=await entry({title:'Novedad pública'});
+    await addComment(supervisor,{entryId:secret.id,body:'COMENTARIO_CONFIDENCIAL_164'});
+    const visible=await addComment(supervisor,{entryId:publicEntry.id,body:'Comentario público'});
+    await hide(secret.id,[receptionArea]);
+    const {getShiftBriefing}=await import('@/server/services/shifts');
+    const shift=await createShift({userId:reception.id,type:'DIA'});
+    const briefing=await getShiftBriefing(reception,shift);
+    expect(briefing.comments.map(c=>c.id)).toEqual([visible.id]);
+    expect(JSON.stringify(briefing)).not.toContain('COMENTARIO_CONFIDENCIAL_164');
+    expect(await prisma.comment.count()).toBe(2);
+  });
+
+  it('una consulta Prisma de una tarea usa su índice y recorrido propio aun con miles de auditorías y avisos ajenos',async()=>{
+    const {PrismaClient}=await import('@prisma/client');
+    const e=await entry();const task=await prisma.task.create({data:{entryId:e.id,title:'Objetivo acotado',createdById:supervisor.id}});
+    await prisma.task.createMany({data:Array.from({length:800},(_,i)=>({title:`Ruido tarea ${i}`,createdById:supervisor.id}))});
+    await prisma.auditLog.createMany({data:Array.from({length:4000},(_,i)=>({entity:'User',entityId:supervisor.id,action:'EDITAR' as const,summary:`Ruido auditoría ${i}`}))});
+    await prisma.notification.createMany({data:Array.from({length:4000},(_,i)=>({userId:management.id,type:'ACTUALIZACION_OPERATIVA' as const,entity:'User',entityId:supervisor.id,title:`Ruido aviso ${i}`}))});
+    const queries:{query:string;params:string}[]=[];
+    const client=new PrismaClient({log:[{level:'query',emit:'event'}]});client.$on('query',q=>queries.push(q));
+    try {
+      expect(await client.task.findFirst({where:{id:task.id,AND:[taskFollowUpReadWhere(management)]},select:{id:true}})).toEqual({id:task.id});
+      const query=queries.find(q=>q.query.includes('ScopedTaskSourceEntry'))!;
+      const rows=await client.$queryRawUnsafe<Record<string,unknown>[]>(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.query}`,...JSON.parse(query.params));
+      const plan=(rows[0]!['QUERY PLAN'] as {Plan:Record<string,unknown>}[])[0]!.Plan;
+      const buffers=Number(plan['Shared Hit Blocks']??0)+Number(plan['Shared Read Blocks']??0);
+      // At most 2.4 MiB of reads: the unrelated history must not be a recursive seed.
+      expect(buffers).toBeLessThan(300);
+      expect(await client.scopedTaskSourceEntry.findMany({where:{taskId:task.id}})).toMatchObject([{taskId:task.id,entryId:e.id}]);
+    } finally { await client.$disconnect(); }
   });
 });

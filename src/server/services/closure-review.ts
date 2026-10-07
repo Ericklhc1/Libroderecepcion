@@ -15,7 +15,7 @@ export function legacyClosureAlertWhere(shiftId?:string): Prisma.AlertWhereInput
   return {deletedAt:null,dedupeKey:shiftId?`shift-validation:${shiftId}`:{startsWith:'shift-validation:'}};
 }
 export function closureReviewState(shift:{status:ShiftStatus;archivedAt:Date|null;closureReviewDecision:string|null;closureReviewRequestedAt:Date|null},legacy:{status:AlertStatus}|null) {
-  const pending=shift.status===ShiftStatus.CERRADO&&!shift.archivedAt&&shift.closureReviewDecision!=='VALIDADA'&&Boolean(shift.closureReviewRequestedAt||legacy&&legacy.status!==AlertStatus.RESUELTA);
+  const pending=shift.status===ShiftStatus.CERRADO&&shift.closureReviewDecision!=='VALIDADA'&&Boolean(shift.closureReviewRequestedAt||legacy&&legacy.status!==AlertStatus.RESUELTA);
   return {pending,decision:shift.closureReviewDecision??(legacy?.status===AlertStatus.RESUELTA?'VALIDADA (histórica)':pending?'Pendiente':'Sin solicitud vigente')};
 }
 
@@ -27,7 +27,7 @@ export async function listPendingClosureReviews(user: CurrentUser) {
     select: { dedupeKey: true },
   });
   return prisma.shift.findMany({
-    where: { status: ShiftStatus.CERRADO, archivedAt: null, ...(user.isSystemAdmin ? {} : { isDemo: false }),
+    where: { status: ShiftStatus.CERRADO, ...(user.isSystemAdmin ? {} : { isDemo: false }),
       AND: [
         { OR: [{ closureReviewDecision: null }, { closureReviewDecision: { not: 'VALIDADA' } }] },
         { OR: [{ closureReviewRequestedAt: { not: null } }, { id: { in: legacy.map(a => a.dedupeKey!.slice('shift-validation:'.length)) } }] },
@@ -46,7 +46,7 @@ export async function reviewShiftClosure(user: CurrentUser, input: { shiftId: st
     await tx.$queryRaw`SELECT "id" FROM "Shift" WHERE "id" = ${input.shiftId} FOR UPDATE`;
     const shift = await tx.shift.findUnique({ where: { id: input.shiftId } });
     if (!shift || (shift.isDemo && !user.isSystemAdmin)) throw new NotFoundError('El turno no existe.');
-    if (shift.status !== ShiftStatus.CERRADO || shift.archivedAt || shift.closureReviewDecision === 'VALIDADA') throw new RuleError('Este cierre no tiene una validación pendiente.');
+    if (shift.status !== ShiftStatus.CERRADO || shift.closureReviewDecision === 'VALIDADA') throw new RuleError('Este cierre no tiene una validación pendiente.');
     if (shift.updatedAt.toISOString() !== input.revision) throw new RuleError('El cierre cambió. Actualiza antes de decidir.');
     const legacy = shift.closureReviewRequestedAt ? null : await tx.alert.findFirst({ where: { ...legacyClosureAlertWhere(shift.id), status: { not: AlertStatus.RESUELTA } } });
     if (!shift.closureReviewRequestedAt && !legacy) throw new RuleError('Este cierre no tiene una validación pendiente.');

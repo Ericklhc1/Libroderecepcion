@@ -24,7 +24,7 @@ export default async function ClosureReviewPage({ params }: { params: Promise<{ 
         {shift.handoverOut ? <><p>Entrega: {shift.handoverOut.issuedBy.name} · Recibe: {shift.handoverOut.receivedBy?.name ?? 'Sin confirmar'}</p><Link className="inline-block font-semibold underline" href={`/turno/entrega/${shift.handoverOut.id}`}>Abrir entrega, Caja, garantías y custodia de este cierre</Link></> : <p>Sin entrega vinculada.</p>}
         <p>Revisión: {decision}</p>
         {shift.closureReviewNote ? <p>{shift.closureReviewNote}</p> : null}
-        {shift.status === 'CERRADO' && !shift.archivedAt && pending ? <ClosureReviewForm shiftId={id} revision={shift.updatedAt.toISOString()} /> : null}
+        {shift.status === 'CERRADO' && pending ? <ClosureReviewForm shiftId={id} revision={shift.updatedAt.toISOString()} /> : null}
       </div>
     </Card>
     <Card><CardHeader title="Auditoría del cierre" /><HistoryTimeline events={history} /></Card>

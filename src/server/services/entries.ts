@@ -1,4 +1,4 @@
-import { entryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, type EntryReader } from './entry-visibility';
+import { entryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
 import {assertSubjectCanFinish} from './subject-completion';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
@@ -637,6 +637,7 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     const ids = [...new Set(input.hiddenDepartmentIds)];
     if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, active: true } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
     await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
+    await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
     const updated = await tx.operationalEntry.update({ where: { id: input.id }, data: {
       includeInReceptionHandover: input.includeInReceptionHandover,
       hiddenFromDepartments: { set: ids.map(id => ({ id })) },

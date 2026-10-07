@@ -1398,6 +1398,12 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  scopedTaskOrigins ScopedTaskSourceEntry[]
+  scopedAlertOrigins ScopedAlertSourceEntry[]
+  scopedFollowUpOrigins ScopedFollowUpSourceEntry[]
+  scopedAlarmOrigins ScopedAlarmSourceEntry[]
+  scopedAuditOrigins ScopedAuditSourceEntry[]
+  scopedNotificationOrigins ScopedNotificationSourceEntry[]
   nativeTaskOrigins NativeTaskSourceEntry[]
   nativeAlertOrigins NativeAlertSourceEntry[]
   nativeFollowUpOrigins NativeFollowUpSourceEntry[]
@@ -1577,7 +1583,8 @@ model HousekeepingEvent {
 
 model Task {
   legacySourceEntries TaskSourceEntry[]
-  sourceEntries NativeTaskSourceEntry[]
+  previousSourceEntries NativeTaskSourceEntry[]
+  sourceEntries ScopedTaskSourceEntry[]
   areaAttention SubjectAreaAttention?
   sourceFollowUps TaskSourceFollowUp[]
   procedureOccurrenceKey String? @unique
@@ -1706,7 +1713,8 @@ model TaskChecklistItem {
 
 model FollowUp {
   legacySourceEntries FollowUpSourceEntry[]
-  sourceEntries NativeFollowUpSourceEntry[]
+  previousSourceEntries NativeFollowUpSourceEntry[]
+  sourceEntries ScopedFollowUpSourceEntry[]
   sourceFollowUps FollowUpSourceFollowUp[] @relation("derivedFollowUp")
   derivedFollowUps FollowUpSourceFollowUp[] @relation("originFollowUp")
   sourceNotifications NotificationSourceFollowUp[]
@@ -1769,7 +1777,8 @@ model FollowUp {
 
 model Alert {
   legacySourceEntries AlertSourceEntry[]
-  sourceEntries NativeAlertSourceEntry[]
+  previousSourceEntries NativeAlertSourceEntry[]
+  sourceEntries ScopedAlertSourceEntry[]
   sourceFollowUps AlertSourceFollowUp[]
   id           String      @id @default(cuid())
   humanId      Int         @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
@@ -2001,7 +2010,8 @@ model LostFoundEvent {
 // ========================= TRAZABILIDAD Y SISTEMA =========================
 
 model AuditLog {
-  sourceEntries NativeAuditSourceEntry[]
+  previousSourceEntries NativeAuditSourceEntry[]
+  sourceEntries ScopedAuditSourceEntry[]
   sourceFollowUps AuditSourceFollowUp[]
   id        String      @id @default(cuid())
   entity    String
@@ -2172,7 +2182,8 @@ model ChatMediaPreference {
 }
 
 model Notification {
-  sourceEntries NativeNotificationSourceEntry[]
+  previousSourceEntries NativeNotificationSourceEntry[]
+  sourceEntries ScopedNotificationSourceEntry[]
   deletedAt DateTime?
   deletedById String?
   deletionReason String?
@@ -2285,7 +2296,8 @@ model SupportRequestAttachment {
 }
 
 model OperationalAlarm {
-  sourceEntries NativeAlarmSourceEntry[]
+  previousSourceEntries NativeAlarmSourceEntry[]
+  sourceEntries ScopedAlarmSourceEntry[]
   sourceFollowUps AlarmSourceFollowUp[]
   id            String                 @id @default(cuid())
   kind          OperationalAlarmKind
@@ -3999,6 +4011,54 @@ view NativeAuditSourceEntry {
 }
 
 view NativeNotificationSourceEntry {
+  notificationId String
+  entryId String
+  source Notification @relation(fields: [notificationId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([notificationId, entryId])
+}
+
+view ScopedTaskSourceEntry {
+  taskId String
+  entryId String
+  source Task @relation(fields: [taskId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([taskId, entryId])
+}
+
+view ScopedAlertSourceEntry {
+  alertId String
+  entryId String
+  source Alert @relation(fields: [alertId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alertId, entryId])
+}
+
+view ScopedFollowUpSourceEntry {
+  followUpId String
+  entryId String
+  source FollowUp @relation(fields: [followUpId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([followUpId, entryId])
+}
+
+view ScopedAlarmSourceEntry {
+  alarmId String
+  entryId String
+  source OperationalAlarm @relation(fields: [alarmId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alarmId, entryId])
+}
+
+view ScopedAuditSourceEntry {
+  auditLogId String
+  entryId String
+  source AuditLog @relation(fields: [auditLogId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([auditLogId, entryId])
+}
+
+view ScopedNotificationSourceEntry {
   notificationId String
   entryId String
   source Notification @relation(fields: [notificationId], references: [id])

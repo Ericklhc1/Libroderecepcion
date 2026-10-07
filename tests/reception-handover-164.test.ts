@@ -24,8 +24,8 @@ import { alertReadWhere, followUpReadWhere } from '@/server/services/followup-ac
 import { createManualAlert } from '@/server/services/alerts';
 import { getShiftMetrics, getMetrics, defaultRange } from '@/server/services/metrics';
 import { getDashboardData } from '@/server/services/dashboard';
-import { createHkWork, getHkWorkday, saveHkHandover } from '@/server/services/housekeeping-work';
-import { createHousekeepingRequest, getHousekeepingBoard, searchHousekeepingRecords } from '@/server/services/housekeeping';
+import { createHkWork, getHkWorkday, saveHkHandover, changeHkWork } from '@/server/services/housekeeping-work';
+import { createHousekeepingRequest, getHousekeepingBoard, searchHousekeepingRecords, changeHousekeepingRequest } from '@/server/services/housekeeping';
 import { hotelDateKey } from '@/domain/time';
 import { entryCreateSchema } from '@/server/schemas';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -164,9 +164,9 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
 
   it('avisos derivados, contador y push ocultan todos los vínculos y preservan su evidencia',async()=>{
     const e=await notice(supervisor);
-    const t=await prisma.task.create({data:{title:'Tarea derivada oculta',createdById:supervisor.id,assigneeId:other.id,entryId:e.id}});
+    const t=await prisma.task.create({data:{title:'Tarea derivada oculta',createdById:supervisor.id,assigneeId:supervisor.id,entryId:e.id}});
     const a=await prisma.alert.create({data:{title:'Alerta derivada oculta',type:'OTRO',entryId:e.id}});
-    const f=await prisma.followUp.create({data:{action:'Seguimiento derivado oculto',createdById:supervisor.id,ownerId:other.id,entryId:e.id}});
+    const f=await prisma.followUp.create({data:{action:'Seguimiento derivado oculto',createdById:supervisor.id,ownerId:supervisor.id,entryId:e.id}});
     const notices=await Promise.all([['OperationalEntry',e.id],['Task',t.id],['Alert',a.id],['FollowUp',f.id]].map(([entity,entityId])=>prisma.notification.create({data:{userId:other.id,type:'ACCION_REQUERIDA',entity,entityId,title:'TEXTO_OCULTO'}})));
     const ordinary=await prisma.notification.create({data:{userId:other.id,type:'ACTUALIZACION_OPERATIVA',title:'Aviso visible'}});
     const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
@@ -201,6 +201,8 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
   it('los descendientes conservan el ocultamiento del origen en lectura, búsqueda y avisos',async()=>{
     const e=await notice(supervisor);const f=await createFollowUp(other,{entryId:e.id,action:'Fuente para descendiente'});
     const t=await createTask(other,{followUpId:f.id,title:'DESCENDIENTE_OCULTO',priority:'MEDIA',tags:[],checklist:[]});
+    // Reassign pending linked work before hiding its source from the former owner.
+    await prisma.followUp.update({where:{id:f.id},data:{ownerId:supervisor.id}});
     const n=await prisma.notification.create({data:{userId:other.id,type:'ACCION_REQUERIDA',entity:'Task',entityId:t.id,title:t.title}});
     const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
     const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});
@@ -262,7 +264,7 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
   it('protege toda la cadena nativa novedad → alerta → tarea → seguimiento → alerta y sus ciclos',async()=>{
     const e=await notice(supervisor);const a=await prisma.alert.create({data:{entryId:e.id,title:'CADENA_ORIGEN',type:'OTRO'}});
     const t=await prisma.task.create({data:{alertId:a.id,title:'CADENA_TAREA',createdById:supervisor.id}});
-    const f=await prisma.followUp.create({data:{taskId:t.id,action:'CADENA_SEGUIMIENTO',visibility:'OPERATIVO',ownerId:other.id,createdById:other.id}});
+    const f=await prisma.followUp.create({data:{taskId:t.id,action:'CADENA_SEGUIMIENTO',visibility:'OPERATIVO',ownerId:supervisor.id,createdById:other.id}});
     const tail=await prisma.alert.create({data:{followUpId:f.id,title:'CADENA_COLA',type:'OTRO'}});
     await prisma.task.update({where:{id:t.id},data:{followUpId:f.id}}); // Historical cycle must terminate.
     const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
@@ -318,6 +320,10 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     const legacy=await createHousekeepingRequest(admin,{requestKey:'aroh164-hk-legacy',sourceEntryId:legacyEntry.id,departmentId:area.id,priority:'MEDIA'});
     const photograph=await saveHkHandover(manager,{requestKey:'aroh164-hk-photo',departmentId:area.id,workDate:date,note:'Pendientes de prueba'});
     const before=JSON.stringify(photograph.snapshot);expect(before).toContain(e.title);expect(before).toContain(legacyEntry.title);
+    // Active destinations cannot be stranded; cancel through the native flows first.
+    await expect(updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true})).rejects.toThrow(/trabajo pendiente/);
+    await changeHkWork(admin,{id:work.id,version:work.version,action:'CANCELAR',note:'Caso sintético finalizado antes de ocultar'});
+    await changeHousekeepingRequest(admin,{id:legacy.id,version:legacy.version,action:'CANCELAR',note:'Caso sintético finalizado antes de ocultar'});
     for(const entry of [e,legacyEntry])await updateEntryVisibility(supervisor,{id:entry.id,revision:entry.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
     const day=await getHkWorkday(manager,{departmentId:area.id,date});expect(day.requests).toHaveLength(0);expect(day.total).toBe(0);expect(day.counts.active).toBe(0);
     expect(JSON.stringify(day.handovers)).not.toContain(e.title);expect(JSON.stringify(day.handovers)).not.toContain(legacyEntry.title);

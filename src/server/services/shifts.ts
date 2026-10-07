@@ -502,6 +502,7 @@ export async function getShiftBriefing(user: CurrentUser, shift: { id: string; d
 
   const comments = await prisma.comment.findMany({
     where: { deletedAt: null,AND:[
+      {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
       {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
       {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
       {OR:[{alertId:null},{alert:alertReadWhere(user)}]},

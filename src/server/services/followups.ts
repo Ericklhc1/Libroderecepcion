@@ -1,4 +1,4 @@
-import { entryReadWhere, assertEntryVisibleForWrite, type EntryReader } from './entry-visibility';
+import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, type EntryReader } from './entry-visibility';
 import {lockOpenSubjectForWork} from './subject-completion';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
@@ -37,6 +37,9 @@ export type FollowUpWithRelations = Prisma.FollowUpGetPayload<{
 
 async function assertDerivedFollowUpAccess(tx:Prisma.TransactionClient, user:CurrentUser, follow:{id:string;ownerId:string;visibility:SupervisionVisibility}, validateVisibility=true) {
   const sources=await tx.followUpSourceFollowUp.findMany({where:{descendantId:follow.id,followUpId:{not:follow.id}},select:{followUpId:true,followUp:{select:{visibility:true}}}});
+  await lockEntrySourcesForRecord(tx,user,'followup',follow.id);
+  const entryOwner=await tx.user.findFirst({where:{id:follow.ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
+  if(!entryOwner || !await tx.followUp.count({where:{id:follow.id,sourceEntries:{none:{entry:{NOT:entryReadWhere({id:entryOwner.id,departmentId:entryOwner.departmentId,roleKey:entryOwner.role.key,isSystemAdmin:entryOwner.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]})}}}}}))throw new RuleError('El responsable no puede acceder al origen de la novedad.');
   // Una continuidad sin otro seguimiento de origen mantiene su asignación nativa.
   if(sources.length===0)return;
   // A source reserve cannot change while its evidence is copied/assigned.
@@ -119,6 +122,9 @@ export async function createFollowUp(
   }
 
   return prisma.$transaction(async (tx) => {
+    if(taskId)await lockEntrySourcesForRecord(tx,user,'task',taskId);
+    if(input.sourceId && input.sourceEntity==='Alert')await lockEntrySourcesForRecord(tx,user,'alert',input.sourceId);
+    if(input.sourceId && input.sourceEntity==='FollowUp')await lockEntrySourcesForRecord(tx,user,'followup',input.sourceId);
     if(taskId) {
       const task=await tx.task.findFirst({where:{id:taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{entryId:true}});
       if(!task)throw new NotFoundError('La tarea asociada no existe.');

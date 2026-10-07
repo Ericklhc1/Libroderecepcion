@@ -4,7 +4,7 @@ import { createUser, createShift, openShiftAs, seedCatalog, resetOperationalData
 import { getShiftBriefing, prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift } from '@/server/services/shifts';
 import { listPendingClosureReviews, reviewShiftClosure } from '@/server/services/closure-review';
 import { getSupervisionData } from '@/server/services/supervision';
-import { createEntry, getSubjectEntry, updateEntryVisibility } from '@/server/services/entries';
+import { createEntry, getSubjectEntry, updateEntryVisibility, updateEntry } from '@/server/services/entries';
 import { buildHandoverSnapshot, visibleSnapshotItems } from '@/server/services/handover-snapshot';
 import { getBookItems } from '@/server/services/book';
 import { getCoordinationBoard } from '@/server/services/coordination';
@@ -19,6 +19,8 @@ import { markReadableNotifications } from '@/server/services/notification-access
 import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
 import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
 import { addComment } from '@/server/services/comments';
+import { lockEntrySourcesForRecord } from '@/server/services/entry-visibility';
+import { alertReadWhere, followUpReadWhere } from '@/server/services/followup-access';
 import { entryCreateSchema } from '@/server/schemas';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -249,6 +251,55 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     expect(await executeFrontiPageContextTool(supervisor,sp)).toMatchObject({snapshot:{found:true,id:shift.id,pending:true,href:`/supervision/cierres/${shift.id}`}});
     await expect(executeFrontiPageContextTool(reception,sp)).rejects.toThrow();
     expect(await executeFrontiPageContextTool(supervisor,resolveFrontiPageContext({pathname:'/supervision/cierres/no-existe'}))).toMatchObject({snapshot:{found:false}});
+  });
+
+  it('protege toda la cadena nativa novedad → alerta → tarea → seguimiento → alerta y sus ciclos',async()=>{
+    const e=await notice(supervisor);const a=await prisma.alert.create({data:{entryId:e.id,title:'CADENA_ORIGEN',type:'OTRO'}});
+    const t=await prisma.task.create({data:{alertId:a.id,title:'CADENA_TAREA',createdById:supervisor.id}});
+    const f=await prisma.followUp.create({data:{taskId:t.id,action:'CADENA_SEGUIMIENTO',visibility:'OPERATIVO',ownerId:other.id,createdById:other.id}});
+    const tail=await prisma.alert.create({data:{followUpId:f.id,title:'CADENA_COLA',type:'OTRO'}});
+    await prisma.task.update({where:{id:t.id},data:{followUpId:f.id}}); // Historical cycle must terminate.
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    await expect(getTask(t.id,other)).rejects.toThrow();
+    expect(await prisma.alert.count({where:{id:tail.id,AND:[alertReadWhere(other)]}})).toBe(0);
+    expect(await prisma.followUp.count({where:{id:f.id,AND:[followUpReadWhere(other)]}})).toBe(0);
+    const notifications=await Promise.all([['Task',t.id],['FollowUp',f.id],['Alert',tail.id]].map(([entity,entityId])=>prisma.notification.create({data:{userId:other.id,type:'ACCION_REQUERIDA',entity,entityId,title:'CADENA_AVISO'}})));
+    const feed=await getNotificationFeedForUser(other.id);
+    for(const n of notifications)expect(feed.items.map(i=>i.id)).not.toContain(n.id);
+    expect(await searchOperationalRecords(other,'CADENA')).toHaveLength(0);
+    const count=await prisma.comment.count();
+    for(const target of [{taskId:t.id},{followUpId:f.id},{alertId:tail.id}])await expect(addComment(other,{...target,body:'No debe escribir por vínculo indirecto'})).rejects.toThrow();
+    expect(await prisma.comment.count()).toBe(count);
+    expect(await prisma.task.findUnique({where:{id:t.id}})).not.toBeNull();
+    expect(await prisma.alert.count({where:{id:tail.id,AND:[alertReadWhere(supervisor)]}})).toBe(1);
+  });
+
+  it('la asignación y el cambio de visibilidad rechazan responsables que perderían acceso',async()=>{
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    await expect(notice(supervisor,{ownerId:other.id,hiddenDepartmentIds:[area.id]})).rejects.toThrow(/responsable no podrá ver/);
+    const hidden=await notice(supervisor,{hiddenDepartmentIds:[area.id]});
+    await expect(updateEntry(supervisor,{id:hidden.id,ownerId:other.id})).rejects.toThrow(/responsable no podrá ver/);
+    const assigned=await notice(supervisor,{ownerId:other.id});const auditCount=await prisma.auditLog.count();
+    await expect(updateEntryVisibility(supervisor,{id:assigned.id,revision:assigned.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true})).rejects.toThrow(/responsable no podrá ver/);
+    expect(await prisma.auditLog.count()).toBe(auditCount);
+    expect((await getSubjectEntry(other,assigned.id)).ownerId).toBe(other.id);
+    const own=await notice(other,{ownerId:other.id,hiddenDepartmentIds:[area.id]});
+    expect((await getSubjectEntry(other,own.id)).id).toBe(own.id);
+  });
+
+  it('la escritura derivada bloquea el origen y serializa un cambio concurrente de visibilidad',async()=>{
+    const e=await notice(supervisor);const a=await prisma.alert.create({data:{entryId:e.id,title:'Bloqueo de fuente',type:'OTRO'}});
+    const t=await prisma.task.create({data:{alertId:a.id,title:'Fuente derivada',createdById:supervisor.id}});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});let ready!:()=>void;const locked=new Promise<void>(resolve=>{ready=resolve;});
+    const write=prisma.$transaction(async tx=>{await lockEntrySourcesForRecord(tx,other,'task',t.id);ready();await gate;await tx.comment.create({data:{taskId:t.id,authorId:other.id,body:'Autorizado antes de ocultar'}});});
+    await locked;let completed=false;
+    const hide=updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true}).then(()=>{completed=true;});
+    try{await new Promise(resolve=>setTimeout(resolve,60));expect(completed).toBe(false);}finally{release();}
+    await Promise.all([write,hide]);
+    await expect(addComment(other,{taskId:t.id,body:'Después de ocultar'})).rejects.toThrow();
+    expect(await prisma.comment.count({where:{taskId:t.id}})).toBe(1);
   });
 
   it('la creación rechaza áreas inexistentes y booleanos inválidos',async()=>{

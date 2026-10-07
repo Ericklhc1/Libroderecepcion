@@ -1398,6 +1398,9 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  taskSourceRows TaskSourceEntry[]
+  alertSourceRows AlertSourceEntry[]
+  followUpSourceRows FollowUpSourceEntry[]
   includeInReceptionHandover Boolean @default(true)
   hiddenFromDepartments Department[] @relation("EntryHiddenAreas")
   workAssignedAt DateTime?
@@ -1567,6 +1570,7 @@ model HousekeepingEvent {
 }
 
 model Task {
+  sourceEntries TaskSourceEntry[]
   areaAttention SubjectAreaAttention?
   sourceFollowUps TaskSourceFollowUp[]
   procedureOccurrenceKey String? @unique
@@ -1694,6 +1698,7 @@ model TaskChecklistItem {
 }
 
 model FollowUp {
+  sourceEntries FollowUpSourceEntry[]
   sourceFollowUps FollowUpSourceFollowUp[] @relation("derivedFollowUp")
   derivedFollowUps FollowUpSourceFollowUp[] @relation("originFollowUp")
   sourceNotifications NotificationSourceFollowUp[]
@@ -1755,6 +1760,7 @@ model FollowUp {
 }
 
 model Alert {
+  sourceEntries AlertSourceEntry[]
   sourceFollowUps AlertSourceFollowUp[]
   id           String      @id @default(cuid())
   humanId      Int         @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
@@ -3915,4 +3921,27 @@ model SubjectAreaAttention {
   @@unique([entryId, departmentId])
   @@index([departmentId, status])
   @@index([urgentContactId])
+}
+
+// Read-only entry provenance over the same native source edges, including cycles.
+view TaskSourceEntry {
+  taskId String
+  entryId String
+  task Task @relation(fields: [taskId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([taskId, entryId])
+}
+view AlertSourceEntry {
+  alertId String
+  entryId String
+  alert Alert @relation(fields: [alertId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alertId, entryId])
+}
+view FollowUpSourceEntry {
+  followUpId String
+  entryId String
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([followUpId, entryId])
 }

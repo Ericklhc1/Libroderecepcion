@@ -43,8 +43,8 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
   const receptionEntries=new Set(entries.map(e=>e.id));
   const closureAlerts=await db.alert.findMany({where:{id:{in:ids('alert')},...closureValidationAlertWhere},select:{id:true}});
   const [hiddenAlerts,hiddenFollowUps]=shared?await Promise.all([
-    db.alert.findMany({where:{id:{in:ids('alert')},entryId:{not:null},entry:{NOT:receptionHandoverEntryWhere}},select:{id:true}}),
-    db.followUp.findMany({where:{id:{in:ids('followup')},entryId:{not:null},entry:{NOT:receptionHandoverEntryWhere}},select:{id:true}}),
+    db.alert.findMany({where:{id:{in:ids('alert')},sourceEntries:{some:{entry:{NOT:receptionHandoverEntryWhere}}}},select:{id:true}}),
+    db.followUp.findMany({where:{id:{in:ids('followup')},sourceEntries:{some:{entry:{NOT:receptionHandoverEntryWhere}}}},select:{id:true}}),
   ]):[[],[]];
   const excludedAlerts=new Set([...closureAlerts,...hiddenAlerts].map(a=>a.id));
   const excludedFollowUps=new Set(hiddenFollowUps.map(f=>f.id));

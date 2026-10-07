@@ -1,4 +1,4 @@
-import { entryReadWhere, canManageEntryVisibility, type EntryReader } from './entry-visibility';
+import { entryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, type EntryReader } from './entry-visibility';
 import {assertSubjectCanFinish} from './subject-completion';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
@@ -101,6 +101,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
   const entry = await prisma.$transaction(async (tx) => {
     const hiddenIds = [...new Set(input.hiddenDepartmentIds ?? [])];
     if (hiddenIds.length > 100 || await tx.department.count({ where: { id: { in: hiddenIds }, active: true } }) !== hiddenIds.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
+    await assertEntryOwnerVisibility(tx,{ownerId:input.ownerId,createdById:user.id,hiddenDepartmentIds:hiddenIds});
     const created = await tx.operationalEntry.create({
       data: {
         includeInReceptionHandover: input.includeInReceptionHandover ?? true,
@@ -298,6 +299,7 @@ export async function updateEntry(
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
     const current = await tx.operationalEntry.findFirst({
       where: { id: input.id, deletedAt: null, AND: [entryReadWhere(user)] },
+      include:{hiddenFromDepartments:{select:{id:true}}},
     });
     if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
     assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
@@ -307,7 +309,10 @@ export async function updateEntry(
     if (current.type === EntryType.INCIDENCIA && input.severity === null) {
       throw new RuleError('La incidencia requiere indicar su gravedad.');
     }
-    if (input.ownerId) await assertAssignable(input.ownerId);
+    if (input.ownerId) {
+      await assertAssignable(input.ownerId);
+      await assertEntryOwnerVisibility(tx,{ownerId:input.ownerId,createdById:current.createdById,hiddenDepartmentIds:current.hiddenFromDepartments.map(d=>d.id)});
+    }
     if (input.roomId) {
       const room = await prisma.room.findFirst({
         where: { id: input.roomId, active: true },
@@ -631,6 +636,7 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     if (current.updatedAt.toISOString() !== input.revision) throw new RuleError('La novedad cambió. Actualiza antes de guardar.');
     const ids = [...new Set(input.hiddenDepartmentIds)];
     if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, active: true } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
+    await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
     const updated = await tx.operationalEntry.update({ where: { id: input.id }, data: {
       includeInReceptionHandover: input.includeInReceptionHandover,
       hiddenFromDepartments: { set: ids.map(id => ({ id })) },

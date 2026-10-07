@@ -1,7 +1,7 @@
 import 'server-only';
 import { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
-import { NotFoundError } from '@/server/errors';
+import { NotFoundError, RuleError } from '@/server/errors';
 import { isReceptionDeskRole } from '@/lib/permissions';
 
 export type EntryReader = Pick<CurrentUser, 'id' | 'permissions' | 'isSystemAdmin'> & Partial<Pick<CurrentUser, 'departmentId' | 'roleKey'>>;
@@ -49,4 +49,20 @@ export function entryReadSql(user: EntryReader) {
 export async function assertEntryVisibleForWrite(tx: Prisma.TransactionClient, user: EntryReader, id: string) {
   await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${id} FOR UPDATE`;
   if (!await tx.operationalEntry.count({where:{id,deletedAt:null,AND:[entryReadWhere(user)]}})) throw new NotFoundError('El registro de origen no está visible para tu área.');
+}
+
+/** Locks every native ancestor before authorizing a derived mutation. */
+export async function lockEntrySourcesForRecord(tx: Prisma.TransactionClient, user: EntryReader, kind: 'task'|'alert'|'followup', id: string) {
+  const rows=await tx.$queryRaw<{id:string}[]>`SELECT e.id FROM "OperationalEntry" e WHERE e.id IN (SELECT "entryId" FROM "OperationalSourceEntry" WHERE kind=${kind} AND id=${id}) ORDER BY e.id FOR UPDATE`;
+  if(rows.length && await tx.operationalEntry.count({where:{id:{in:rows.map(r=>r.id)},AND:[entryReadWhere(user)]}})!==rows.length) throw new NotFoundError('El registro de origen no está visible para tu área.');
+}
+
+/** Assignment must remain usable under the proposed area visibility. */
+export async function assertEntryOwnerVisibility(tx: Prisma.TransactionClient, input: {ownerId?:string|null;createdById:string;hiddenDepartmentIds:string[]}) {
+  if(!input.ownerId)return;
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id=${input.ownerId} FOR SHARE`;
+  const owner=await tx.user.findFirst({where:{id:input.ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
+  if(!owner)throw new RuleError('El responsable no está disponible.');
+  if(owner.id===input.createdById || ['SUPERVISOR','ADMINISTRADOR_SISTEMA'].includes(owner.role.key))return;
+  if(await tx.department.count({where:{id:{in:input.hiddenDepartmentIds},OR:[{id:owner.departmentId??''},{users:{some:{id:owner.id}}},...(isReceptionDeskRole(owner.role.key)?[{key:'RECEPCION'}]:[])]}}))throw new RuleError('El responsable no podrá ver la novedad. Reasigna o quita al responsable antes de ocultarla a su área.');
 }

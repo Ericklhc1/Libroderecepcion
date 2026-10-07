@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { chromium } from 'playwright-core';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { HandoverPrint } from '@/components/operational/handover-print';
-import { handoverPrintRows, handoverPrintCounts } from '@/domain/handover-print';
+import { handoverPrintRows, handoverPrintCounts, closurePrintValidation } from '@/domain/handover-print';
 import { handover02Fixture, confirmedHandover02Fixture } from './fixtures/handover-02-10';
 
 const css = readFileSync('src/app/globals.css', 'utf8');
@@ -22,6 +22,19 @@ describe('impresión de entrega 02-10-2026', () => {
     const fixture=handover02Fixture(); fixture.cash.cashGuarantees=[];
     const html=renderToStaticMarkup(<HandoverPrint {...fixture} />);
     expect(html).toContain('7542392'); expect(html).toContain('7541967'); expect(html).toContain('Garantía hab 628');
+  });
+
+  it('una reimpresión sin fotografía no sustituye garantías históricas por actuales',()=>{
+    const fixture=handover02Fixture();fixture.cash.declared!.guaranteeSnapshotRecorded=false;
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture} />);
+    expect(html).toContain('Fotografía histórica de garantías no disponible');
+    expect(html).not.toContain('7542392');expect(html).not.toContain('7541967');
+  });
+  it('observar un cierre histórico elimina la firma heredada de validación',()=>{
+    const legacy={name:'Firma antigua'};const current={name:'Firma nueva'};
+    expect(closurePrintValidation('OBSERVADA',current,legacy)).toBeNull();
+    expect(closurePrintValidation('VALIDADA',current,legacy)).toEqual(current);
+    expect(closurePrintValidation(null,current,legacy)).toEqual(legacy);
   });
 
   for (const confirmed of [false, true]) it(`PDF real ${confirmed ? 'recibido' : 'enviado'}: A4 horizontal, ≤2 páginas, todos los registros y firmas`, async () => {

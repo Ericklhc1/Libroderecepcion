@@ -31,9 +31,10 @@ export function HandoverPrint(props: HandoverPrintProps) {
   const counts = handoverPrintCounts(rows);
   const cash = props.cash;
   const guaranteeCount = cash.declared ?? cash.confirmed;
+  const guaranteesUnavailable=!guaranteeCount?.guaranteeSnapshotRecorded;
   const guarantees = guaranteeCount?.guaranteeSnapshotRecorded ? guaranteeCount.validatedGuarantees.map(g => ({
     ...g, humanId:g.humanId, amount:fromMinor(g.amountMinor,g.currency), dueAt:g.dueAt ? new Date(g.dueAt) : null,
-  })) : cash.cashGuarantees;
+  })) : [];
   const currencies = [...new Set(['CLP', 'USD', ...(cash.declared?.statuses ?? []).map(s => s.currency), ...(cash.confirmed?.statuses ?? []).map(s => s.currency)])];
   return <article className="handover-print" aria-label="Entrega de turno para imprimir">
     <header className="handover-print-header">
@@ -44,7 +45,6 @@ export function HandoverPrint(props: HandoverPrintProps) {
     </header>
     <div className="handover-print-grid">
       <section><h2>Caja del turno · entrega vs recibe</h2>
-        <p>Fondo fijo: {cash.funds.map(f => `${f.currency} ${f.amount.toLocaleString('es-CL')}`).join(' · ')}</p>
         {cash.declared ? <p>Entrega #{cash.declared.humanId} · {cash.declared.countedByName} · {formatDateTime(cash.declared.countedAt)}</p> : null}
         <table><thead><tr><th></th><th colSpan={3}>Entrega (declarado)</th><th colSpan={2}>Recibe (confirmado)</th></tr>
           <tr><th></th><th>Contado</th><th>Esperado</th><th>Dif.</th><th>Contado</th><th>Dif.</th></tr></thead>
@@ -60,7 +60,7 @@ export function HandoverPrint(props: HandoverPrintProps) {
       </section>
       <section><h2>Garantías en efectivo bajo custodia</h2>
         <table><thead><tr><th>Huésped</th><th>Hab.</th><th>ID</th><th>Objetivo</th><th>Monto</th></tr></thead>
-          <tbody>{guarantees.length ? guarantees.map(g => <tr key={g.id}><td>{g.guestName ?? '—'}</td><td>{g.roomNumber ?? '—'}</td><td>{g.reference ?? (g.humanId ? `#${g.humanId}` : g.id)}</td><td>{g.dueAt ? formatDateTime(g.dueAt) : '—'}</td><td>{g.currency} {g.amount.toLocaleString('es-CL')}</td></tr>) : <tr><td colSpan={5}>Sin garantías en efectivo.</td></tr>}</tbody>
+          <tbody>{guarantees.length ? guarantees.map(g => <tr key={g.id}><td>{g.guestName ?? '—'}</td><td>{g.roomNumber ?? '—'}</td><td>{g.reference ?? (g.humanId ? `#${g.humanId}` : g.id)}</td><td>{g.dueAt ? formatDateTime(g.dueAt) : '—'}</td><td>{g.currency} {g.amount.toLocaleString('es-CL')}</td></tr>) : <tr><td colSpan={5}>{guaranteesUnavailable?'Fotografía histórica de garantías no disponible.':'Sin garantías en efectivo.'}</td></tr>}</tbody>
         </table>
       </section>
       <section><h2>Elementos físicos</h2>

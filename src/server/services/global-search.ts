@@ -156,9 +156,7 @@ export async function searchOperationalRecords(
       AND NOT EXISTS (
         SELECT 1 FROM hidden_entries hidden WHERE
           ("entityType"='OperationalEntry' AND hidden.id="HumanOperationalRecord"."entityId") OR
-          ("entityType"='Task' AND EXISTS (SELECT 1 FROM "Task" t WHERE t.id="HumanOperationalRecord"."entityId" AND t."entryId"=hidden.id)) OR
-          ("entityType"='Alert' AND EXISTS (SELECT 1 FROM "Alert" a WHERE a.id="HumanOperationalRecord"."entityId" AND a."entryId"=hidden.id)) OR
-          ("entityType"='FollowUp' AND EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id="HumanOperationalRecord"."entityId" AND f."entryId"=hidden.id))
+          EXISTS (SELECT 1 FROM "OperationalSourceEntry" origin WHERE origin.kind=lower("HumanOperationalRecord"."entityType") AND origin.id="HumanOperationalRecord"."entityId" AND origin."entryId"=hidden.id)
       )
       AND NOT ("entityType"='Task' AND EXISTS (SELECT 1 FROM "Task" t JOIN "Alert" a ON a.id=t."alertId" WHERE t.id="HumanOperationalRecord"."entityId" AND a."dedupeKey" LIKE 'shift-validation:%'))
       AND ${user.isSystemAdmin || user.permissions.includes('supervision.center.view') ? Prisma.sql`TRUE` : Prisma.sql`NOT ("entityType"='Alert' AND EXISTS (SELECT 1 FROM "Alert" a WHERE a.id="HumanOperationalRecord"."entityId" AND a."dedupeKey" LIKE 'shift-validation:%'))`}

@@ -26,3 +26,8 @@ export function handoverPrintRows(items: PrintItem[]) {
 export function handoverPrintCounts(rows: ReturnType<typeof handoverPrintRows>) {
   return { urgente: rows.filter(r => r.level === 'URGENTE').reduce((n, r) => n + r.count, 0), importante: rows.filter(r => r.level === 'IMPORTANTE').reduce((n, r) => n + r.count, 0), informativo: rows.filter(r => r.level === 'INFORMATIVO').reduce((n, r) => n + r.count, 0) };
 }
+
+/** A new-model observation never inherits validation from a historical signal. */
+export function closurePrintValidation<T>(decision: string | null, current: T, legacy: T | null): T | null {
+  return decision === 'VALIDADA' ? current : decision === null ? legacy : null;
+}

@@ -1,3 +1,4 @@
+import { closurePrintValidation } from '@/domain/handover-print';
 import { HandoverPrint } from '@/components/operational/handover-print';
 import { ClosureReviewLink } from '@/components/supervision/closure-review-form';
 import { ClearHandoverDrafts } from '@/components/operational/form-draft-session';
@@ -95,7 +96,7 @@ export default async function HandoverPage({
     }),
     handover.fromShift.closureReviewedById ? prisma.user.findUnique({where:{id:handover.fromShift.closureReviewedById},select:{name:true}}) : Promise.resolve(null),
   ]);
-  const closureValidation = handover.fromShift.closureReviewDecision === 'VALIDADA' ? {resolvedBy:closureReviewer,resolvedAt:handover.fromShift.closureReviewedAt} : legacyValidation;
+  const closureValidation = closurePrintValidation(handover.fromShift.closureReviewDecision,{status:'RESUELTA' as const,resolvedBy:closureReviewer,resolvedAt:handover.fromShift.closureReviewedAt},legacyValidation);
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
   const linkedReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;

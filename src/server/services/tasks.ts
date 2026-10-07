@@ -1,4 +1,4 @@
-import { entryReadWhere, assertEntryVisibleForWrite, type EntryReader } from './entry-visibility';
+import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, type EntryReader } from './entry-visibility';
 import {lockOpenSubjectForWork} from './subject-completion';
 import {assertTaskAssignable} from './task-assignment-access';
 import {notifyUnassignedTask,notifyNativeWork,sourceStakeholders} from './work-notifications';
@@ -176,6 +176,8 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
+    if(input.alertId)await lockEntrySourcesForRecord(tx,user,'alert',input.alertId);
+    if(input.followUpId)await lockEntrySourcesForRecord(tx,user,'followup',input.followUpId);
     if(input.entryId){
       await assertEntryVisibleForWrite(tx,user,input.entryId);
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;

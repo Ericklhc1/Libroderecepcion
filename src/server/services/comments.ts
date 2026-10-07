@@ -1,4 +1,4 @@
-import { entryReadWhere } from './entry-visibility';
+import { entryReadWhere, assertEntryVisibleForWrite } from './entry-visibility';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import { AuditAction, NotificationType } from '@prisma/client';
@@ -80,6 +80,7 @@ export async function addComment(
   let link = '/';
 
   if (input.entryId) {
+    await assertEntryVisibleForWrite(tx,user,input.entryId);
     const entry = await tx.operationalEntry.findFirst({
       where: { id: input.entryId, deletedAt: null, AND:[entryReadWhere(user)] },
       select: { id: true, humanId: true, title: true, createdById: true, ownerId: true },

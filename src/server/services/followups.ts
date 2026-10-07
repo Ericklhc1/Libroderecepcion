@@ -1,3 +1,4 @@
+import { entryReadWhere, assertEntryVisibleForWrite, type EntryReader } from './entry-visibility';
 import {lockOpenSubjectForWork} from './subject-completion';
 import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
@@ -75,6 +76,7 @@ export async function createFollowUp(
     sourceId?: string | null;
   },
 ) {
+  const entryId=input.entryId ?? (input.sourceEntity==='OperationalEntry'?input.sourceId:null);
   const supervisionShift = await prisma.supervisionShift.findFirst({
     where: { supervisorId: user.id, status: 'ACTIVO' },
     select: { id: true },
@@ -105,7 +107,7 @@ export async function createFollowUp(
 
   if (input.entryId) {
     const entry = await prisma.operationalEntry.count({
-      where: { id: input.entryId, deletedAt: null },
+      where: { id: input.entryId, deletedAt: null,AND:[entryReadWhere(user)] },
     });
     if (entry === 0) throw new NotFoundError('El registro asociado no existe.');
   }
@@ -115,10 +117,18 @@ export async function createFollowUp(
   }
 
   return prisma.$transaction(async (tx) => {
-    await lockOpenSubjectForWork(tx,input);
+    await lockOpenSubjectForWork(tx,{...input,entryId});
+    if(entryId) {
+      await assertEntryVisibleForWrite(tx,user,entryId);
+      const owner=await tx.user.findFirst({where:{id:ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
+      if(!owner) throw new NotFoundError('El responsable no existe.');
+      const reader:EntryReader={id:owner.id,departmentId:owner.departmentId,roleKey:owner.role.key,isSystemAdmin:owner.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]};
+      await assertEntryVisibleForWrite(tx,reader,entryId);
+    }
+    if(input.taskId && !await tx.task.count({where:{id:input.taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]}})) throw new NotFoundError('La tarea asociada no existe.');
     const created = await tx.followUp.create({
       data: {
-        entryId: input.entryId ?? null,
+        entryId: entryId ?? null,
         taskId: input.taskId ?? null,
         action: input.action,
         result: input.result ?? null,

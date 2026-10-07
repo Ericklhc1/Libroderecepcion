@@ -42,6 +42,7 @@ export async function reviewShiftClosure(user: CurrentUser, input: { shiftId: st
     const legacy = shift.closureReviewRequestedAt ? null : await tx.alert.findFirst({ where: { dedupeKey: `shift-validation:${shift.id}`, status: { not: AlertStatus.RESUELTA }, deletedAt: null } });
     if (!shift.closureReviewRequestedAt && !legacy) throw new RuleError('Este cierre no tiene una validación pendiente.');
     const updated = await tx.shift.update({ where: { id: shift.id }, data: {
+      closureReviewRequestedAt: shift.closureReviewRequestedAt ?? new Date(),
       closureReviewDecision: input.decision, closureReviewNote: note,
       closureReviewedAt: new Date(), closureReviewedById: user.id,
     } });
@@ -50,8 +51,8 @@ export async function reviewShiftClosure(user: CurrentUser, input: { shiftId: st
       entity: 'Shift', entityId: shift.id, action: AuditAction.CAMBIO_ESTADO,
       summary: `Cierre ${input.decision === 'VALIDADA' ? 'validado' : 'observado'} por ${user.name}`,
       userId: user.id, sessionId: user.sessionId, isDemo: shift.isDemo, reason: note,
-      before: { closureReviewDecision: shift.closureReviewDecision },
-      after: { closureReviewDecision: updated.closureReviewDecision, closureReviewedAt: updated.closureReviewedAt?.toISOString(), legacyAlertId: legacy?.id ?? null } as Prisma.InputJsonObject,
+      before: { closureReviewDecision: shift.closureReviewDecision, closureReviewRequestedAt:shift.closureReviewRequestedAt?.toISOString()??null },
+      after: { closureReviewRequestedAt:updated.closureReviewRequestedAt?.toISOString(), closureReviewDecision: updated.closureReviewDecision, closureReviewedAt: updated.closureReviewedAt?.toISOString(), legacyAlertId: legacy?.id ?? null } as Prisma.InputJsonObject,
     } });
     return updated;
   });

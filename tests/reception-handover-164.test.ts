@@ -11,6 +11,13 @@ import { getCoordinationBoard } from '@/server/services/coordination';
 import { searchOperationalRecords } from '@/server/services/global-search';
 import { notificationWhereForUser } from '@/server/services/notification-access';
 import { getHkSources } from '@/server/services/housekeeping-work';
+import { createTask } from '@/server/services/tasks';
+import { createFollowUp } from '@/server/services/followups';
+import { getWebPushPayload } from '@/server/services/web-push';
+import { getNotificationFeedForUser } from '@/server/services/notification-feed';
+import { markReadableNotifications } from '@/server/services/notification-access';
+import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
+import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context-tool';
 import { addComment } from '@/server/services/comments';
 import { entryCreateSchema } from '@/server/schemas';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -145,6 +152,75 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     expect((await getHkSources(hk,area.id)).map(row=>row.id)).not.toContain(e.id);
     expect((await getHkSources(hk,area.id,e.title)).map(row=>row.id)).not.toContain(e.id);
     expect((await getBookItems({kinds:['entry']},reception)).items.map(row=>row.id)).toContain(e.id);
+  });
+
+  it('avisos derivados, contador y push ocultan todos los vínculos y preservan su evidencia',async()=>{
+    const e=await notice(supervisor);
+    const t=await prisma.task.create({data:{title:'Tarea derivada oculta',createdById:supervisor.id,assigneeId:other.id,entryId:e.id}});
+    const a=await prisma.alert.create({data:{title:'Alerta derivada oculta',type:'OTRO',entryId:e.id}});
+    const f=await prisma.followUp.create({data:{action:'Seguimiento derivado oculto',createdById:supervisor.id,ownerId:other.id,entryId:e.id}});
+    const notices=await Promise.all([['OperationalEntry',e.id],['Task',t.id],['Alert',a.id],['FollowUp',f.id]].map(([entity,entityId])=>prisma.notification.create({data:{userId:other.id,type:'ACCION_REQUERIDA',entity,entityId,title:'TEXTO_OCULTO'}})));
+    const ordinary=await prisma.notification.create({data:{userId:other.id,type:'ACTUALIZACION_OPERATIVA',title:'Aviso visible'}});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    const feed=await getNotificationFeedForUser(other.id);expect(feed.unread).toBe(1);expect(feed.items.map(n=>n.id)).toEqual([ordinary.id]);
+    const endpoint='https://push.invalid/aroh-164-visibility';
+    await prisma.pushSubscription.create({data:{userId:other.id,endpoint,createdAt:new Date(Date.now()-10000)}});
+    const push=await getWebPushPayload({userId:other.id,endpoint});expect(push.unread).toBe(1);expect(push.items.map(n=>n.id)).toEqual([ordinary.id]);
+    for(const n of notices)expect(await markReadableNotifications(other.id,n.id)).toMatchObject({count:0});
+    expect(await prisma.notification.count({where:{id:{in:notices.map(n=>n.id)},readAt:null}})).toBe(4);
+  });
+
+  it('un ID retenido no permite crear tarea, seguimiento directo/transversal ni comentario oculto',async()=>{
+    const e=await notice(supervisor);const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    const auditCount=await prisma.auditLog.count();const noticeCount=await prisma.notification.count();
+    await expect(createTask(other,{entryId:e.id,title:'Trabajo prohibido',priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow();
+    await expect(createFollowUp(other,{entryId:e.id,action:'Seguimiento prohibido'})).rejects.toThrow();
+    await expect(createFollowUp(other,{sourceEntity:'OperationalEntry',sourceId:e.id,action:'Vínculo transversal prohibido'})).rejects.toThrow();
+    await expect(addComment(other,{entryId:e.id,body:'Comentario prohibido'})).rejects.toThrow();
+    await expect(createTask(supervisor,{entryId:e.id,assigneeId:other.id,title:'Asignación invisible',priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow();
+    await expect(createFollowUp(supervisor,{entryId:e.id,ownerId:other.id,action:'Responsable invisible'})).rejects.toThrow();
+    expect(await prisma.task.count({where:{entryId:e.id}})).toBe(0);expect(await prisma.followUp.count({where:{OR:[{entryId:e.id},{sourceId:e.id}]}})).toBe(0);expect(await prisma.comment.count({where:{entryId:e.id}})).toBe(0);
+    expect(await prisma.auditLog.count()).toBe(auditCount);expect(await prisma.notification.count()).toBe(noticeCount);
+    expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}})).requiresFollowUp).toBe(false);
+  });
+
+  it('observar una alerta histórica materializa el pendiente aunque luego se resuelva la señal antigua',async()=>{
+    const {shift}=await sentShift();await closeShift(reception,{shiftId:shift.id});
+    const legacyShift=await prisma.shift.update({where:{id:shift.id},data:{closureReviewRequestedAt:null}});
+    const a=await prisma.alert.create({data:{title:'Validar cierre de turno',type:'OTRO',dedupeKey:`shift-validation:${shift.id}`}});
+    const observed=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'OBSERVADA',note:'Comprobante pendiente',revision:legacyShift.updatedAt.toISOString()});
+    expect(observed.closureReviewRequestedAt).not.toBeNull();
+    await prisma.alert.update({where:{id:a.id},data:{status:'RESUELTA'}});
+    expect((await listPendingClosureReviews(supervisor)).map(s=>s.id)).toContain(shift.id);
+    const validated=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'VALIDADA',note:'Comprobante revisado',revision:observed.updatedAt.toISOString()});
+    expect(validated.closureReviewDecision).toBe('VALIDADA');
+    expect((await listPendingClosureReviews(supervisor)).map(s=>s.id)).not.toContain(shift.id);
+  });
+
+  it('el relevo conserva la regla de alerta viva: resueltas/pospuestas futuras no se congelan',async()=>{
+    const now=new Date();const e=await notice();
+    const resolved=await prisma.alert.create({data:{type:'OTRO',title:'Resuelta',status:'RESUELTA'}});
+    const future=await prisma.alert.create({data:{type:'OTRO',title:'Pospuesta futura',status:'POSPUESTA',snoozedUntil:new Date(now.getTime()+3600000),entryId:e.id}});
+    const resumed=await prisma.alert.create({data:{type:'OTRO',title:'Pospuesta vencida',status:'POSPUESTA',snoozedUntil:new Date(now.getTime()-1000)}});
+    const live=await prisma.alert.create({data:{type:'OTRO',title:'Alerta viva',status:'NUEVA'}});
+    const ids=(await buildHandoverSnapshot(reception,now)).map(i=>i.refId);
+    expect(ids).not.toContain(resolved.id);expect(ids).not.toContain(future.id);expect(ids).toContain(resumed.id);expect(ids).toContain(live.id);
+  });
+
+  it('Fronti lee sólo la garantía o cierre abiertos, con permisos y sin fallback general',async()=>{
+    const g=await prisma.guarantee.create({data:{kind:'EFECTIVO',state:'PENDIENTE',currency:'CLP',amount:50000,createdById:reception.id,guestName:'Garantía concreta'}});
+    const unrelated=await prisma.guarantee.create({data:{kind:'EFECTIVO',state:'PENDIENTE',currency:'CLP',amount:10000,createdById:reception.id,guestName:'NO_MEZCLAR_GARANTIA'}});
+    const gp=resolveFrontiPageContext({pathname:`/caja/garantias/${g.id}`});
+    const result=await executeFrontiPageContextTool(reception,gp);expect(result).toMatchObject({snapshot:{found:true,id:g.id,guestName:g.guestName,outstandingAmount:50000}});expect(JSON.stringify(result)).not.toContain(unrelated.guestName);
+    expect(await executeFrontiPageContextTool(reception,resolveFrontiPageContext({pathname:'/caja/garantias/no-existe'}))).toMatchObject({snapshot:{found:false}});
+    await expect(executeFrontiPageContextTool({...reception,permissions:[]},gp)).rejects.toThrow(/permiso/);
+    const {shift}=await sentShift();await closeShift(reception,{shiftId:shift.id});
+    const sp=resolveFrontiPageContext({pathname:`/supervision/cierres/${shift.id}`});
+    expect(await executeFrontiPageContextTool(supervisor,sp)).toMatchObject({snapshot:{found:true,id:shift.id,pending:true,href:`/supervision/cierres/${shift.id}`}});
+    await expect(executeFrontiPageContextTool(reception,sp)).rejects.toThrow();
+    expect(await executeFrontiPageContextTool(supervisor,resolveFrontiPageContext({pathname:'/supervision/cierres/no-existe'}))).toMatchObject({snapshot:{found:false}});
   });
 
   it('la creación rechaza áreas inexistentes y booleanos inválidos',async()=>{

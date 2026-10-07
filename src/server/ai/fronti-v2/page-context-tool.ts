@@ -1,3 +1,5 @@
+import { assertClosureReviewer } from '@/server/services/closure-review';
+import { outstandingAmount } from '@/domain/guarantees';
 import { listAreaAttentions } from '@/server/services/subject-distribution';
 import { getChangesSinceLastShift } from '@/server/services/shift-changes';
 import {alertReadWhere} from '@/server/services/followup-access';
@@ -290,6 +292,21 @@ async function detailSnapshot(
     requireAny(user, ['key.assign', 'key.inventory', 'key.stock'], 'No tienes permiso para consultar inventarios de llaves.');
     const count = await prisma.keyInventoryCount.findUnique({ where: { id: page.entityId }, select: { id: true, humanId: true, floor: true, countedAt: true, notes: true, areasSnapshot: true, staffCustodySnapshot: true, countedBy: { select: { name: true } }, items: { select: { roomNumberSnapshot: true, room: { select: { number: true } }, expected: true, found: true, accountedElsewhere: true, outOfService: true, notes: true } } } });
     return count ? { ...count, items: count.items.map(({ room, ...item }) => ({ ...item, roomNumber: item.roomNumberSnapshot ?? room.number })) } : { found: false };
+  }
+
+  if (page.entityType === 'Guarantee') {
+    requireAny(user,['cash.view'],'No tienes permiso para consultar garantías.');
+    const guarantee=await prisma.guarantee.findFirst({where:{id:page.entityId,deletedAt:null,...(user.isSystemAdmin?{}:{isDemo:false})},select:{id:true,humanId:true,kind:true,state:true,currency:true,amount:true,appliedAmount:true,penaltyAmount:true,returnedAmount:true,guestName:true,roomNumber:true,reference:true,dueAt:true,notes:true,createdAt:true,settlements:{select:{kind:true,currency:true,amount:true,reason:true,createdAt:true,createdBy:{select:{name:true}}},orderBy:{createdAt:'desc'}}}});
+    if(!guarantee)return {found:false};
+    const amounts={amount:Number(guarantee.amount),appliedAmount:Number(guarantee.appliedAmount??0),penaltyAmount:Number(guarantee.penaltyAmount??0),returnedAmount:Number(guarantee.returnedAmount??0)};
+    return {found:true,...guarantee,...amounts,outstandingAmount:outstandingAmount(amounts),settlements:guarantee.settlements.map(s=>({...s,amount:Number(s.amount)}))};
+  }
+  if (page.entityType === 'Shift') {
+    assertClosureReviewer(user);
+    const shift=await prisma.shift.findFirst({where:{id:page.entityId,...(user.isSystemAdmin?{}:{isDemo:false})},select:{id:true,humanId:true,date:true,type:true,status:true,actualEnd:true,archivedAt:true,closureReviewRequestedAt:true,closureReviewDecision:true,closureReviewNote:true,closureReviewedAt:true,handoverOut:{select:{id:true,status:true,issuedAt:true,receivedAt:true,issuedBy:{select:{name:true}},receivedBy:{select:{name:true}}}}}});
+    if(!shift)return {found:false};
+    const legacy=await prisma.alert.findUnique({where:{dedupeKey:`shift-validation:${shift.id}`},select:{status:true}});
+    return {found:true,...shift,pending:shift.status==='CERRADO'&&!shift.archivedAt&&shift.closureReviewDecision!=='VALIDADA'&&Boolean(shift.closureReviewRequestedAt||legacy&&legacy.status!=='RESUELTA'),href:`/supervision/cierres/${shift.id}`,handoverHref:shift.handoverOut?`/turno/entrega/${shift.handoverOut.id}`:null};
   }
 
   if (page.entityType === 'CashAudit') {

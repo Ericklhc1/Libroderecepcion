@@ -168,7 +168,7 @@ export async function buildHandoverSnapshot(
       take: 200,
     }),
     prisma.alert.findMany({
-      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}], taskId:null, OR:[{entryId:null},{entry:receptionHandoverEntryWhere}]} ,
+      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]},{OR:[{entryId:null},{entry:receptionHandoverEntryWhere}]}], taskId:null} ,
       select: {
         id: true,
         type: true,

@@ -1,6 +1,7 @@
 import 'server-only';
 import { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { NotFoundError } from '@/server/errors';
 import { isReceptionDeskRole } from '@/lib/permissions';
 
 export type EntryReader = Pick<CurrentUser, 'id' | 'permissions' | 'isSystemAdmin'> & Partial<Pick<CurrentUser, 'departmentId' | 'roleKey'>>;
@@ -42,4 +43,10 @@ export function entryReadSql(user: EntryReader) {
       OR EXISTS (SELECT 1 FROM "User" u WHERE u.id=${user.id} AND u."departmentId"=d.id)
       OR (d.key='RECEPCION' AND ${!!user.roleKey && isReceptionDeskRole(user.roleKey)}))
   ))`;
+}
+
+/** Source lookups and visibility changes serialize on the same entry row. */
+export async function assertEntryVisibleForWrite(tx: Prisma.TransactionClient, user: EntryReader, id: string) {
+  await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${id} FOR UPDATE`;
+  if (!await tx.operationalEntry.count({where:{id,deletedAt:null,AND:[entryReadWhere(user)]}})) throw new NotFoundError('El registro de origen no está visible para tu área.');
 }

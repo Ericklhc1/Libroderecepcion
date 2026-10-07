@@ -1,3 +1,4 @@
+import { entryReadWhere, assertEntryVisibleForWrite, type EntryReader } from './entry-visibility';
 import {lockOpenSubjectForWork} from './subject-completion';
 import {assertTaskAssignable} from './task-assignment-access';
 import {notifyUnassignedTask,notifyNativeWork,sourceStakeholders} from './work-notifications';
@@ -76,9 +77,10 @@ export type TaskCreateInput = {
 };
 
 /** Do not notify somebody about work whose reserved source they cannot read. */
-export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {followUpId?:string|null;alertId?:string|null}, lockSources = false) {
-  if (!source.followUpId && !source.alertId) return;
+export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {entryId?:string|null;followUpId?:string|null;alertId?:string|null}, lockSources = false) {
+  if (!source.entryId && !source.followUpId && !source.alertId) return;
   if (lockSources) {
+    if(source.entryId) await db.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${source.entryId} FOR SHARE`;
     const [followUps, alerts] = await Promise.all([
       source.followUpId ? db.followUpSourceFollowUp.findMany({where:{descendantId:source.followUpId},select:{followUpId:true}}) : [],
       source.alertId ? db.alertSourceFollowUp.findMany({where:{alertId:source.alertId},select:{followUpId:true}}) : [],
@@ -89,8 +91,8 @@ export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, i
   }
   const people=await db.user.findMany({where:{id:{in:[...ids]},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
   for(const person of people){
-    const reader: Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
-    if(source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,AND:[alertReadWhere(reader)]}})){
+    const reader: EntryReader={id:person.id,departmentId:person.departmentId,roleKey:person.role.key,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
+    if(source.entryId && !await db.operationalEntry.count({where:{id:source.entryId,deletedAt:null,AND:[entryReadWhere(reader)]}}) || source.followUpId && !await db.followUp.count({where:{id:source.followUpId,AND:[followUpReadWhere(reader,true)]}}) || source.alertId && !await db.alert.count({where:{id:source.alertId,AND:[alertReadWhere(reader)]}})){
       throw new RuleError('El responsable o colaborador no puede acceder al origen reservado. Selecciona una persona autorizada.');
     }
   }
@@ -152,7 +154,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   let roomId = input.roomId ?? null;
   if (input.entryId) {
     const entry = await db.operationalEntry.findFirst({
-      where: { id: input.entryId, deletedAt: null },
+      where: { id: input.entryId, deletedAt: null, AND:[entryReadWhere(user)] },
       select: { type: true, roomId: true },
     });
     if (!entry) throw new NotFoundError('El registro de origen no existe.');
@@ -175,6 +177,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
 
   const write = async (tx: Prisma.TransactionClient) => {
     if(input.entryId){
+      await assertEntryVisibleForWrite(tx,user,input.entryId);
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
       if(!await tx.operationalEntry.count({where:{id:input.entryId,deletedAt:null,status:{notIn:['RESUELTO','CERRADO']}}}))throw new RuleError('Reabre el asunto antes de solicitar trabajo nuevo.');
     }

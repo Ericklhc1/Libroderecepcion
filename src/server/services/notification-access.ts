@@ -15,7 +15,14 @@ export async function notificationWhereForUser(userId:string):Promise<Prisma.Not
     prisma.alert.findMany({where:closureValidationAlertWhere,select:{id:true}}),
     prisma.task.findMany({where:{sourceAlert:closureValidationAlertWhere},select:{id:true}}),
   ]);
-  const hidden=[['OperationalEntry',hiddenEntries],...(reader.roleKey==='SUPERVISOR'||reader.isSystemAdmin?[]:[['Alert',legacyAlerts],['Task',legacyTasks]] as const)] as const;
+  const entryIds=hiddenEntries.map(e=>e.id);
+  const [linkedTasks,linkedAlerts,linkedFollowUps]=entryIds.length?await Promise.all([
+    prisma.task.findMany({where:{entryId:{in:entryIds}},select:{id:true}}),
+    prisma.alert.findMany({where:{OR:[{entryId:{in:entryIds}},{task:{entryId:{in:entryIds}}},{followUp:{entryId:{in:entryIds}}} ]},select:{id:true}}),
+    prisma.followUp.findMany({where:{OR:[{entryId:{in:entryIds}},{task:{entryId:{in:entryIds}}},{sourceEntity:'OperationalEntry',sourceId:{in:entryIds}}]},select:{id:true}}),
+  ]):[[],[],[]];
+  const legacyVisible=reader.roleKey==='SUPERVISOR'||reader.isSystemAdmin;
+  const hidden=[['OperationalEntry',hiddenEntries],['Task',[...linkedTasks,...(legacyVisible?[]:legacyTasks)]],['Alert',[...linkedAlerts,...(legacyVisible?[]:legacyAlerts)]],['FollowUp',linkedFollowUps]] as const;
   return {userId,deletedAt:null,...notificationReadWhere(reader),AND:hidden.filter(([,rows])=>rows.length).map(([entity,rows])=>({OR:[{entity:null},{entityId:null},{NOT:{entity,entityId:{in:rows.map(row=>row.id)}}}]}))};
 }
 

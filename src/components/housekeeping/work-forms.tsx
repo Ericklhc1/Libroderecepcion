@@ -37,18 +37,18 @@ export function WorkActionForm({id,version,action,team,defaultAssignee,primary=f
     <ActionForm action={changeHkWorkAction} refreshOnSuccess closeOnSuccess onSuccess={committed}>{hidden}
       {action==='ASIGNAR'&&<><Field label="Responsable" name="assignedToId"><Select name="assignedToId" required defaultValue={defaultAssignee??''} options={[{value:'',label:'Seleccionar persona'},...team.map(p=>({value:p.id,label:p.name}))]}/></Field><Field label="Atender antes de" name="dueAt" hint="Opcional · conserva el plazo si se deja vacío"><Input type="datetime-local" name="dueAt"/></Field></>}
       {action==='MANTENIMIENTO'&&<Field label="Gravedad" name="severity"><Select name="severity" required options={[{value:'',label:'Seleccionar gravedad'},...['BAJA','MEDIA','ALTA','CRITICA'].map(v=>({value:v,label:v}))]}/></Field>}
-      <Field label={action==='TERMINAR'?'Qué se hizo':action==='APROBAR'?'Resultado de la inspección':action==='CORREGIR'?'Qué debe corregirse':action==='ASIGNAR'?'Instrucción / motivo':action==='MANTENIMIENTO'?'Qué debe revisar Mantenimiento':'Motivo / información'} name="note"><Textarea name="note" required maxLength={3000} rows={3}/></Field>
+      <Field label={['TERMINAR','RESOLVER'].includes(action)?'Qué se hizo':action==='APROBAR'?'Resultado de la inspección':action==='CORREGIR'?'Qué debe corregirse':action==='ASIGNAR'?'Instrucción / motivo':action==='MANTENIMIENTO'?'Qué debe revisar Mantenimiento':'Motivo / información'} name="note"><Textarea name="note" required maxLength={3000} rows={3}/></Field>
       <SubmitButton pendingLabel="Guardando…">Confirmar</SubmitButton>
     </ActionForm>
   </Dialog>;
 }
 
-export function WorkActionCluster({id,humanId,version,status,team,assignedToId,allowedActions,changed=false,waitingMaintenance=false,hasMaintenance=false,hasResult=false}:{id:string;humanId:number;version:number;status:string;team:Person[];assignedToId:string|null;allowedActions:HkWorkAction[];changed?:boolean;waitingMaintenance?:boolean;hasMaintenance?:boolean;hasResult?:boolean}) {
+export function WorkActionCluster({id,humanId,version,status,team,assignedToId,allowedActions,changed=false,waitingMaintenance=false,hasMaintenance=false,hasResult=false,requiresInspection=true}:{id:string;humanId:number;version:number;status:string;team:Person[];assignedToId:string|null;allowedActions:HkWorkAction[];changed?:boolean;waitingMaintenance?:boolean;hasMaintenance?:boolean;hasResult?:boolean;requiresInspection?:boolean}) {
   const [snapshot,setSnapshot]=useState({version,status,ownerId:assignedToId,changed,waitingMaintenance,hasMaintenance});
-  const available=hkAllowedActions(snapshot.status,!!snapshot.ownerId,snapshot.changed)
+  const available=hkAllowedActions(snapshot.status,!!snapshot.ownerId,snapshot.changed,requiresInspection)
     .filter(action=>allowedActions.includes(action))
-    .filter(action=>!(snapshot.waitingMaintenance&&['COMENZAR','RETOMAR','TERMINAR','APROBAR'].includes(action))&&!(snapshot.hasMaintenance&&action==='MANTENIMIENTO'));
-  const order:HkWorkAction[]=snapshot.changed?['RECONFIRMAR']:snapshot.status==='POR_REVISAR'?['APROBAR','CORREGIR']:snapshot.status==='BLOQUEADO'?['RETOMAR','MANTENIMIENTO','ASIGNAR']:snapshot.status==='EN_GESTION'?['TERMINAR']:snapshot.ownerId?['RECIBIR','COMENZAR']:['ASIGNAR'];
+    .filter(action=>!(snapshot.waitingMaintenance&&['COMENZAR','RETOMAR','TERMINAR','RESOLVER','APROBAR'].includes(action))&&!(snapshot.hasMaintenance&&action==='MANTENIMIENTO'));
+  const order:HkWorkAction[]=snapshot.changed?['RECONFIRMAR']:snapshot.status==='POR_REVISAR'?['RESOLVER','APROBAR','CORREGIR']:snapshot.status==='BLOQUEADO'?['RETOMAR','MANTENIMIENTO','ASIGNAR']:snapshot.status==='EN_GESTION'?['TERMINAR','RESOLVER']:snapshot.ownerId?['RECIBIR','COMENZAR']:['ASIGNAR'];
   const primary=order.find(action=>available.includes(action));
   const secondary=available.filter(action=>action!==primary&&['IMPEDIMENTO','CORREGIR','MANTENIMIENTO','COMENZAR','REABRIR'].includes(action)).slice(0,2);
   const advanced=available.filter(action=>action!==primary&&!secondary.includes(action));

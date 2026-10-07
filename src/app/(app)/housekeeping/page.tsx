@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { HK_ROOM_LABELS, type HkRoomState } from '@/domain/housekeeping-room-board';
 import { ContextWorklist, type ContextWorklistRow } from '@/components/operational/context-worklist';
 import { detailHrefWithReturnContext, listRowAnchor, operationalListHref } from '@/lib/list-navigation';
 import { hkNextAction, HK_MAINTENANCE_EVENT_LABELS, maintenanceAllowsContinuation } from '@/domain/housekeeping-continuity';
@@ -8,7 +9,7 @@ import { getHkWorkday, getHkSources } from '@/server/services/housekeeping-work'
 import { listAssignedInventoryMaterial } from '@/server/services/inventory';
 import { getHousekeepingDestinations, housekeepingSourceChanged } from '@/server/services/housekeeping';
 import { canManageHousekeeping, HOUSEKEEPING_LABELS, housekeepingActions, type HousekeepingStatus } from '@/domain/housekeeping';
-import { HK_WORK_ACTIONS, HK_WORK_LABELS, HK_KIND_LABELS, HK_ACTION_LABELS, HK_ACTION_PERMISSION, type HkWorkKind, type HkWorkAction } from '@/domain/housekeeping-work';
+import { HK_WORK_ACTIONS, HK_WORK_LABELS, HK_KIND_LABELS, HK_ACTION_LABELS, hkActionPermission, type HkWorkKind, type HkWorkAction } from '@/domain/housekeeping-work';
 import { formatDateTime } from '@/lib/format';
 import { StatTile } from '@/components/ui/card';
 import {ListFilterBar} from '@/components/ui/list-controls';
@@ -37,8 +38,8 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
   ]);
   const title=board.canPlan?'Estado de Housekeeping':board.canAssign?'Coordinar y revisar':board.canWork?'Mi trabajo de hoy':board.teamVisible?'Estado de Housekeeping':'Solicitudes a Housekeeping';
   const href=(next:string,page=1)=>operationalListHref('/housekeeping',{fecha:board.date,area:board.departmentId,vista:next,pagina:String(page),...(params.q?{q:params.q}:{}),...(params.estado?{estado:params.estado}:{}),...(params.piso?{piso:params.piso}:{}),...(params.responsable?{responsable:params.responsable}:{})});
-  const allowed=(action:HkWorkAction,assignedToId:string|null)=>{
-    const permission=HK_ACTION_PERMISSION[action];return permission==='housekeeping.work'?board.canWork&&assignedToId===user.id:permission==='housekeeping.inspect'?board.canInspect&&assignedToId!==user.id:board.canAssign;
+  const allowed=(action:HkWorkAction,assignedToId:string|null,requiresInspection:boolean)=>{
+    const permission=hkActionPermission(action, requiresInspection);return permission==='housekeeping.work'?board.canWork&&assignedToId===user.id:permission==='housekeeping.inspect'?board.canInspect&&assignedToId!==user.id:board.canAssign;
   };
   const currentListHref = operationalListHref('/housekeeping', params);
   const focusedRequest = params.aviso ? board.requests.find(request => String(request.humanId) === params.aviso) : undefined;
@@ -46,7 +47,7 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
     const changed = housekeepingSourceChanged(r);
     const modern = r.workflowVersion === 1;
     const waitingMaintenance = !!r.maintenanceEntry && !maintenanceAllowsContinuation(r.maintenanceEntry);
-    const allowedActions = modern ? HK_WORK_ACTIONS.filter(action => allowed(action, r.assignedToId)) : [];
+    const allowedActions = modern ? HK_WORK_ACTIONS.filter(action => allowed(action, r.assignedToId, r.requiresInspection)) : [];
     const rowId = listRowAnchor('housekeeping', r.id);
     return {
       id: rowId,
@@ -74,7 +75,7 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
           {r.maintenanceEntry&&<section aria-label="Resultado de Mantenimiento" className="space-y-2 rounded-lg border border-slate-200 p-3 text-sm"><p className="font-medium">Mantenimiento #{r.maintenanceEntry.humanId} · {r.maintenanceEntry.deletedAt?'Archivado':maintenanceAllowsContinuation(r.maintenanceEntry)?'Resultado disponible':'Atención pendiente'}</p>{r.maintenanceEntry.resolution&&<p className="whitespace-pre-wrap break-words"><strong>{maintenanceAllowsContinuation(r.maintenanceEntry)?'Resultado:':'Resultado anterior o avance:'}</strong> {r.maintenanceEntry.resolution}</p>}<p className="text-xs text-slate-600">Última actualización: {formatDateTime(r.maintenanceEntry.updatedAt)}. No finaliza Housekeeping ni modifica la disponibilidad comercial.</p>{user.permissions.includes('entry.create')&&<Link className="inline-block underline" href={detailHrefWithReturnContext(`/libro/${r.maintenanceEntry.id}`, `${currentListHref}#${rowId}`)}>Ver incidencia</Link>}</section>}
           {modern&&<p className="break-words text-sm text-petrol-900"><strong>Siguiente acción:</strong> {hkNextAction(r)}</p>}
           {r.sourceEntry&&<p className="text-xs text-slate-600">Origen: Novedad #{r.sourceEntry.humanId}{user.permissions.includes('entry.create')&&<Link href={detailHrefWithReturnContext(`/libro/${r.sourceEntry.id}`, `${currentListHref}#${rowId}`)} className="ml-2 underline">Ver novedad</Link>}</p>}
-          <div>{!modern&&!r.isDemo&&!['RESUELTO','CANCELADO'].includes(r.status)&&board.canAssign&&<OrganizeLegacyForm id={r.id} version={r.version} departmentId={board.departmentId} date={board.date} rooms={board.rooms} team={board.workload}/>} {modern?<WorkActionCluster id={r.id} humanId={r.humanId} version={r.version} status={r.status} team={board.workload} assignedToId={r.assignedToId} allowedActions={allowedActions} changed={changed} waitingMaintenance={waitingMaintenance} hasMaintenance={!!r.maintenanceEntryId} hasResult={!!r.resolution}/>:legacyManage?housekeepingActions(r.status as HousekeepingStatus,changed).map(a=><HousekeepingChangeForm key={a} id={r.id} version={r.version} action={a} destinations={destinations} departmentId={r.departmentId??undefined}/>):null}</div>
+          <div>{!modern&&!r.isDemo&&!['RESUELTO','CANCELADO'].includes(r.status)&&board.canAssign&&<OrganizeLegacyForm id={r.id} version={r.version} departmentId={board.departmentId} date={board.date} rooms={board.rooms} team={board.workload}/>} {modern?<WorkActionCluster id={r.id} humanId={r.humanId} version={r.version} status={r.status} team={board.workload} assignedToId={r.assignedToId} allowedActions={allowedActions} changed={changed} waitingMaintenance={waitingMaintenance} hasMaintenance={!!r.maintenanceEntryId} hasResult={!!r.resolution} requiresInspection={r.requiresInspection}/>:legacyManage?housekeepingActions(r.status as HousekeepingStatus,changed).map(a=><HousekeepingChangeForm key={a} id={r.id} version={r.version} action={a} destinations={destinations} departmentId={r.departmentId??undefined}/>):null}</div>
           {user.isSystemAdmin&&r.isDemo&&r.sourceEntryId&&<ReleasePilotSourceForm id={r.id} version={r.version}/>}
           <details className="border-t border-slate-100 pt-2"><summary className="cursor-pointer text-xs text-slate-600">Historial y responsables</summary><p className="mt-2 text-xs text-slate-500">Solicitante: {r.createdBy?.name??'Registro anterior'} · Día: {r.workDate??'Aviso anterior'}{r.isDemo?' · Prueba administrativa':''}</p><ol className="mt-2 space-y-2 text-xs text-slate-600">{r.events.map(e=><li key={e.id}><strong>{e.actor.name}</strong> · {HK_ACTION_LABELS[e.action as HkWorkAction]??HK_MAINTENANCE_EVENT_LABELS[e.action]??e.action} · {formatDateTime(e.createdAt)}{e.note&&<p className="whitespace-pre-wrap">{e.note}</p>}</li>)}</ol></details>
       </div>,
@@ -94,6 +95,16 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
     </ListFilterBar>
     <p className="text-xs text-slate-500">Los indicadores resumen el día y su continuidad dentro de tu acceso; buscar o filtrar sólo cambia la lista de trabajos.</p>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><StatTile label="Por asignar" value={board.counts.unassigned}/><StatTile label="Por revisar" value={board.counts.review}/><StatTile label="Con impedimento" value={board.counts.blocked}/><StatTile label="Terminados del día" value={board.counts.completed}/></div>
+    {board.teamVisible&&<section className="card space-y-3 p-4" aria-label="Tablero de habitaciones">
+      <h2 className="font-semibold text-petrol-900">Tablero de habitaciones</h2>
+      <p className="text-xs text-slate-600">Estado según las limpiezas registradas para este día y sus pendientes anteriores. Sin registro no acredita limpieza.</p>
+      {(['SUCIA','PENDIENTE_INSPECCION','LIMPIA','SIN_REGISTRO'] as HkRoomState[]).map(state=>{
+        const rooms=board.roomBoard.filter(room=>room.state===state&&(!params.piso||String(room.floor)===params.piso));
+        return <details key={state} open={state!=='SIN_REGISTRO'}><summary className="cursor-pointer font-medium">{HK_ROOM_LABELS[state]} · {rooms.length}</summary>
+          <ul className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-4">{rooms.map(room=><li key={room.id} className="rounded-lg border border-slate-200 p-3 text-sm"><strong>Piso {room.floor??room.number[0]} · {room.number}</strong><div className="mt-1 flex flex-wrap gap-2">{room.work.map(work=><Link key={work.id} className="text-petrol-700 underline" href={operationalListHref('/housekeeping',{fecha:board.date,area:board.departmentId,aviso:String(work.humanId)})}>Trabajo #{work.humanId}</Link>)}</div></li>)}</ul>
+        </details>;
+      })}
+    </section>}
     {board.canWork&&<section className="rounded-xl border border-slate-200 bg-white p-4" aria-label="Material asignado">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div><h2 className="font-semibold text-petrol-900">Material asignado</h2><p className="mt-1 text-xs text-slate-600">Lee el stock real de las ubicaciones bajo tu custodia. Verlo no reserva ni descuenta existencias.</p></div>

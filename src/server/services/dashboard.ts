@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import 'server-only';
 import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import {visibleHandover} from './handover-snapshot';
@@ -87,6 +88,7 @@ export async function getDashboardData(user: CurrentUser) {
     getPendingHandover(myShift?.id ?? null),
     prisma.operationalEntry.findMany({
       where: {
+        AND: [entryReadWhere(user)],
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
         ...(receptionEntriesOnly
@@ -176,6 +178,7 @@ export async function getDashboardData(user: CurrentUser) {
     myShift ? getShiftMetrics(myShift.id) : null,
     prisma.operationalEntry.count({
       where: {
+        AND: [entryReadWhere(user)],
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
         ...(receptionEntriesOnly
@@ -190,6 +193,7 @@ export async function getDashboardData(user: CurrentUser) {
     }),
     prisma.operationalEntry.count({
       where: {
+        AND: [entryReadWhere(user)],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },

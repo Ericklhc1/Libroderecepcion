@@ -346,3 +346,45 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--aroh-focus); }
   .appearance-option input:focus-visible + span { outline-color: Highlight; }
 }
 @media print { .appearance-preference { display: none !important; } }
+
+/* Reception uses its own named page so other existing reports keep their format. */
+.handover-print { display: none; }
+@page reception-handover {
+  size: A4 landscape;
+  margin: 9mm 9mm 12mm;
+  @bottom-left { content: "Imprimir a doble cara · horizontal"; font-family: Arial, sans-serif; font-size: 8pt; color: black; }
+  @bottom-right { content: "Página " counter(page) "/" counter(pages); font-family: Arial, sans-serif; font-size: 8pt; color: black; }
+}
+@media print {
+  /* Isolate the report from application chrome, portals and flex/min-height layout. */
+  body:has(.handover-print) { margin: 0 !important; padding: 0 !important; page: reception-handover; }
+  body:has(.handover-print) *:has(.handover-print) {
+    display: block !important; min-height: 0 !important; max-width: none !important;
+    margin: 0 !important; padding: 0 !important; page: reception-handover;
+  }
+  body:has(.handover-print) *:not(:has(.handover-print)):not(.handover-print):not(.handover-print *) { display: none !important; }
+  .handover-screen { display: none !important; }
+  .handover-print {
+    display: block; page: reception-handover;
+    width: 100%; font: 8pt/1.15 Arial, sans-serif; color: #000 !important;
+  }
+  .handover-print * { color: #000 !important; box-shadow: none !important; }
+  .handover-print h2 { margin: 0 0 1mm; font: bold 8pt Arial, sans-serif !important; text-transform: uppercase; }
+  .handover-print p { margin: 1mm 0; }
+  .handover-print-header { display: flex; flex-wrap: wrap; gap: 1mm 2mm; align-items: baseline; border: 0.2mm solid black; padding: 1.5mm; margin-bottom: 2mm; }
+  .handover-print-counts { margin-left: auto; font-weight: bold; }
+  .handover-print-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2mm; margin-bottom: 2mm; }
+  .handover-print-grid > section { min-width: 0; border: 0.2mm solid black; padding: 1mm; break-inside: avoid; }
+  .handover-print table { width: 100%; border-collapse: collapse; font: inherit; table-layout: auto; }
+  .handover-print th, .handover-print td { border: 0.15mm solid black; padding: 0.65mm; vertical-align: top; overflow-wrap: anywhere; }
+  .handover-print thead { display: table-header-group; }
+  .handover-print th { background: #eee !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; text-align: left; }
+  .handover-print tr { break-inside: avoid; }
+  .handover-print-section { margin-bottom: 2mm; }
+  .handover-items-table td:first-child { width: 8mm; }
+  .handover-items-table td:nth-child(2) { width: 10mm; }
+  .handover-items-table td:last-child { width: 24mm; }
+  .handover-print-signatures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2mm; break-inside: avoid; margin-top: 3mm; }
+  .handover-print-signatures section { border: 0.25mm solid black; min-height: 24mm; padding: 2mm; box-sizing: border-box; }
+  .handover-print-signatures p { margin-top: 3mm; }
+}

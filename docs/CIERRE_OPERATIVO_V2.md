@@ -1,3 +1,5 @@
+> Vigente desde 1.64.0: la validación posterior es una acción del mismo Shift en el Centro de Supervisión, no una tarea/alerta operativa. Recepción no hereda tareas ni acciones de Supervisión; la visibilidad por área y en entrega es explícita y auditada. Diseño y pruebas de impresión: [IMPRESION_ENTREGA_1_64.md](IMPRESION_ENTREGA_1_64.md). Las referencias anteriores a publicación de tareas/alertas de validación se conservan como historia y quedan sustituidas por esta regla.
+
 # Cierre Operativo — contrato vigente de Recepción
 
 Estado: **vigente para Libro 1.14.9**.  

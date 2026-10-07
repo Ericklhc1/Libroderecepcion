@@ -1,3 +1,4 @@
+import { entryReadSql } from './entry-visibility';
 import 'server-only';
 import {directFollowUpReadSql} from './followup-access';
 import { Prisma } from '@prisma/client';
@@ -129,6 +130,9 @@ export async function searchOperationalRecords(
       JOIN "FollowUp" f ON f.id=o."followUpId"
       WHERE NOT (${directFollowUpReadSql(user,true)})
     )
+    , hidden_entries AS MATERIALIZED (
+      SELECT e.id FROM "OperationalEntry" e WHERE NOT (${entryReadSql(user)})
+    )
     SELECT
       "humanId",
       "entityType",
@@ -149,6 +153,15 @@ export async function searchOperationalRecords(
     FROM "HumanOperationalRecord"
     WHERE "entityType" IN (${Prisma.join(types)})
       AND ${Prisma.join(termFilters, ' AND ')}
+      AND NOT EXISTS (
+        SELECT 1 FROM hidden_entries hidden WHERE
+          ("entityType"='OperationalEntry' AND hidden.id="HumanOperationalRecord"."entityId") OR
+          ("entityType"='Task' AND EXISTS (SELECT 1 FROM "Task" t WHERE t.id="HumanOperationalRecord"."entityId" AND t."entryId"=hidden.id)) OR
+          ("entityType"='Alert' AND EXISTS (SELECT 1 FROM "Alert" a WHERE a.id="HumanOperationalRecord"."entityId" AND a."entryId"=hidden.id)) OR
+          ("entityType"='FollowUp' AND EXISTS (SELECT 1 FROM "FollowUp" f WHERE f.id="HumanOperationalRecord"."entityId" AND f."entryId"=hidden.id))
+      )
+      AND NOT ("entityType"='Task' AND EXISTS (SELECT 1 FROM "Task" t JOIN "Alert" a ON a.id=t."alertId" WHERE t.id="HumanOperationalRecord"."entityId" AND a."dedupeKey" LIKE 'shift-validation:%'))
+      AND ${user.isSystemAdmin || user.permissions.includes('supervision.center.view') ? Prisma.sql`TRUE` : Prisma.sql`NOT ("entityType"='Alert' AND EXISTS (SELECT 1 FROM "Alert" a WHERE a.id="HumanOperationalRecord"."entityId" AND a."dedupeKey" LIKE 'shift-validation:%'))`}
       AND CASE
         WHEN "entityType" = 'Task' THEN NOT EXISTS (SELECT 1 FROM reserved_sources s WHERE s.kind='task' AND s.id="HumanOperationalRecord"."entityId")
         WHEN "entityType" = 'FollowUp' THEN NOT EXISTS (SELECT 1 FROM reserved_sources s WHERE s.kind='followup' AND s.id="HumanOperationalRecord"."entityId")

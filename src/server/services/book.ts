@@ -1,3 +1,4 @@
+import { entryReadWhere, type EntryReader } from './entry-visibility';
 import 'server-only';
 import {
   AlertStatus,
@@ -27,7 +28,6 @@ import {
   type Tone,
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
-import type {CurrentUser} from '@/server/auth/current-user';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 
 /**
@@ -116,7 +116,7 @@ function priorityTone(priority: string): Tone {
   return 'neutro';
 }
 
-export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'id'|'permissions'|'isSystemAdmin'>): Promise<{
+export async function getBookItems(filters: BookFilters,user:EntryReader): Promise<{
   items: BookItem[];
   hasMore: boolean;
   page: number;
@@ -142,7 +142,7 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
       : undefined;
 
   async function entryItems(): Promise<BookItem[]> {
-    const and: Prisma.OperationalEntryWhereInput[] = [];
+    const and: Prisma.OperationalEntryWhereInput[] = [entryReadWhere(user)];
 
     if (filters.userId) {
       and.push({ OR: [{ createdById: filters.userId }, { ownerId: filters.userId }] });

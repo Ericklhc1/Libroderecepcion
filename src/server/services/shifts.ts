@@ -10,9 +10,7 @@ import {
   HandoverLevel,
   HandoverStatus,
   NotificationType,
-  Priority,
   ShiftStatus,
-  TaskOrigin,
 } from '@prisma/client';
 // `ShiftType` sólo se usa como tipo: los valores los da `shiftTypeAt`.
 import type { Prisma, ShiftType } from '@prisma/client';
@@ -118,65 +116,6 @@ export const shiftInclude = {
 
 export type ShiftWithDetail = Prisma.ShiftGetPayload<{ include: typeof shiftInclude }>;
 
-
-const CLOSURE_VALIDATOR_USERNAME = 'EHerrera';
-
-async function ensureClosureValidationTask(
-  tx: Prisma.TransactionClient,
-  shiftId: string,
-  createdById: string,
-) {
-  const [alert, validator] = await Promise.all([
-    tx.alert.findUnique({
-      where: { dedupeKey: `shift-validation:${shiftId}` },
-      select: { id: true, title: true, message: true },
-    }),
-    tx.user.findFirst({
-      where: {
-        username: { equals: CLOSURE_VALIDATOR_USERNAME, mode: 'insensitive' },
-        active: true,
-        deletedAt: null,
-      },
-      select: { id: true },
-    }),
-  ]);
-
-  if (!alert || !validator) return;
-
-  const existing = await tx.task.findFirst({
-    where: { alertId: alert.id, deletedAt: null },
-    select: { id: true },
-  });
-
-  if (existing) {
-    await tx.task.update({
-      where: { id: existing.id },
-      data: {
-        assigneeId: validator.id,
-        priority: Priority.CRITICA,
-        origin: TaskOrigin.ALERTA,
-      },
-    });
-    return;
-  }
-
-  await tx.task.create({
-    data: {
-      title: 'Validar cierre de turno',
-      description:
-        alert.message ??
-        'Revisión posterior obligatoria del cierre: Caja, pendientes, entrega y trazabilidad.',
-      status: 'PENDIENTE',
-      priority: Priority.CRITICA,
-      origin: TaskOrigin.ALERTA,
-      assigneeId: validator.id,
-      createdById,
-      shiftId,
-      alertId: alert.id,
-      tags: ['cierre-turno', 'validacion-jefatura'],
-    },
-  });
-}
 
 /**
  * Turno que el usuario tiene abierto ahora mismo, si alguno.
@@ -2866,7 +2805,6 @@ export async function closeShift(
       },
       tx,
     );
-    await ensureClosureValidationTask(tx, shift.id, user.id);
     return tx.shift.findUniqueOrThrow({ where: { id: shift.id } });
   });
 }

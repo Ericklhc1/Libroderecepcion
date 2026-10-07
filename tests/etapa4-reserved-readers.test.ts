@@ -45,12 +45,12 @@ describe('AROH Simple · lectores independientes reservados',()=>{
     const shift=await createShift({userId:f.owner.id,type:'DIA',status:'CERRADO'});
     const handover=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,status:'ENVIADA',issuedById:f.owner.id,issuedAt:new Date(),snapshot:{items:[{title:f.task.title,detail:'E4_SECRETO_FOTOGRAFIA',refType:'task',refId:f.task.id}]},items:{create:{section:'Tareas pendientes',title:f.task.title,detail:'E4_SECRETO_EVIDENCIA',refType:'task',refId:f.task.id}}}});
     const dashboard=await getDashboardData(f.reader);
-    expect(dashboard.incoming?.items).toMatchObject([{title:'Asunto reservado',refId:null,refType:null}]);
+    expect(dashboard.incoming?.items).toEqual([]);
     expect(JSON.stringify(dashboard)).not.toContain('E4_SECRETO');
     const fronti=await executeFrontiPageContextTool(f.reader,resolveFrontiPageContext({pathname:'/'}));
     expect(JSON.stringify(fronti)).not.toContain('E4_SECRETO');
     expect((await prisma.handoverItem.findFirstOrThrow({where:{handoverId:handover.id}})).title).toBe(f.task.title);
-    expect((await getDashboardData(f.owner)).incoming?.items[0]?.title).toBe('Asunto reservado');
+    expect((await getDashboardData(f.owner)).incoming?.items).toEqual([]);
   });
   it('los indicadores compartidos no cuentan trabajo derivado de fuentes reservadas',async()=>{
     const f=await reservedWork();

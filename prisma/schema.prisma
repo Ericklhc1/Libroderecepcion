@@ -705,6 +705,7 @@ model LegalAcceptance {
 // ================================= ÁREAS ==================================
 
 model Department {
+  hiddenEntries OperationalEntry[] @relation("EntryHiddenAreas")
   subjectAttentions SubjectAreaAttention[]
   operationalAutomations OperationalAutomation[]
   hkRoutines HousekeepingRoutine[]
@@ -1128,6 +1129,11 @@ model LaundryShipmentLine {
 // ================================= TURNOS =================================
 
 model Shift {
+  closureReviewRequestedAt DateTime?
+  closureReviewDecision String?
+  closureReviewNote String?
+  closureReviewedAt DateTime?
+  closureReviewedById String?
   id           String      @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   date         DateTime    @db.Date
@@ -1392,6 +1398,8 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  includeInReceptionHandover Boolean @default(true)
+  hiddenFromDepartments Department[] @relation("EntryHiddenAreas")
   workAssignedAt DateTime?
   workAcknowledgedAt DateTime?
   workAcknowledgedById String?

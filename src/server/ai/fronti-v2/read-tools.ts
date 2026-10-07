@@ -1,3 +1,4 @@
+import { entryReadWhere } from '@/server/services/entry-visibility';
 import {followUpReadWhere,taskFollowUpReadWhere,auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { readScheduleContext } from './schedule-context';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
@@ -123,6 +124,7 @@ async function entriesTool(user: CurrentUser, args: Record<string, unknown>) {
   const onlyOpen = args.onlyOpen !== false;
   const rows = await prisma.operationalEntry.findMany({
     where: {
+      AND: [entryReadWhere(user)],
       deletedAt: null,
       ...(onlyOpen ? { status: { in: ENTRY_OPEN_STATUSES } } : {}),
     },

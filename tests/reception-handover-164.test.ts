@@ -1,0 +1,145 @@
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { AuditAction, EntryType, ShiftType, ShiftStatus } from '@prisma/client';
+import { createUser, createShift, openShiftAs, seedCatalog, resetOperationalData, prisma, ROLE_KEYS } from './helpers';
+import { prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift } from '@/server/services/shifts';
+import { listPendingClosureReviews, reviewShiftClosure } from '@/server/services/closure-review';
+import { getSupervisionData } from '@/server/services/supervision';
+import { createEntry, getSubjectEntry, updateEntryVisibility } from '@/server/services/entries';
+import { buildHandoverSnapshot, visibleSnapshotItems } from '@/server/services/handover-snapshot';
+import { getBookItems } from '@/server/services/book';
+import { getCoordinationBoard } from '@/server/services/coordination';
+import { searchOperationalRecords } from '@/server/services/global-search';
+import { notificationWhereForUser } from '@/server/services/notification-access';
+import { entryCreateSchema } from '@/server/schemas';
+import type { CurrentUser } from '@/server/auth/current-user';
+
+let reception: CurrentUser, other: CurrentUser, supervisor: CurrentUser;
+async function sentShift() {
+  const shift = await createShift({userId:reception.id,type:ShiftType.DIA});
+  await openShiftAs(reception,shift); await receiveHandover(reception,{shiftId:shift.id});
+  const handover=await prepareHandover(reception,shift.id);
+  await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});
+  await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
+  await sendHandover(reception,{shiftId:shift.id});
+  return {shift,handover};
+}
+async function notice(author=supervisor, extra: Partial<Parameters<typeof createEntry>[1]>={}) {
+  return createEntry(author,{type:EntryType.NOVEDAD,title:'Novedad de visibilidad',description:'Descripción completa para recepción.',priority:'MEDIA',tags:[],requiresFollowUp:false,...extra});
+}
+
+describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área',()=>{
+  beforeAll(seedCatalog);
+  beforeEach(async()=>{await resetOperationalData(); reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});});
+
+  it('el cierre real con trigger nuevo crea una única acción y auditoría, sin alerta, tarea ni novedad',async()=>{
+    const {shift,handover}=await sentShift();
+    const closed=await closeShift(reception,{shiftId:shift.id});
+    expect(closed.closureReviewRequestedAt).not.toBeNull();
+    expect(await prisma.alert.count({where:{dedupeKey:`shift-validation:${shift.id}`}})).toBe(0);
+    expect(await prisma.task.count({where:{shiftId:shift.id}})).toBe(0);
+    expect(await prisma.operationalEntry.count()).toBe(0);
+    expect(await prisma.auditLog.count({where:{entity:'Shift',entityId:shift.id,action:AuditAction.CREAR,summary:{startsWith:'Acción pendiente'}}})).toBe(1);
+    await prisma.shift.update({where:{id:shift.id},data:{status:ShiftStatus.CERRADO}});
+    expect(await prisma.auditLog.count({where:{entity:'Shift',entityId:shift.id,action:AuditAction.CREAR,summary:{startsWith:'Acción pendiente'}}})).toBe(1);
+    expect((await listPendingClosureReviews(supervisor)).map(s=>s.id)).toContain(shift.id);
+    const rows=(await getSupervisionData(supervisor)).blocks.find(b=>b.key==='cierres-validacion')!.rows;
+    expect(rows).toMatchObject([{id:shift.id,href:`/supervision/cierres/${shift.id}`}]);
+    expect(rows[0]!.ref).toContain('DIA');
+    expect(JSON.stringify(await buildHandoverSnapshot(reception))).not.toContain('Validar cierre');
+    expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).not.toBeNull();
+  });
+
+  it('la acción y su auditoría se revierten juntas si falla la transacción de cierre',async()=>{
+    const {shift}=await sentShift();
+    await expect(prisma.$transaction(async tx=>{await tx.shift.update({where:{id:shift.id},data:{status:'CERRADO',actualEnd:new Date(),closedById:reception.id}});throw Error('rollback sintético');})).rejects.toThrow('rollback sintético');
+    expect((await prisma.shift.findUniqueOrThrow({where:{id:shift.id}})).closureReviewRequestedAt).toBeNull();
+    expect(await prisma.auditLog.count({where:{entityId:shift.id,summary:{startsWith:'Acción pendiente'}}})).toBe(0);
+  });
+
+  it('validar/observar exige supervisor, evidencia y revisión vigente; observar mantiene pendiente',async()=>{
+    const {shift}=await sentShift(); const closed=await closeShift(reception,{shiftId:shift.id});
+    const input={shiftId:shift.id,decision:'OBSERVADA' as const,note:'Falta comprobante del depósito.',revision:closed.updatedAt.toISOString()};
+    await expect(reviewShiftClosure(reception,input)).rejects.toThrow();
+    await expect(reviewShiftClosure(supervisor,{...input,note:' '})).rejects.toThrow();
+    const observed=await reviewShiftClosure(supervisor,input);
+    expect((await listPendingClosureReviews(supervisor)).map(s=>s.id)).toContain(shift.id);
+    await expect(reviewShiftClosure(supervisor,{...input,decision:'VALIDADA'})).rejects.toThrow(/cambió/);
+    const validated=await reviewShiftClosure(supervisor,{...input,decision:'VALIDADA',note:'Comprobantes revisados; depósito conforme.',revision:observed.updatedAt.toISOString()});
+    expect(validated.closureReviewDecision).toBe('VALIDADA');
+    expect((await listPendingClosureReviews(supervisor)).map(s=>s.id)).not.toContain(shift.id);
+    expect(await prisma.auditLog.count({where:{entityId:shift.id,action:'CAMBIO_ESTADO',summary:{contains:'Cierre '}}})).toBe(2);
+  });
+
+  it('conserva alertas/tareas históricas, las oculta a recepción y dirige su acción al cierre concreto',async()=>{
+    const {shift}=await sentShift(); await closeShift(reception,{shiftId:shift.id});
+    await prisma.shift.update({where:{id:shift.id},data:{closureReviewRequestedAt:null}});
+    const alert=await prisma.alert.create({data:{type:'OTRO',level:'CRITICA',title:'Validar cierre de turno',dedupeKey:`shift-validation:${shift.id}`}});
+    const task=await prisma.task.create({data:{title:'Validar cierre de turno',createdById:supervisor.id,alertId:alert.id,shiftId:shift.id}});
+    expect((await listPendingClosureReviews(supervisor)).map(s=>s.id)).toContain(shift.id);
+    const review=await getSupervisionData(supervisor);
+    expect(review.blocks.find(b=>b.key==='alertas')!.rows.map(r=>r.id)).not.toContain(alert.id);
+    expect(review.blocks.find(b=>b.key==='cierres-validacion')!.rows[0]!.href).toBe(`/supervision/cierres/${shift.id}`);
+    expect((await getBookItems({kinds:['task','alert']},reception)).items.map(i=>i.id)).not.toContain(task.id);
+    expect(await buildHandoverSnapshot(reception)).toHaveLength(0);
+    const historic=[{section:'Alertas activas',level:'URGENTE' as const,title:alert.title,detail:'Histórico',refType:'alert',refId:alert.id}];
+    expect(await visibleSnapshotItems(reception,historic,true)).toHaveLength(0);
+    expect(await prisma.alert.findUnique({where:{id:alert.id}})).toMatchObject({title:alert.title,status:'NUEVA'});
+    expect(await prisma.task.findUnique({where:{id:task.id}})).not.toBeNull();
+  });
+
+  it('Gestionar diferencia y garantía abre los registros concretos',async()=>{
+    const {shift,handover}=await sentShift(); await closeShift(reception,{shiftId:shift.id});
+    const alert=await prisma.alert.create({data:{title:'Diferencia de caja',message:'Falta USD 25',type:'OTRO',level:'CRITICA',handoverId:handover.id}});
+    const g=await prisma.guarantee.create({data:{kind:'EFECTIVO',state:'PENDIENTE',currency:'CLP',amount:50000,createdById:reception.id,guestName:'Prueba concreta'}});
+    const review=await getSupervisionData(supervisor);
+    expect(review.blocks.find(b=>b.key==='alertas')!.rows.find(r=>r.id===alert.id)!.href).toBe(`/turno/entrega/${handover.id}`);
+    expect(review.blocks.find(b=>b.key==='garantias')!.rows.find(r=>r.id===g.id)!.href).toBe(`/caja/garantias/${g.id}`);
+  });
+
+  it('por defecto se ve en todas las áreas y las novedades de Supervisión viajan en la entrega',async()=>{
+    const e=await notice();
+    expect(e.includeInReceptionHandover).toBe(true); expect(e.hiddenFromDepartments).toHaveLength(0);
+    expect((await buildHandoverSnapshot(reception)).map(i=>i.refId)).toContain(e.id);
+    expect((await getBookItems({kinds:['entry']},reception)).items.map(i=>i.id)).toContain(e.id);
+  });
+
+  it('creador o supervisor cambia áreas y entrega con auditoría; otros y revisiones viejas no pueden',async()=>{
+    const e=await notice(reception); const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    const input={id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:false};
+    await expect(updateEntryVisibility(other,input)).rejects.toThrow(/Sólo/);
+    const hidden=await updateEntryVisibility(reception,input);
+    expect(await prisma.auditLog.findFirst({where:{entityId:e.id,action:'EDITAR'}})).toMatchObject({after:{hiddenDepartmentIds:[area.id],includeInReceptionHandover:false}});
+    expect((await getBookItems({kinds:['entry']},other)).items.map(i=>i.id)).not.toContain(e.id);
+    expect((await getCoordinationBoard(other)).rows.map(i=>i.id)).not.toContain(e.id);
+    expect((await searchOperationalRecords(other,String(e.humanId))).map(i=>i.entityId)).not.toContain(e.id);
+    await expect(getSubjectEntry(other,e.id)).rejects.toThrow(/visible/);
+    expect((await getSubjectEntry(reception,e.id)).id).toBe(e.id);
+    expect((await getSubjectEntry(supervisor,e.id)).id).toBe(e.id);
+    expect((await buildHandoverSnapshot(reception)).map(i=>i.refId)).not.toContain(e.id);
+    await expect(updateEntryVisibility(supervisor,input)).rejects.toThrow(/cambió/);
+    await updateEntryVisibility(supervisor,{...input,revision:hidden.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:true});
+    expect((await buildHandoverSnapshot(other)).map(i=>i.refId)).toContain(e.id);
+  });
+
+  it('avisos históricos y push aplican el área actual sin borrar notificaciones',async()=>{
+    const e=await notice(supervisor); const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    const n=await prisma.notification.create({data:{userId:other.id,type:'ACCION_REQUERIDA',title:e.title,entity:'OperationalEntry',entityId:e.id}});
+    const ordinary=await prisma.notification.create({data:{userId:other.id,type:'ACTUALIZACION_OPERATIVA',title:'Aviso sin entidad'}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    const visible=await prisma.notification.findMany({where:await notificationWhereForUser(other.id)});
+    expect(visible.map(row=>row.id)).not.toContain(n.id); expect(visible.map(row=>row.id)).toContain(ordinary.id);
+    expect(await prisma.notification.findUnique({where:{id:n.id}})).not.toBeNull();
+  });
+
+  it('la creación rechaza áreas inexistentes y booleanos inválidos',async()=>{
+    await expect(notice(supervisor,{hiddenDepartmentIds:['no-existe']})).rejects.toThrow(/áreas vigentes/);
+    expect(entryCreateSchema.safeParse({type:'NOVEDAD',title:'Nueva',description:'Descripción válida',priority:'MEDIA',includeInReceptionHandover:'incorrecto'}).success).toBe(false);
+  });
+
+  it('ocultar solo en entrega conserva lectura por área y filtra también fotografías históricas',async()=>{
+    const e=await notice(supervisor,{includeInReceptionHandover:false});
+    expect((await getBookItems({kinds:['entry']},reception)).items.map(i=>i.id)).toContain(e.id);
+    expect(await visibleSnapshotItems(reception,[{refType:'entry',refId:e.id,title:e.title,detail:e.description}],true)).toHaveLength(0);
+    expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}})).description).toBe(e.description);
+  });
+});

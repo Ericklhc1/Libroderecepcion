@@ -1,3 +1,4 @@
+import { entryReadWhere } from './entry-visibility';
 import 'server-only';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {followUpReadWhere,taskFollowUpReadWhere,operationalAlarmReadWhere} from './followup-access';
@@ -53,7 +54,7 @@ export async function getRoomMonitorOverview(user: CurrentUser, now = new Date()
       number: true,
       floor: true,
       entries: {
-        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
         select: {
           id: true,
           type: true,
@@ -210,7 +211,8 @@ export async function getRoomMonitorDetail(number: string, user: CurrentUser, no
 
   const [entries, tasks, followUps, alarms, guarantees, passes, fines] = await Promise.all([
     prisma.operationalEntry.findMany({
-      where: { roomId: room.id, deletedAt: null },
+      where: {
+        AND: [entryReadWhere(user)], roomId: room.id, deletedAt: null },
       orderBy: [{ status: 'asc' }, { occurredAt: 'desc' }],
       take: 40,
       select: {

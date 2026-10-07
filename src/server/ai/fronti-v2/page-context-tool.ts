@@ -15,7 +15,7 @@ import { OperationalAlarmStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { getDashboardData } from '@/server/services/dashboard';
-import { getEntry } from '@/server/services/entries';
+import { getSubjectEntry } from '@/server/services/entries';
 import { getTask } from '@/server/services/tasks';
 import { getBookItems } from '@/server/services/book';
 import {
@@ -178,7 +178,7 @@ async function detailSnapshot(
   if (!page.entityType || !page.entityId) return null;
 
   if (page.entityType === 'OperationalEntry') {
-    const entry = await getEntry(page.entityId).catch(() => null);
+    const entry = await getSubjectEntry(user, page.entityId).catch(() => null);
     if (!entry) return { found: false };
     const room = entry.roomId
       ? await prisma.room.findUnique({

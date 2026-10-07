@@ -95,7 +95,7 @@ describe('continuidad de la entrega de turno', () => {
     expect(snapshot.some((item) => item.refId === entry.id)).toBe(true);
   });
 
-  it('conserva tarea y seguimiento ligados al mismo caso con contexto explícito', async () => {
+  it('conserva el seguimiento con contexto y mantiene la tarea fuera de recepción', async () => {
     await abrirTurno();
     const incident = await createEntry(user, {
       type: EntryType.INCIDENCIA,
@@ -123,7 +123,8 @@ describe('continuidad de la entrega de turno', () => {
     const taskItem = snapshot.find((item) => item.refId === task.id);
     const followUpItem = snapshot.find((item) => item.refId === followUp.id);
 
-    expect(taskItem?.detail).toContain(`Caso #${incident.humanId}`);
+    expect(taskItem).toBeUndefined();
+    expect(await prisma.task.findUnique({ where: { id: task.id } })).not.toBeNull();
     expect(followUpItem?.detail).toContain(`Caso #${incident.humanId}`);
   });
 
@@ -148,7 +149,7 @@ describe('continuidad de la entrega de turno', () => {
     expect(snapshot.some((item) => item.title.includes('950'))).toBe(false);
   });
 
-  it('una tarea independiente completada durante el turno también queda informada', async () => {
+  it('una tarea completada permanece en la base y no se imprime en recepción', async () => {
     const shift = await abrirTurno();
     const task = await createTask(user, {
       title: 'Ordenar sobres de tesorería',
@@ -163,6 +164,7 @@ describe('continuidad de la entrega de turno', () => {
       snapshot.some(
         (item) => item.section === 'Resuelto en este turno' && item.refId === task.id,
       ),
-    ).toBe(true);
+    ).toBe(false);
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).toMatchObject({ status: TaskStatus.COMPLETADA });
   });
 });

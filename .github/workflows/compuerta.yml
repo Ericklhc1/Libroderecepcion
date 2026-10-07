@@ -124,6 +124,9 @@ jobs:
           set -o pipefail
           npm run typecheck 2>&1 | tee etapa3-typecheck.log
 
+      - name: Chromium existente para regresión de impresión
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+
       - name: Regresiones
         run: |
           npm run test
@@ -147,7 +150,6 @@ jobs:
         run: |
           node scripts/etapa1/guard.cjs
           npx tsx scripts/etapa1/fixture.mts
-          node node_modules/playwright-core/cli.js install --with-deps chromium
 
       - name: Recorridos autenticados de escritorio y móvil
         timeout-minutes: 3

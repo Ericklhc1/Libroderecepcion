@@ -73,7 +73,6 @@ async function sendReviewedHandover(
 describe('ciclo de turno de punta a punta', () => {
   let morning: CurrentUser;
   let evening: CurrentUser;
-  let validator: CurrentUser;
 
   beforeAll(async () => {
     await seedCatalog();
@@ -83,7 +82,7 @@ describe('ciclo de turno de punta a punta', () => {
     await resetOperationalData();
     morning = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno mañana' });
     evening = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno tarde' });
-    validator = await createUser({
+    await createUser({
       roleKey: ROLE_KEYS.SYSTEM_ADMIN,
       name: 'Erick Herrera',
       username: 'EHerrera',
@@ -149,13 +148,9 @@ describe('ciclo de turno de punta a punta', () => {
     const validationAlert = await prisma.alert.findUnique({
       where: { dedupeKey: `shift-validation:${shiftA.id}` },
     });
-    expect(validationAlert).not.toBeNull();
-    const validationTask = await prisma.task.findFirst({
-      where: { alertId: validationAlert!.id },
-    });
-    expect(validationTask?.assigneeId).toBe(validator.id);
-    expect(validationTask?.priority).toBe('CRITICA');
-    expect(validationTask?.origin).toBe('ALERTA');
+    expect(validationAlert).toBeNull();
+    expect(await prisma.task.count({ where: { shiftId: shiftA.id, title: 'Validar cierre de turno' } })).toBe(0);
+    expect((await prisma.shift.findUniqueOrThrow({where:{id:shiftA.id}})).closureReviewRequestedAt).not.toBeNull();
 
     const notification = await prisma.notification.findFirst({
       where: { userId: morning.id, entity: 'ShiftHandover' },
@@ -246,7 +241,6 @@ describe('visibilidad e incorporación al turno vigente', () => {
 describe('invariantes del turno', () => {
   let morning: CurrentUser;
   let evening: CurrentUser;
-  let validator: CurrentUser;
 
   beforeAll(async () => {
     await seedCatalog();
@@ -256,7 +250,7 @@ describe('invariantes del turno', () => {
     await resetOperationalData();
     morning = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno mañana' });
     evening = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Turno tarde' });
-    validator = await createUser({
+    await createUser({
       roleKey: ROLE_KEYS.SYSTEM_ADMIN,
       name: 'Erick Herrera',
       username: 'EHerrera',
@@ -581,7 +575,8 @@ describe('invariantes del turno', () => {
       where: { shiftId: shiftA.id, title: 'Validar cierre de turno' },
       orderBy: { createdAt: 'desc' },
     });
-    expect(task?.assigneeId).toBe(validator.id);
+    expect(task).toBeNull();
+    expect((await prisma.shift.findUniqueOrThrow({where:{id:shiftA.id}})).closureReviewRequestedAt).not.toBeNull();
   });
 
   it('un tercero sin permisos de supervisión no puede cerrar un turno ajeno', async () => {

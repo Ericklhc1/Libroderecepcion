@@ -1,6 +1,9 @@
 'use server';
 import { revisionFromForm, operationalRecordRevision } from '@/server/security/authorized-revision';
 
+import { z } from 'zod';
+import { requireUser } from '@/server/auth/guard';
+import { updateEntryVisibility } from '@/server/services/entries';
 import { revalidatePath } from 'next/cache';
 import { EntryType } from '@prisma/client';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
@@ -122,5 +125,17 @@ export async function restoreEntryAction(
     refreshOperationalViews(input.id);
     revalidatePath('/admin/eliminados');
     return { ok: true as const, message: 'Registro restaurado.' };
+  });
+}
+
+export async function updateEntryVisibilityAction(_state: ActionState | null, formData: FormData): Promise<ActionState> {
+  return runAction(async () => {
+    const user = await requireUser();
+    const input = parseOrThrow(z.object({ id: z.string().min(1), revision: z.string().datetime(), hiddenDepartmentIds: z.array(z.string().min(1)).max(100), includeInReceptionHandover: z.enum(['true', 'false']).transform(v => v === 'true') }), {
+      id: formData.get('id'), revision: formData.get('revision'), hiddenDepartmentIds: formData.getAll('hiddenDepartmentIds'), includeInReceptionHandover: formData.get('includeInReceptionHandover'),
+    });
+    const entry = await updateEntryVisibility(user, input);
+    refreshOperationalViews(entry.id); revalidatePath('/turno');
+    return { ok: true as const, message: 'Visibilidad actualizada y auditada.', id: entry.id };
   });
 }

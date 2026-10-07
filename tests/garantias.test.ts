@@ -813,7 +813,7 @@ describe('garantías', () => {
 
   it('Supervisión muestra garantías autónomas con fecha objetivo vencida', async () => {
     const ayer = new Date(Date.now() - 24 * 3_600_000);
-    await createGuarantee(user, {
+    const guarantee = await createGuarantee(user, {
       kind: 'TARJETA',
       amount: 100000,
       currency: 'CLP',
@@ -828,7 +828,7 @@ describe('garantías', () => {
     expect(bloque).toBeDefined();
     expect(bloque?.rows).toHaveLength(1);
     expect(bloque?.rows[0]!.ref).toBe('GAR-SUP');
-    expect(bloque?.rows[0]!.href).toBe('/caja?seccion=garantias');
+    expect(bloque?.rows[0]!.href).toBe(`/caja/garantias/${guarantee.id}`);
     expect(bloque?.rows[0]!.meta).toContain('vencida');
   });
 

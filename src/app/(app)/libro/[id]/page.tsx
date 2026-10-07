@@ -1,3 +1,5 @@
+import { EntryVisibilityDialog } from '@/components/operational/entry-visibility';
+import { canManageEntryVisibility } from '@/server/services/entry-visibility';
 import {subjectDistributionEnabled} from '@/server/services/subject-distribution-gate';
 import {SubjectAttentionDialog} from '@/components/operational/subject-attention-dialog';
 import {isSubjectAttentionTask, returnedSubjectTask} from '@/domain/subject-attention';
@@ -277,6 +279,7 @@ export default async function EntryDetailPage({
             : canAttend && (entry.status !== EntryStatus.EN_CURSO || canFinish) ? <Dialog title={entry.status === EntryStatus.EN_CURSO ? 'Finalizar asunto' : 'Comenzar atención'} trigger={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'} triggerVariant="gold" triggerSize="sm" width="sm"><EntryStatusForm entryId={entry.id} currentStatus={entry.status} type={entry.type} resolution={entry.resolution} rootCause={entry.rootCause} targetStatus={entry.status === EntryStatus.EN_CURSO ? EntryStatus.CERRADO : EntryStatus.EN_CURSO} label={entry.status === EntryStatus.EN_CURSO ? 'Finalizar' : 'Comenzar atención'}/></Dialog>
             : <a href="#historial-asunto" className="rounded-md px-3 py-2 text-sm font-semibold">Ver resultado e historial</a>
           } more={<>
+            {canManageEntryVisibility(user, entry.createdById) ? <EntryVisibilityDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} departments={options.departments} hiddenDepartmentIds={entry.hiddenFromDepartments.map(d => d.id)} includeInHandover={entry.includeInReceptionHandover} /> : null}
 
             {user.permissions.includes('entry.content.edit') ? (
               <EditEntryDialog

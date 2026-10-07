@@ -9,8 +9,8 @@ import { handover02Fixture, confirmedHandover02Fixture } from './fixtures/handov
 
 const css = readFileSync('src/app/globals.css', 'utf8');
 describe('impresión de entrega 02-10-2026', () => {
-  it('un borrador no monta informe ni firmas aunque se invoque la impresión del navegador',()=>{
-    expect(renderToStaticMarkup(<HandoverPrint {...handover02Fixture()} handoverStatus="BORRADOR" />)).toBe('');
+  for(const status of ['BORRADOR','ANULADA'] as const)it(`${status} no monta informe ni firmas aunque se invoque la impresión del navegador`,()=>{
+    expect(renderToStaticMarkup(<HandoverPrint {...handover02Fixture()} handoverStatus={status} />)).toBe('');
   });
 
   it('recuento entrante, diferencias, marcas y notas aparecen sólo tras confirmar la recepción',()=>{

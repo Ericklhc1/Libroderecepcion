@@ -37,7 +37,7 @@ import {
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { fromMinor } from '@/domain/cash';
-import { lockReceptionSummary, receptionSummaryKey, buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
+import { lockReceptionSummary, reloadReceptionReader, receptionSummaryKey, buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import {
   cashBlockersForReceiving,
@@ -1433,10 +1433,11 @@ export async function confirmReceptionReviewStep(
   if (params.step === 'BRIEFING') {
     return prisma.$transaction(async (tx) => {
       await lockReceptionSummary(tx);
+    const reader=await reloadReceptionReader(tx,user);
       await lockHandover(tx, handover.id);
       await assertElementActor(tx, user, handover.id, 'confirmed');
       const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
-      const summaryKey=receptionSummaryKey((await visibleHandover(user,fresh,tx)).items);
+      const summaryKey=receptionSummaryKey((await visibleHandover(reader,fresh,tx)).items);
       const now = new Date();
       const updated = await tx.shiftHandover.update({
         where: { id: handover.id },
@@ -1484,10 +1485,11 @@ export async function confirmReceptionReviewStep(
   if (params.step === 'CUSTODY') {
     return prisma.$transaction(async (tx) => {
       await lockReceptionSummary(tx);
+    const reader=await reloadReceptionReader(tx,user);
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
       const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
-      const summaryKey=receptionSummaryKey((await visibleHandover(user,fresh,tx)).items);
+      const summaryKey=receptionSummaryKey((await visibleHandover(reader,fresh,tx)).items);
       if(current.receiverBriefingSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
       const now = new Date();
       if (params.step !== 'BRIEFING') {
@@ -1533,10 +1535,11 @@ export async function confirmReceptionReviewStep(
 
   return prisma.$transaction(async (tx) => {
       await lockReceptionSummary(tx);
+    const reader=await reloadReceptionReader(tx,user);
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
       const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
-      const visible=await visibleHandover(user,fresh,tx);
+      const visible=await visibleHandover(reader,fresh,tx);
       const summaryKey=receptionSummaryKey(visible.items);
       if(current.receiverBriefingSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
       const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
@@ -2167,10 +2170,11 @@ export async function receiveHandover(
 
   await prisma.$transaction(async (tx) => {
     await lockReceptionSummary(tx);
+    const reader=await reloadReceptionReader(tx,user);
     await lockHandover(tx, incoming.id);
     const current = await assertElementActor(tx, user, incoming.id, 'confirmed');
     const fresh = await tx.shiftHandover.findUniqueOrThrow({where:{id:incoming.id},include:{items:true}});
-    const visible=await visibleHandover(user,fresh,tx);
+    const visible=await visibleHandover(reader,fresh,tx);
     const summaryKey=receptionSummaryKey(visible.items);
     if(current.receiverBriefingSummaryKey!==summaryKey||current.receiverFinalSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
     const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
@@ -2312,10 +2316,11 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
 
   return prisma.$transaction(async (tx) => {
     await lockReceptionSummary(tx);
+    const reader=await reloadReceptionReader(tx,user);
     let existing=shift.handoverOut?await tx.shiftHandover.findUniqueOrThrow({where:{id:shift.handoverOut.id}}):null;
     if(existing){await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${existing.id} FOR UPDATE`;existing=await tx.shiftHandover.findUniqueOrThrow({where:{id:existing.id}});}
     if(existing&&!['BORRADOR','ANULADA'].includes(existing.status))throw new RuleError('Este turno ya envió su entrega.');
-    const snapshot=await buildHandoverSnapshot(user,new Date(),{client:tx});
+    const snapshot=await buildHandoverSnapshot(reader,new Date(),{client:tx,shiftId:shift.id});
     const handover = existing
       ? existing.status === HandoverStatus.ANULADA
         ? await tx.shiftHandover.update({
@@ -2356,6 +2361,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
         finalReviewAt: null,
         urgentAcknowledgedAt: null,
         receptionSummaryPreparedRevision:handover.receptionSummaryRevision,
+        issuedById:user.id,
       },
     });
 
@@ -2449,22 +2455,23 @@ export async function confirmHandoverReviewStep(
   if (await isCashEnabled()) await assertShiftCashClosed(handover.fromShiftId);
 
   const now = new Date();
-  const hasUrgent = (await visibleSnapshotItems(user,handover.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
 
   if (params.step === 'FINAL' && !handover.pendingsReviewedAt) {
     throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
   }
-  if (params.step === 'FINAL' && hasUrgent && !params.urgentAcknowledged) {
-    throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste antes de continuar.');
-  }
 
   const updated = await prisma.$transaction(async (tx) => {
     await lockReceptionSummary(tx);
+    const reader=await reloadReceptionReader(tx,user);
     await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
     const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
     if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
+    if(fresh.issuedById!==reader.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
     if(fresh.receptionSummaryRevision!==fresh.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de revisarlo.');
     if(params.step==='FINAL'&&!fresh.pendingsReviewedAt)throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
+    const freshItems=await tx.handoverItem.findMany({where:{handoverId:handover.id}});
+    const hasUrgent=(await visibleSnapshotItems(reader,freshItems,true,tx)).some(i=>i.level===HandoverLevel.URGENTE);
+    if(params.step==='FINAL'&&hasUrgent&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste antes de continuar.');
 
     const row = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },
@@ -2554,9 +2561,11 @@ export async function sendHandover(
 
   return prisma.$transaction(async (tx) => {
     await lockReceptionSummary(tx);
+    const reader=await reloadReceptionReader(tx,user);
     await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
     const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
     if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
+    if(fresh.issuedById!==reader.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
     if(fresh.receptionSummaryRevision!==fresh.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de enviar.');
     if(!fresh.pendingsReviewedAt||!fresh.finalReviewAt)throw new RuleError('Confirma de nuevo la revisión de pendientes y la revisión final antes de enviar.');
 
@@ -2565,7 +2574,7 @@ export async function sendHandover(
       where: { handoverId: handover.id },
       orderBy: [{ level: 'asc' }, { order: 'asc' }],
     });
-    const items = await visibleSnapshotItems(user, originalItems, true, tx);
+    const items = await visibleSnapshotItems(reader, originalItems, true, tx);
     if(items.some(item=>item.level===HandoverLevel.URGENTE)&&!fresh.urgentAcknowledgedAt)throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
     const now = new Date();
     const sent = await tx.shiftHandover.update({

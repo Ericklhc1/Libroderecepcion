@@ -3,7 +3,7 @@ import { AuditAction, EntryType, ShiftType, ShiftStatus } from '@prisma/client';
 import { createUser, createShift, openShiftAs, seedCatalog, resetOperationalData, prisma, ROLE_KEYS } from './helpers';
 import { getShiftBriefing, prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift, startReceptionShift, confirmReceptionReviewStep } from '@/server/services/shifts';
 import { listPendingClosureReviews, reviewShiftClosure } from '@/server/services/closure-review';
-import { getSupervisionData } from '@/server/services/supervision';
+import { supervisionAttentionCounts, getSupervisionData } from '@/server/services/supervision';
 import { createEntry, getSubjectEntry, updateEntryVisibility, updateEntry } from '@/server/services/entries';
 import { lockReceptionSummary,buildHandoverSnapshot, visibleSnapshotItems,visibleHandover } from '@/server/services/handover-snapshot';
 import { getBookItems } from '@/server/services/book';
@@ -27,6 +27,8 @@ import { getDashboardData } from '@/server/services/dashboard';
 import { createHkWork, getHkWorkday, saveHkHandover, changeHkWork } from '@/server/services/housekeeping-work';
 import { createHousekeepingRequest, getHousekeepingBoard, searchHousekeepingRecords, changeHousekeepingRequest } from '@/server/services/housekeeping';
 import { hotelDateKey } from '@/domain/time';
+import {saveScheduleCollaborator,removeScheduleMembership} from '@/server/services/schedule-catalog';
+import {updateAdministrativeUser} from '@/server/services/schedule-admin-safety';
 import { entryCreateSchema } from '@/server/schemas';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -39,6 +41,9 @@ async function sentShift() {
   await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
   await sendHandover(reception,{shiftId:shift.id});
   return {shift,handover};
+}
+async function sentShiftWithUrgent(){
+  const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});const handover=await prepareHandover(reception,shift.id);await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});await sendHandover(reception,{shiftId:shift.id});return {shift,handover};
 }
 async function notice(author=supervisor, extra: Partial<Parameters<typeof createEntry>[1]>={}) {
   return createEntry(author,{type:EntryType.NOVEDAD,title:'Novedad de visibilidad',description:'Descripción completa para recepción.',priority:'MEDIA',tags:[],requiresFollowUp:false,...extra});
@@ -83,6 +88,38 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({receptionSummaryRevision:1,pendingsReviewedAt:null,finalReviewAt:null});
     await expect(sendHandover(reception,{shiftId:shift.id})).rejects.toThrow(/Regenera/);
     await prepareHandover(reception,shift.id);expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(1);
+  });
+
+  it('otro participante regenera con su selección y firma completa, sin heredar la revisión ajena',async()=>{
+    const area=(await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}})).id;await prisma.user.update({where:{id:reception.id},data:{departmentId:area}});reception={...reception,departmentId:area};const e=await notice(supervisor,{hiddenDepartmentIds:[area]});
+    const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});await prisma.shiftAssignment.create({data:{shiftId:shift.id,userId:other.id,role:'APOYO',activatedAt:new Date()}});const handover=await prepareHandover(reception,shift.id);const manual=await prisma.handoverItem.create({data:{handoverId:handover.id,manual:true,title:'Nota conservada entre emisores',section:'Notas',level:'INFORMATIVO'}});
+    expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(0);await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
+    await expect(confirmHandoverReviewStep(other,{handoverId:handover.id,step:'PENDINGS'})).rejects.toThrow(/Regenera.*tu cuenta/);await expect(sendHandover(other,{shiftId:shift.id})).rejects.toThrow(/Regenera.*tu cuenta/);
+    const prepared=await prepareHandover(other,shift.id);expect(prepared).toMatchObject({issuedById:other.id,pendingsReviewedAt:null,finalReviewAt:null});expect(await prisma.handoverItem.findUnique({where:{id:manual.id}})).not.toBeNull();expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(1);await confirmHandoverReviewStep(other,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(other,{handoverId:handover.id,step:'FINAL'});const sent=await sendHandover(other,{shiftId:shift.id});expect(sent.issuedById).toBe(other.id);expect(JSON.stringify(sent.snapshot)).toContain(e.id);
+  });
+
+  it('el contador de revisión usa la cola canónica y no suma el cierre como alerta crítica',async()=>{
+    const shift=await createShift({userId:reception.id,type:'DIA'});await prisma.shift.update({where:{id:shift.id},data:{status:'CERRADO',actualEnd:new Date()}});const review=await getSupervisionData(supervisor);expect(supervisionAttentionCounts(review.blocks)).toEqual({critical:0,pendingClosures:1});expect(review.blocks.find(b=>b.key==='cierres-validacion')?.rows.map(r=>r.id)).toContain(shift.id);
+  });
+
+  it('cambiar áreas del preparador invalida sólo su borrador con auditoría y conserva notas manuales',async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const area=(await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}})).id;const e=await notice(supervisor,{hiddenDepartmentIds:[area]});const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});const handover=await prepareHandover(reception,shift.id);const manual=await prisma.handoverItem.create({data:{handoverId:handover.id,manual:true,title:'Nota conservada al cambiar áreas',section:'Notas',level:'INFORMATIVO'}});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
+    await saveScheduleCollaborator(admin,{userId:reception.id,departmentIds:[area]});expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({receptionSummaryRevision:1,pendingsReviewedAt:null,finalReviewAt:null});await expect(sendHandover(reception,{shiftId:shift.id})).rejects.toThrow(/Regenera/);await prepareHandover(reception,shift.id);expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(0);expect(await prisma.handoverItem.findUnique({where:{id:manual.id}})).not.toBeNull();expect(await prisma.auditLog.count({where:{entity:'ShiftHandover',entityId:handover.id,summary:{contains:'cambio de áreas del emisor'},userId:admin.id}})).toBe(1);
+  });
+
+  for(const writer of ['membership-add','membership-remove','primary-department'] as const)for(const action of ['FINAL','RECEIVE'] as const)it(`áreas de receptor ${writer} serializan ${action} y releen la identidad`,async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const area=(await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}})).id;const desk=(await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}})).id;
+    await notice(supervisor,{priority:'CRITICA',title:'URGENTE_IDENTIDAD_A'});await notice(supervisor,{priority:'MEDIA',title:'FILA_IDENTIDAD_B',hiddenDepartmentIds:[area]});const {shift,handover}=await sentShiftWithUrgent();await closeShift(reception,{shiftId:shift.id});
+    let collaboratorId:string|undefined;if(writer==='primary-department'){await prisma.user.update({where:{id:other.id},data:{departmentId:area}});other={...other,departmentId:area};}else{collaboratorId=(await saveScheduleCollaborator(admin,{userId:other.id,departmentIds:[writer==='membership-remove'?area:desk]})).id;}
+    const incoming=await startReceptionShift(other,{handoverId:handover.id,type:'NOCHE'});await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'BRIEFING'});await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'CUSTODY'});if(action==='RECEIVE')await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});const photo=(await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}})).snapshot;
+    const account=await prisma.user.findUniqueOrThrow({where:{id:other.id}});const version=collaboratorId?(await prisma.scheduleCollaborator.findUniqueOrThrow({where:{id:collaboratorId}})).version:0;
+    let ready!:()=>void;let release!:()=>void;const locked=new Promise<void>(r=>{ready=r;});const gate=new Promise<void>(r=>{release=r;});const holder=prisma.$transaction(async tx=>{await lockReceptionSummary(tx);ready();await gate;});await locked;
+    const change=writer==='membership-add'?saveScheduleCollaborator(admin,{userId:other.id,departmentIds:[area]}):writer==='membership-remove'?removeScheduleMembership(admin,{collaboratorId,departmentId:area,version,reason:'Cambio sintético de pertenencia'}):updateAdministrativeUser(admin,{id:other.id,name:account.name,email:account.email??undefined,emailNotificationsEnabled:account.emailNotificationsEnabled,hiddenFromSelectors:account.hiddenFromSelectors,roleId:account.roleId,departmentId:desk,phone:account.phone,active:account.active});
+    let attempt:Promise<{ok:boolean;error?:unknown}>|undefined;let completed=false;
+    const waiters=async(minimum:number)=>{let count=0;for(let i=0;i<50&&count<minimum;i++){const rows=await prisma.$queryRaw<{count:number}[]>`SELECT COUNT(*)::int AS count FROM pg_locks WHERE locktype='advisory' AND NOT granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND objid=(hashtext('aroh.reception-handover-summary')::bigint & 4294967295)::oid`;count=rows[0]!.count;if(count<minimum)await new Promise(r=>setTimeout(r,20));}return count;};
+    try {expect(await waiters(1)).toBe(1);attempt=(action==='FINAL'?confirmReceptionReviewStep(other,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true}):receiveHandover(other,{handoverId:handover.id})).then(()=>({ok:true}),error=>({ok:false,error})).finally(()=>{completed=true;});expect(await waiters(2)).toBe(2);expect(completed).toBe(false);}finally{release();await holder;}
+    await change;const result=await attempt!;expect(result.ok).toBe(false);expect(String(result.error)).toMatch(/entrega visible cambió/);expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({status:'ENVIADA',receivedAt:null,snapshot:photo});expect(await prisma.shift.findUnique({where:{id:incoming.id}})).toMatchObject({status:'INICIADO'});expect(await prisma.auditLog.count({where:{entity:'ShiftHandover',entityId:handover.id,action:'TURNO_RECIBIR'}})).toBe(0);
+    await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'BRIEFING'});await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'CUSTODY'});await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});await receiveHandover(other,{handoverId:handover.id});expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({status:'RECIBIDA',snapshot:photo});
   });
 
   it('si falla la auditoría de visibilidad se revierten también la invalidación y los sellos del borrador',async()=>{

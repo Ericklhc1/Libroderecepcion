@@ -14,6 +14,8 @@ import {
 } from '@prisma/client';
 import type { Prisma, Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { RuleError } from '@/server/errors';
+import { recordAudit } from '@/server/audit';
 import { formatDateTime } from '@/lib/format';
 import {
   ALERT_TYPE_LABEL,
@@ -92,6 +94,21 @@ export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:P
     else if(!('receiverFinalSummaryKey' in handover)||handover.receiverFinalSummaryKey!==key)receptionReviewMask={receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null};
   }
   return {...handover,items,snapshot,...receptionReviewMask};
+}
+
+/** Call under lockReceptionSummary: identities/areas are reloaded in the same transaction. */
+export async function reloadReceptionReader(tx:Prisma.TransactionClient,user:CurrentUser):Promise<CurrentUser>{
+  const account=await tx.user.findFirst({where:{id:user.id,active:true,deletedAt:null},select:{roleId:true,departmentId:true,role:{select:{key:true}}}});
+  if(!account||account.roleId!==user.roleId)throw new RuleError('La cuenta cambió. Actualiza antes de continuar con la entrega.');
+  return {...user,departmentId:account.departmentId,roleKey:account.role.key,isSystemAdmin:account.role.key==='ADMINISTRADOR_SISTEMA'};
+}
+
+/** Native identity writers invalidate only this preparer's drafts; sent evidence stays immutable. */
+export async function invalidateReceptionDraftsForUser(tx:Prisma.TransactionClient,actor:CurrentUser,userId:string){
+  const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR',issuedById:userId},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true}});
+  if(!drafts.length)return;
+  await tx.shiftHandover.updateMany({where:{id:{in:drafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
+  for(const draft of drafts)await recordAudit({entity:'ShiftHandover',entityId:draft.id,action:'EDITAR',summary:'Selección del borrador pendiente de regenerar por cambio de áreas del emisor',user:actor,before:{receptionSummaryRevision:draft.receptionSummaryRevision},after:{receptionSummaryRevision:draft.receptionSummaryRevision+1,preparedById:userId}},tx);
 }
 
 /** Serialize eligibility changes with prepare/review/send in the same engine. */

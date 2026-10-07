@@ -5,7 +5,7 @@ import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import {getCoordinationBoard} from '@/server/services/coordination';
 import { getBookItems } from '@/server/services/book';
-import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
+import { supervisionAttentionCounts, getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
 import {
   getSupervisionCenterSummary,
   listCancelableSupervisionOpenings,
@@ -216,10 +216,7 @@ export default async function SupervisionCenterPage({
       rows: block.rows.filter((row) => matches(row.ref, row.title, row.detail, row.meta)),
     }))
     .filter((block) => block.rows.length > 0);
-  const critical = review.blocks
-    .filter((block) => block.tone === 'critico')
-    .reduce((sum, block) => sum + block.rows.length, 0);
-  const pendingClosures = review.blocks.find((block) => block.key === 'cierres')?.rows.length ?? 0;
+  const {critical,pendingClosures}=supervisionAttentionCounts(review.blocks);
   const continuityOpen = center.counts.myTasks + center.counts.myFollowUps;
   const auditPendingCount = center.auditImports.reduce((sum, auditImport) => {
     const checks = Array.isArray(auditImport.checks)

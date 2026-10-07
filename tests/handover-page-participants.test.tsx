@@ -2,7 +2,7 @@ import {beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {createUser,createShift,openShiftAs,prisma,seedCatalog,resetOperationalData,ROLE_KEYS} from './helpers';
 import type {CurrentUser} from '@/server/auth/current-user';
-import {receiveHandover,prepareHandover,confirmHandoverReviewStep,sendHandover,closeShift} from '@/server/services/shifts';
+import {receiveHandover,prepareHandover,confirmHandoverReviewStep,sendHandover,closeShift,cancelHandoverPreparation} from '@/server/services/shifts';
 const auth=vi.hoisted(()=>({user:null as CurrentUser|null}));
 vi.mock('@/server/auth/guard',()=>({requirePageUser:async()=>auth.user}));
 vi.mock('next/link',()=>({default:'a'}));
@@ -26,6 +26,12 @@ describe('acta real: participantes y revisión por rol',()=>{
     const reader=await createUser({roleKey:ROLE_KEYS.MANAGEMENT});auth.user={...reader,permissions:[]};
     const query=vi.spyOn(prisma.shiftHandover,'findUnique');
     try {await expect(HandoverPage({params:Promise.resolve({id:'folio-conocido-sintetico'}),searchParams:Promise.resolve({})})).rejects.toThrow('not found');expect(query).not.toHaveBeenCalled();}finally{query.mockRestore();}
+  });
+
+  it('una preparación anulada conserva el acta y excluye informe y botón de impresión en su URL',async()=>{
+    const issuer=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});auth.user=issuer;
+    const shift=await createShift({userId:issuer.id,type:'DIA'});await openShiftAs(issuer,shift);await receiveHandover(issuer,{shiftId:shift.id});const handover=await prepareHandover(issuer,shift.id);await cancelHandoverPreparation(issuer,shift.id);
+    const html=renderToStaticMarkup(await HandoverPage({params:Promise.resolve({id:handover.id}),searchParams:Promise.resolve({})}));expect(html).not.toContain('handover-print');expect(html).not.toContain('Imprimir informe de turno');expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({status:'ANULADA'});
   });
 
 });

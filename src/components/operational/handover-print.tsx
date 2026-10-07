@@ -29,7 +29,7 @@ function ItemTable({ title, rows }: { title: string; rows: ReturnType<typeof han
 
 /** Print presentation of the same handover/custody records; no operational writes. */
 export function HandoverPrint(props: HandoverPrintProps) {
-  if(props.handoverStatus===HandoverStatus.BORRADOR)return null;
+  if(props.handoverStatus!==HandoverStatus.ENVIADA&&props.handoverStatus!==HandoverStatus.RECIBIDA)return null;
   const rows = handoverPrintRows(props.items);
   const counts = handoverPrintCounts(rows);
   const received=props.handoverStatus===HandoverStatus.RECIBIDA;

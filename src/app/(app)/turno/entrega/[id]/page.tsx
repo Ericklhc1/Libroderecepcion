@@ -119,6 +119,7 @@ export default async function HandoverPage({
     linkedReceiver ||
     handover.receivedBy?.id === user.id;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
+  const canPrint = handover.status === HandoverStatus.ENVIADA || handover.status === HandoverStatus.RECIBIDA;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
   const canFinalizeClose = Boolean(
     isIssuer &&
@@ -255,7 +256,7 @@ export default async function HandoverPage({
 
   return (
     <>
-      {handover.status !== HandoverStatus.BORRADOR && <HandoverPrint handoverStatus={handover.status} title={`Entrega de turno ${shiftTypeTitle} · ${shiftPeriod}`} participants={shiftParticipants} issuer={handover.issuedBy.name}
+      {canPrint && <HandoverPrint handoverStatus={handover.status} title={`Entrega de turno ${shiftTypeTitle} · ${shiftPeriod}`} participants={shiftParticipants} issuer={handover.issuedBy.name}
         issuedAt={handover.issuedAt ? formatDateTime(handover.issuedAt) : 'Sin enviar'} status={HANDOVER_STATUS_LABEL[handover.status]}
         receiver={handover.receivedBy?.name ?? null} receivedAt={handover.receivedAt ? formatDateTime(handover.receivedAt) : null}
         supervisor={closureValidation?.resolvedBy?.name ?? null} items={handover.items} cash={cashState}
@@ -270,11 +271,11 @@ export default async function HandoverPage({
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Volver al turno
         </Link>
-        {handover.status !== HandoverStatus.BORRADOR ? (
+        {canPrint ? (
           <PrintButton label="Imprimir informe de turno" />
         ) : (
           <span className="text-xs font-medium text-slate-500">
-            El acta final se imprime después de que el entrante recuente Caja y confirme la recepción.
+            Impresión disponible para entregas enviadas o recibidas.
           </span>
         )}
       </div>

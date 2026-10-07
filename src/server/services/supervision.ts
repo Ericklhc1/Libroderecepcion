@@ -45,6 +45,12 @@ export type SupervisionBlock = {
   rows: SupervisionRow[];
 };
 
+/** Mandatory closure review has its own counter, rather than masquerading as an alert. */
+export function supervisionAttentionCounts(blocks:SupervisionBlock[]){
+  return {critical:blocks.filter(b=>b.tone==='critico'&&b.key!=='cierres-validacion').reduce((n,b)=>n+b.rows.length,0),pendingClosures:blocks.find(b=>b.key==='cierres-validacion')?.rows.length??0};
+}
+
+
 function shiftText(shift: { type: string; date: Date } | null | undefined): string | null {
   if (!shift) return null;
   return `${shift.type} · ${formatCalendarDate(shift.date)}`;

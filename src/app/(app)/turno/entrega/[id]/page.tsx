@@ -61,6 +61,11 @@ export default async function HandoverPage({
   searchParams: Promise<{ paso?: string }>;
 }) {
   const user = await requirePageUser();
+  const canReadAct = user.isSystemAdmin
+    || (isReceptionDeskRole(user.roleKey) && user.permissions.some(p => ['shift.start','shift.receive','shift.handover','shift.close'].includes(p)))
+    || (user.roleKey === 'SUPERVISOR' && user.permissions.includes('shift.manage'))
+    || user.permissions.some(p => ['supervision.center.view','management.dashboard.view','audit.view'].includes(p));
+  if (!canReadAct) notFound();
   const { id } = await params;
   const query = await searchParams;
 

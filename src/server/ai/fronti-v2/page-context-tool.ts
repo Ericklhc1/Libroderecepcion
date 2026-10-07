@@ -349,6 +349,7 @@ async function detailSnapshot(
         issuedAt: true,
         receivedAt: true,
         snapshot: true,
+        receiverBriefingReviewedAt:true,receiverBriefingSummaryKey:true,receiverCustodyReviewedAt:true,receiverFinalReviewAt:true,receiverFinalSummaryKey:true,receiverUrgentAcknowledgedAt:true,
         issuedBy: { select: { name: true } },
         receivedBy: { select: { name: true } },
         fromShift: { select: { id: true, type: true, date: true, status: true } },

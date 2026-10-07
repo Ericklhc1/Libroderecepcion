@@ -1,5 +1,6 @@
+import {createHash} from 'node:crypto';
 import { isReceptionHandoverItem } from '@/domain/handover-print';
-import { receptionHandoverEntryWhere, closureValidationAlertWhere } from './entry-visibility';
+import { receptionHandoverEntryWhere, closureValidationAlertWhere, entryReadWhere } from './entry-visibility';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
@@ -39,7 +40,7 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
     db.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user,shared)]},select:{id:true}}),
     db.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true,shared)]},select:{id:true}}),
     db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}]},select:{id:true}}),
-    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere},select:{id:true}}),
+    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)]},select:{id:true}}),
   ]);
   const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
   const receptionEntries=new Set(entries.map(e=>e.id));
@@ -53,6 +54,12 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
   return items.filter(item=>!shared || (isReceptionHandoverItem({...item,section:'section' in item ? String(item.section) : ''}) && !(item.refType==='entry'&&item.refId&&!receptionEntries.has(item.refId)) && !(item.refType==='alert'&&item.refId&&excludedAlerts.has(item.refId)) && !(item.refType==='followup'&&item.refId&&excludedFollowUps.has(item.refId)))).map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
     ? {...item,title:'Asunto reservado',detail:'Requiere revisión por una persona autorizada. La evidencia original se conserva.',refType:null,refId:null}
     : item);
+}
+
+/** Exact visible photographed multiset, including duplicates; order does not change evidence. */
+export function receptionSummaryKey(items:SnapshotItem[]){
+  const rows=items.map(i=>JSON.stringify([i.level,i.section,i.title,i.detail??null,i.refType??null,i.refId??null])).sort();
+  return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 }
 
 /** Sanitizes both native items and the historic JSON photograph without rewriting either. */
@@ -75,8 +82,16 @@ export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:P
       return {...value,title:value.title,detail:typeof value.detail==='string'?value.detail:null,refType:typeof value.refType==='string'?value.refType:null,refId:typeof value.refId==='string'?value.refId:null};
     });
     snapshot={...snapshot,items:await visibleSnapshotItems(user,historical,true,db)};
+    const counts=snapshot.counts;
+    if(counts&&typeof counts==='object'&&!Array.isArray(counts))snapshot={...snapshot,counts:{...counts,urgente:items.filter(i=>i.level===HandoverLevel.URGENTE).length,importante:items.filter(i=>i.level===HandoverLevel.IMPORTANTE).length,informativo:items.filter(i=>i.level===HandoverLevel.INFORMATIVO).length,...('total' in counts?{total:items.length}:{})}};
   }
-  return {...handover,items,snapshot};
+  let receptionReviewMask:{receiverBriefingReviewedAt?:null;receiverFinalReviewAt?:null;receiverUrgentAcknowledgedAt?:null}={};
+  if(handover.status==='ENVIADA'&&'receiverBriefingReviewedAt' in handover){
+    const key=receptionSummaryKey(items);
+    if(!('receiverBriefingSummaryKey' in handover)||handover.receiverBriefingSummaryKey!==key)receptionReviewMask={receiverBriefingReviewedAt:null,receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null};
+    else if(!('receiverFinalSummaryKey' in handover)||handover.receiverFinalSummaryKey!==key)receptionReviewMask={receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null};
+  }
+  return {...handover,items,snapshot,...receptionReviewMask};
 }
 
 /** Serialize eligibility changes with prepare/review/send in the same engine. */
@@ -170,7 +185,7 @@ export async function buildHandoverSnapshot(
     resolvedEntries,
   ] = await Promise.all([
     db.operationalEntry.findMany({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere },
+      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)] },
       select: {
         id: true,
         humanId: true,
@@ -225,7 +240,7 @@ export async function buildHandoverSnapshot(
     currentShiftId
       ? db.operationalEntry.findMany({
           where: {
-            ...receptionHandoverNoticeWhere,
+            ...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)],
             shiftId: currentShiftId,
             deletedAt: null,
             status: { in: [EntryStatus.RESUELTO, EntryStatus.CERRADO] },

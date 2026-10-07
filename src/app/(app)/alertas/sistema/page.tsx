@@ -74,9 +74,13 @@ export default async function AlertsPage({
     ? null
     : { OR: restrictedKinds };
 
+  const readableSignals: Prisma.AlertWhereInput = canValidateShift
+    ? { OR: [alertReadWhere(user), { dedupeKey: { startsWith: 'shift-validation:' } }] }
+    : alertReadWhere(user);
+
   const where: Prisma.AlertWhereInput = {
     deletedAt: null,
-    AND:[alertReadWhere(user),...(accessFilter?[accessFilter]:[])],
+    AND:[readableSignals,...(accessFilter?[accessFilter]:[])],
     ...(estado === 'activas'
       ? {
           OR: [
@@ -119,7 +123,7 @@ export default async function AlertsPage({
       by: ['status'],
       where: {
         deletedAt: null,
-        AND:[alertReadWhere(user),...(accessFilter?[accessFilter]:[])],
+        AND:[readableSignals,...(accessFilter?[accessFilter]:[])],
       },
       _count: { _all: true },
     }),

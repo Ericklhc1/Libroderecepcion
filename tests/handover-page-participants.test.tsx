@@ -22,4 +22,10 @@ describe('acta real: participantes y revisión por rol',()=>{
     const html=renderToStaticMarkup(await HandoverPage({params:Promise.resolve({id:handover.id}),searchParams:Promise.resolve({})}));const print=html.match(/<article class="handover-print"[\s\S]*?<\/article>/)?.[0];expect(print).toBeDefined();expect(print).toContain(issuer.name);expect(print).toContain(support.name);expect(print).not.toContain(removed.name);expect(html).not.toContain('Erick Herrera o auditor designado');expect(html).toContain('Supervisión / Administrador de sistema');
     expect(await prisma.shiftAssignment.findUnique({where:{shiftId_userId:{shiftId:shift.id,userId:removed.id}}})).toMatchObject({removedExplicitly:true});expect(await prisma.shiftAssignment.findUnique({where:{shiftId_userId:{shiftId:shift.id,userId:support.id}}})).toMatchObject({removedExplicitly:false,leftAt:expect.any(Date)});
   });
+  it('rechaza la URL conocida para un lector sin capacidad de turno o revisión antes de consultar el acta',async()=>{
+    const reader=await createUser({roleKey:ROLE_KEYS.MANAGEMENT});auth.user={...reader,permissions:[]};
+    const query=vi.spyOn(prisma.shiftHandover,'findUnique');
+    try {await expect(HandoverPage({params:Promise.resolve({id:'folio-conocido-sintetico'}),searchParams:Promise.resolve({})})).rejects.toThrow('not found');expect(query).not.toHaveBeenCalled();}finally{query.mockRestore();}
+  });
+
 });

@@ -1,5 +1,5 @@
 import {lockReceptionSummary} from './handover-snapshot';
-import { entryReadWhere, housekeepingEntryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
+import { receptionHandoverEntryWhere, entryReadWhere, housekeepingEntryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
 import {assertSubjectCanFinish} from './subject-completion';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
@@ -641,20 +641,23 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, OR:[{active:true},{id:{in:current.hiddenFromDepartments.map(d=>d.id)}}] } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
     await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
     await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
-    const receptionId=(await tx.department.findUnique({where:{key:'RECEPCION'},select:{id:true}}))?.id;
-    const wasEligible=current.includeInReceptionHandover&&!current.hiddenFromDepartments.some(d=>d.id===receptionId);
-    const willBeEligible=input.includeInReceptionHandover&&!ids.includes(receptionId??'');
-    if(wasEligible!==willBeEligible)await lockReceptionSummary(tx);
-    let invalidatedDrafts:{id:string;receptionSummaryRevision:number;receptionSummaryPreparedRevision:number;pendingsReviewedAt:string|null;finalReviewAt:string|null;urgentAcknowledgedAt:string|null}[]=[];
-    if(!wasEligible&&willBeEligible&&!current.isDemo&&(current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA)&&ENTRY_OPEN_STATUSES.includes(current.status)){
-      const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR'},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true,pendingsReviewedAt:true,finalReviewAt:true,urgentAcknowledgedAt:true}});
-      invalidatedDrafts=drafts.map(d=>({...d,pendingsReviewedAt:d.pendingsReviewedAt?.toISOString()??null,finalReviewAt:d.finalReviewAt?.toISOString()??null,urgentAcknowledgedAt:d.urgentAcknowledgedAt?.toISOString()??null}));
-      await tx.shiftHandover.updateMany({where:{id:{in:drafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
-    }
+    // All area changes can alter a receiver's actual projection, even when the
+    // reception checkbox stays unchanged (secondary area memberships apply).
+    await lockReceptionSummary(tx);
+    const selectable=!current.isDemo&&(current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA)&&(ENTRY_OPEN_STATUSES.includes(current.status)||current.status===EntryStatus.RESUELTO||current.status===EntryStatus.CERRADO);
+    const drafts=selectable?await tx.shiftHandover.findMany({where:{status:'BORRADOR',...(ENTRY_OPEN_STATUSES.includes(current.status)?{}:{fromShiftId:current.shiftId??''})},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true,pendingsReviewedAt:true,finalReviewAt:true,urgentAcknowledgedAt:true,issuedBy:{select:{id:true,departmentId:true,role:{select:{key:true}}}}}}):[];
+    const readable=async(d:typeof drafts[number])=>{
+      const reader:EntryReader={id:d.issuedBy.id,departmentId:d.issuedBy.departmentId,roleKey:d.issuedBy.role.key as CurrentUser['roleKey'],isSystemAdmin:d.issuedBy.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]};
+      return await tx.operationalEntry.count({where:{id:current.id,AND:[receptionHandoverEntryWhere,entryReadWhere(reader)]}})>0;
+    };
+    const beforeReadable=await Promise.all(drafts.map(readable));
     const updated = await tx.operationalEntry.update({ where: { id: input.id }, data: {
       includeInReceptionHandover: input.includeInReceptionHandover,
       hiddenFromDepartments: { set: ids.map(id => ({ id })) },
     }, include: entryInclude });
+    const afterReadable=await Promise.all(drafts.map(readable));
+    const invalidatedDrafts=drafts.filter((_,i)=>!beforeReadable[i]&&afterReadable[i]).map(d=>({id:d.id,receptionSummaryRevision:d.receptionSummaryRevision,receptionSummaryPreparedRevision:d.receptionSummaryPreparedRevision,pendingsReviewedAt:d.pendingsReviewedAt?.toISOString()??null,finalReviewAt:d.finalReviewAt?.toISOString()??null,urgentAcknowledgedAt:d.urgentAcknowledgedAt?.toISOString()??null}));
+    if(invalidatedDrafts.length)await tx.shiftHandover.updateMany({where:{id:{in:invalidatedDrafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
     await tx.auditLog.create({ data: {
       entity: 'OperationalEntry', entityId: current.id, action: AuditAction.EDITAR,
       summary: `Visibilidad de la novedad #${current.humanId} cambiada por ${user.name}`,

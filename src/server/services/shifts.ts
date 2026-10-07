@@ -37,7 +37,7 @@ import {
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { fromMinor } from '@/domain/cash';
-import { lockReceptionSummary, buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
+import { lockReceptionSummary, receptionSummaryKey, buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import {
   cashBlockersForReceiving,
@@ -243,9 +243,9 @@ export async function releaseIncompleteShiftReception(
       where: { id: currentHandover.id },
       data: {
         toShiftId: null,
-        receiverBriefingReviewedAt: null,
+        receiverBriefingReviewedAt: null, receiverBriefingSummaryKey:null,
         receiverCustodyReviewedAt: null,
-        receiverFinalReviewAt: null,
+        receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
         receiverUrgentAcknowledgedAt: null,
         receiverSessionId: null,
       },
@@ -1329,9 +1329,9 @@ export async function startReceptionShift(
         },
         data: {
           toShiftId: shift.id,
-          receiverBriefingReviewedAt: null,
+          receiverBriefingReviewedAt: null, receiverBriefingSummaryKey:null,
           receiverCustodyReviewedAt: null,
-          receiverFinalReviewAt: null,
+          receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
           receiverUrgentAcknowledgedAt: null,
         },
       });
@@ -1432,15 +1432,18 @@ export async function confirmReceptionReviewStep(
 
   if (params.step === 'BRIEFING') {
     return prisma.$transaction(async (tx) => {
+      await lockReceptionSummary(tx);
       await lockHandover(tx, handover.id);
       await assertElementActor(tx, user, handover.id, 'confirmed');
+      const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
+      const summaryKey=receptionSummaryKey((await visibleHandover(user,fresh,tx)).items);
       const now = new Date();
       const updated = await tx.shiftHandover.update({
         where: { id: handover.id },
         data: {
-          receiverBriefingReviewedAt: now,
+          receiverBriefingReviewedAt: now, receiverBriefingSummaryKey:summaryKey,
           receiverCustodyReviewedAt: null,
-          receiverFinalReviewAt: null,
+          receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
           receiverUrgentAcknowledgedAt: null,
         },
       });
@@ -1451,7 +1454,7 @@ export async function confirmReceptionReviewStep(
           action: AuditAction.CAMBIO_ESTADO,
           summary: `Entrega revisada por ${user.name} al iniciar la recepción`,
           user,
-          after: { receptionStep: 'BRIEFING', reviewedAt: now },
+          after: { receptionStep: 'BRIEFING', reviewedAt: now, receptionSummaryKey:summaryKey },
         },
         tx,
       );
@@ -1480,8 +1483,12 @@ export async function confirmReceptionReviewStep(
 
   if (params.step === 'CUSTODY') {
     return prisma.$transaction(async (tx) => {
+      await lockReceptionSummary(tx);
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
+      const summaryKey=receptionSummaryKey((await visibleHandover(user,fresh,tx)).items);
+      if(current.receiverBriefingSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
       const now = new Date();
       if (params.step !== 'BRIEFING') {
         if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
@@ -1493,7 +1500,7 @@ export async function confirmReceptionReviewStep(
         where: { id: handover.id },
         data: {
           receiverCustodyReviewedAt: now,
-          receiverFinalReviewAt: null,
+          receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
           receiverUrgentAcknowledgedAt: null,
         },
       });
@@ -1529,7 +1536,10 @@ export async function confirmReceptionReviewStep(
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
       const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
-      const currentHasUrgent=(await visibleHandover(user,fresh,tx)).items.some(item=>item.level===HandoverLevel.URGENTE);
+      const visible=await visibleHandover(user,fresh,tx);
+      const summaryKey=receptionSummaryKey(visible.items);
+      if(current.receiverBriefingSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
+      const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
       if(currentHasUrgent&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
       const now = new Date();
       if (params.step !== 'BRIEFING') {
@@ -1541,7 +1551,7 @@ export async function confirmReceptionReviewStep(
     const updated = await tx.shiftHandover.update({
       where: { id: handover.id },
       data: {
-        receiverFinalReviewAt: now,
+        receiverFinalReviewAt: now, receiverFinalSummaryKey:summaryKey,
         receiverUrgentAcknowledgedAt: currentHasUrgent ? now : null,
       },
     });
@@ -1557,7 +1567,7 @@ export async function confirmReceptionReviewStep(
         after: {
           receptionStep: 'FINAL',
           reviewedAt: now,
-          urgentAcknowledged: currentHasUrgent,
+          urgentAcknowledged: currentHasUrgent, receptionSummaryKey:summaryKey,
         },
       },
       tx,
@@ -2160,7 +2170,10 @@ export async function receiveHandover(
     await lockHandover(tx, incoming.id);
     const current = await assertElementActor(tx, user, incoming.id, 'confirmed');
     const fresh = await tx.shiftHandover.findUniqueOrThrow({where:{id:incoming.id},include:{items:true}});
-    const currentHasUrgent=(await visibleHandover(user,fresh,tx)).items.some(item=>item.level===HandoverLevel.URGENTE);
+    const visible=await visibleHandover(user,fresh,tx);
+    const summaryKey=receptionSummaryKey(visible.items);
+    if(current.receiverBriefingSummaryKey!==summaryKey||current.receiverFinalSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
+    const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
     if (!current.receiverBriefingReviewedAt || !current.receiverCustodyReviewedAt || !current.receiverFinalReviewAt ||
       (currentHasUrgent && !current.receiverUrgentAcknowledgedAt)) {
       throw new RuleError('La custodia cambió. Revisa de nuevo la recepción antes de continuar.');

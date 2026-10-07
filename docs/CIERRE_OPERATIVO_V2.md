@@ -63,8 +63,8 @@ saliente se presenta como un recorrido secuencial y reversible hasta el envío:
 
 1. **Caja y custodia:** arqueo, garantías y elementos físicos; Caja debe quedar
    formalmente cerrada.
-2. **Pendientes:** Novedades, incidencias, tareas y demás asuntos que siguen
-   vigentes. El sistema los reúne; el recepcionista no inventa una lista.
+2. **Pendientes:** Novedades, incidencias, seguimientos operativos y alertas
+   vigentes visibles e incluidos para Recepción; sin tareas ni acciones de Supervisión. El sistema los reúne; el recepcionista no inventa una lista.
 3. **Revisión final:** fotografía legible de Caja, custodia y puntos de entrega.
 4. **Enviar entrega:** requiere confirmación explícita y constituye el punto de
    no retorno del cierre normal.

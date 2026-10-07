@@ -1242,6 +1242,9 @@ model ShiftHandover {
   snapshot             Json?
   /// Barreras reales del cierre guiado. No dependen del parámetro ?paso=.
   pendingsReviewedAt   DateTime?
+  /// Eligibility changes invalidate the existing Reception summary/review.
+  receptionSummaryRevision Int @default(0)
+  receptionSummaryPreparedRevision Int @default(0)
   finalReviewAt        DateTime?
   urgentAcknowledgedAt DateTime?
   /// Barreras persistidas de la recepción guiada. El turno entrante permanece

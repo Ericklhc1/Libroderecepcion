@@ -48,6 +48,47 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
   beforeAll(seedCatalog);
   beforeEach(async()=>{await resetOperationalData(); reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});});
 
+
+  for(const selection of ['include','area','both'] as const)it(`habilitar una novedad antes excluida por ${selection} invalida revisión y exige regenerar sin borrar evidencia manual`,async()=>{
+    const receptionId=(await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}})).id;
+    const e=await notice(supervisor,{includeInReceptionHandover:selection==='area',hiddenDepartmentIds:selection==='include'?[]:[receptionId]});
+    const shift=await createShift({userId:reception.id,type:ShiftType.DIA});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});
+    const handover=await prepareHandover(reception,shift.id);expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(0);
+    const manual=await prisma.handoverItem.create({data:{handoverId:handover.id,manual:true,title:'Nota manual conservada',section:'Notas',level:'INFORMATIVO'}});
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
+    const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:true});
+    const invalidated=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
+    expect(invalidated).toMatchObject({receptionSummaryRevision:1,receptionSummaryPreparedRevision:0,pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null});
+    expect(await prisma.handoverItem.findUnique({where:{id:manual.id}})).toMatchObject({title:'Nota manual conservada'});
+    await expect(confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'})).rejects.toThrow(/Regenera/);
+    await expect(sendHandover(reception,{shiftId:shift.id})).rejects.toThrow(/Regenera/);
+    const audit=await prisma.auditLog.findFirstOrThrow({where:{entity:'OperationalEntry',entityId:e.id,summary:{startsWith:'Visibilidad'}}});
+    expect(audit.before).toMatchObject({receptionDrafts:[{id:handover.id,receptionSummaryRevision:0}]});expect(audit.after).toMatchObject({receptionDrafts:[{id:handover.id,receptionSummaryRevision:1,finalReviewAt:null}]});
+    await prepareHandover(reception,shift.id);
+    expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({receptionSummaryRevision:1,receptionSummaryPreparedRevision:1});
+    expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(1);expect(await prisma.handoverItem.findUnique({where:{id:manual.id}})).not.toBeNull();
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});await sendHandover(reception,{shiftId:shift.id});
+    const sent=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});expect(JSON.stringify(sent.snapshot)).toContain(e.id);expect(JSON.stringify(sent.snapshot)).toContain('Nota manual conservada');
+  });
+
+
+  it('si falla la auditoría de visibilidad se revierten también la invalidación y los sellos del borrador',async()=>{
+    const e=await notice(supervisor,{includeInReceptionHandover:false});const shift=await createShift({userId:reception.id,type:ShiftType.DIA});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});const handover=await prepareHandover(reception,shift.id);
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
+    const before=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});const source=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});const auditCount=await prisma.auditLog.count();
+    // Simulate a mandatory audit failure through its real FK, without mocking DB writes.
+    await expect(updateEntryVisibility({...supervisor,id:'missing-audit-user-synthetic-164',isSystemAdmin:true},{id:e.id,revision:source.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:true})).rejects.toThrow();
+    expect(await prisma.operationalEntry.findUnique({where:{id:e.id}})).toMatchObject({includeInReceptionHandover:false,updatedAt:source.updatedAt});
+    const after=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});expect(after.receptionSummaryRevision).toBe(before.receptionSummaryRevision);expect(after.pendingsReviewedAt).toEqual(before.pendingsReviewedAt);expect(after.finalReviewAt).toEqual(before.finalReviewAt);expect(await prisma.auditLog.count()).toBe(auditCount);
+  });
+
+  it('habilitar una novedad después de enviar conserva íntegra la fotografía enviada',async()=>{
+    const e=await notice(supervisor,{includeInReceptionHandover:false});const {handover}=await sentShift();const before=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
+    const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});await updateEntryVisibility(supervisor,{id:e.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:true});
+    const after=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});expect(after.snapshot).toEqual(before.snapshot);expect(after.receptionSummaryRevision).toBe(before.receptionSummaryRevision);expect(after.finalReviewAt).toEqual(before.finalReviewAt);
+  });
+
   for(const kind of ['task','closure','excluded-entry'] as const)it(`un urgente histórico ${kind} excluido no bloquea FINAL ni envío, sin regenerar ni borrar evidencia`,async()=>{
     const shift=await createShift({userId:reception.id,type:ShiftType.DIA});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});
     const handover=await prepareHandover(reception,shift.id);

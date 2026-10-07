@@ -1,3 +1,4 @@
+import {lockReceptionSummary} from './handover-snapshot';
 import { entryReadWhere, housekeepingEntryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
 import {assertSubjectCanFinish} from './subject-completion';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
@@ -640,6 +641,16 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, OR:[{active:true},{id:{in:current.hiddenFromDepartments.map(d=>d.id)}}] } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
     await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
     await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
+    const receptionId=(await tx.department.findUnique({where:{key:'RECEPCION'},select:{id:true}}))?.id;
+    const wasEligible=current.includeInReceptionHandover&&!current.hiddenFromDepartments.some(d=>d.id===receptionId);
+    const willBeEligible=input.includeInReceptionHandover&&!ids.includes(receptionId??'');
+    let invalidatedDrafts:{id:string;receptionSummaryRevision:number;receptionSummaryPreparedRevision:number;pendingsReviewedAt:string|null;finalReviewAt:string|null;urgentAcknowledgedAt:string|null}[]=[];
+    if(!wasEligible&&willBeEligible&&!current.isDemo&&(current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA)&&ENTRY_OPEN_STATUSES.includes(current.status)){
+      await lockReceptionSummary(tx);
+      const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR'},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true,pendingsReviewedAt:true,finalReviewAt:true,urgentAcknowledgedAt:true}});
+      invalidatedDrafts=drafts.map(d=>({...d,pendingsReviewedAt:d.pendingsReviewedAt?.toISOString()??null,finalReviewAt:d.finalReviewAt?.toISOString()??null,urgentAcknowledgedAt:d.urgentAcknowledgedAt?.toISOString()??null}));
+      await tx.shiftHandover.updateMany({where:{id:{in:drafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
+    }
     const updated = await tx.operationalEntry.update({ where: { id: input.id }, data: {
       includeInReceptionHandover: input.includeInReceptionHandover,
       hiddenFromDepartments: { set: ids.map(id => ({ id })) },
@@ -648,8 +659,8 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
       entity: 'OperationalEntry', entityId: current.id, action: AuditAction.EDITAR,
       summary: `Visibilidad de la novedad #${current.humanId} cambiada por ${user.name}`,
       userId: user.id, sessionId: user.sessionId, isDemo: current.isDemo,
-      before: { hiddenDepartmentIds: current.hiddenFromDepartments.map(d => d.id), includeInReceptionHandover: current.includeInReceptionHandover },
-      after: { hiddenDepartmentIds: ids, includeInReceptionHandover: updated.includeInReceptionHandover },
+      before: { hiddenDepartmentIds: current.hiddenFromDepartments.map(d => d.id), includeInReceptionHandover: current.includeInReceptionHandover,...(invalidatedDrafts.length?{receptionDrafts:invalidatedDrafts}:{}) },
+      after: { hiddenDepartmentIds: ids, includeInReceptionHandover: updated.includeInReceptionHandover,...(invalidatedDrafts.length?{receptionDrafts:invalidatedDrafts.map(d=>({...d,receptionSummaryRevision:d.receptionSummaryRevision+1,pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}))}:{}) },
     } });
     return updated;
   });

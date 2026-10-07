@@ -70,7 +70,7 @@ export function HandoverPrint(props: HandoverPrintProps) {
       </section>
       <section><h2>Elementos físicos</h2>
         <table><thead><tr><th>Elemento</th><th>Declarado</th><th>Confirmado</th></tr></thead>
-          <tbody>{cash.elements.map(e => <tr key={e.id}><td>{e.name}{received&&e.notes ? ` · ${e.notes}` : ''}{received&&e.missingReason ? ` · ${e.missingReason}` : ''}</td><td>{e.declared ? 'Sí' : 'No'}</td><td>{received&&e.confirmed ? 'Sí' : 'Sin confirmar'}</td></tr>)}</tbody>
+          <tbody>{cash.elements.map(e => <tr key={e.id}><td>{e.name}{e.notes ? ` · ${e.notes}` : ''}{received&&e.missingReason ? ` · ${e.missingReason}` : ''}</td><td>{e.declared ? 'Sí' : 'No'}</td><td>{received?(e.confirmed?'Sí':'No recibido'):'Sin confirmar'}</td></tr>)}</tbody>
         </table>
       </section>
     </div>

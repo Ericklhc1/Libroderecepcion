@@ -67,6 +67,11 @@ export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:P
   return {...handover,items,snapshot};
 }
 
+/** Serialize eligibility changes with prepare/review/send in the same engine. */
+export async function lockReceptionSummary(tx:Prisma.TransactionClient){
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('aroh.reception-handover-summary'))::text`;
+}
+
 const SECTIONS = {
   resueltos: 'Resuelto en este turno',
   novedades: 'Novedades activas',
@@ -97,6 +102,7 @@ function fmt(date: Date | null | undefined): string {
 }
 
 type SnapshotOptions = {
+  client?: Prisma.TransactionClient;
   shiftId?: string | null;
   /**
    * Compatibilidad con llamadas antiguas. Desde v1.4.0 la entrega no agrega
@@ -119,6 +125,7 @@ export async function buildHandoverSnapshot(
   now = new Date(),
   options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
+  const db=options.client??prisma;
   const soon = new Date(now.getTime() + 24 * 3600_000);
   const items: SnapshotItem[] = [];
 
@@ -126,7 +133,7 @@ export async function buildHandoverSnapshot(
     options.shiftId !== undefined
       ? options.shiftId
       : (
-          await prisma.shift.findFirst({
+          await db.shift.findFirst({
             where: {
               archivedAt: null,
               status: {
@@ -150,7 +157,7 @@ export async function buildHandoverSnapshot(
     followUps,
     resolvedEntries,
   ] = await Promise.all([
-    prisma.operationalEntry.findMany({
+    db.operationalEntry.findMany({
       where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverEntryWhere },
       select: {
         id: true,
@@ -167,7 +174,7 @@ export async function buildHandoverSnapshot(
       orderBy: [{ priority: 'desc' }, { occurredAt: 'desc' }],
       take: 200,
     }),
-    prisma.alert.findMany({
+    db.alert.findMany({
       where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]},{OR:[{entryId:null},{entry:receptionHandoverEntryWhere}]}], taskId:null} ,
       select: {
         id: true,
@@ -183,7 +190,7 @@ export async function buildHandoverSnapshot(
       orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     }),
-    prisma.followUp.findMany({
+    db.followUp.findMany({
       where: {
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
@@ -204,7 +211,7 @@ export async function buildHandoverSnapshot(
       take: 100,
     }),
     currentShiftId
-      ? prisma.operationalEntry.findMany({
+      ? db.operationalEntry.findMany({
           where: {
             ...receptionHandoverEntryWhere,
             shiftId: currentShiftId,

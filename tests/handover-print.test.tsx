@@ -14,13 +14,22 @@ describe('impresión de entrega 02-10-2026', () => {
   });
 
   it('recuento entrante, diferencias, marcas y notas aparecen sólo tras confirmar la recepción',()=>{
-    const fixture=confirmedHandover02Fixture();fixture.cash.confirmed!.statuses=fixture.cash.confirmed!.statuses.map(s=>s.currency==='USD'?{...s,countedMinor:98765,differenceMinor:83765,balanced:false}:s);fixture.cash.confirmed!.notes='INCOMING_COUNT_ONLY';fixture.receiverObservations='RECEIVER_OBSERVATIONS_ONLY';fixture.receiver='RECEIVER_NAME_ONLY';fixture.cash.elements[0]!.confirmed=true;fixture.cash.elements[0]!.notes='INCOMING_ELEMENT_ONLY';fixture.cash.elements[0]!.missingReason='INCOMING_MISSING_ONLY';
+    const fixture=confirmedHandover02Fixture();fixture.cash.confirmed!.statuses=fixture.cash.confirmed!.statuses.map(s=>s.currency==='USD'?{...s,countedMinor:98765,differenceMinor:83765,balanced:false}:s);fixture.cash.confirmed!.notes='INCOMING_COUNT_ONLY';fixture.receiverObservations='RECEIVER_OBSERVATIONS_ONLY';fixture.receiver='RECEIVER_NAME_ONLY';fixture.cash.elements[0]!.confirmed=true;fixture.cash.elements[0]!.notes='DECLARED_ELEMENT_NOTE';fixture.cash.elements[0]!.missingReason='INCOMING_MISSING_ONLY';
     const received=renderToStaticMarkup(<HandoverPrint {...fixture}/>);
-    for(const marker of ['INCOMING_COUNT_ONLY','RECEIVER_OBSERVATIONS_ONLY','RECEIVER_NAME_ONLY','INCOMING_ELEMENT_ONLY','INCOMING_MISSING_ONLY'])expect(received).toContain(marker);
-    expect(received).toContain('Diferencia recibe − entrega');expect(received).toContain('987,65');
+    for(const marker of ['INCOMING_COUNT_ONLY','RECEIVER_OBSERVATIONS_ONLY','RECEIVER_NAME_ONLY','INCOMING_MISSING_ONLY'])expect(received).toContain(marker);
+    expect(received).toContain('DECLARED_ELEMENT_NOTE');expect(received).toContain('Diferencia recibe − entrega');expect(received).toContain('987,65');
     const sent=renderToStaticMarkup(<HandoverPrint {...fixture} handoverStatus="ENVIADA"/>);
-    for(const marker of ['INCOMING_COUNT_ONLY','RECEIVER_OBSERVATIONS_ONLY','RECEIVER_NAME_ONLY','INCOMING_ELEMENT_ONLY','INCOMING_MISSING_ONLY'])expect(sent).not.toContain(marker);
-    expect(sent).not.toContain('Diferencia recibe − entrega');expect(sent).not.toContain('987,65');expect(sent).toContain('Sin receptor confirmado');expect(sent).toContain('Sin confirmar');expect(sent).toContain('7542392');
+    for(const marker of ['INCOMING_COUNT_ONLY','RECEIVER_OBSERVATIONS_ONLY','RECEIVER_NAME_ONLY','INCOMING_MISSING_ONLY'])expect(sent).not.toContain(marker);
+    expect(sent).toContain('DECLARED_ELEMENT_NOTE');expect(sent).not.toContain('Diferencia recibe − entrega');expect(sent).not.toContain('987,65');expect(sent).toContain('Sin receptor confirmado');expect(sent).toContain('Sin confirmar');expect(sent).toContain('7542392');
+  });
+
+  it('la declaración sin elementos mantiene su justificación antes de recibir',()=>{
+    const fixture=handover02Fixture();fixture.cash.elements.forEach(e=>{e.declared=false;e.notes='JUSTIFICACION_EMISOR_SIN_ELEMENTOS';});
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture}/>);expect(html).toContain('JUSTIFICACION_EMISOR_SIN_ELEMENTOS');expect(html).toContain('Sin confirmar');
+  });
+  it('un faltante aprobado en un acta recibida consta como No recibido',()=>{
+    const fixture=confirmedHandover02Fixture();fixture.cash.elements.forEach(e=>e.confirmed=true);fixture.cash.elements[0]!.confirmed=false;fixture.cash.elements[0]!.missingReason='FALTANTE_APROBADO_164';fixture.cash.elements[0]!.missingApprovedAt=new Date().toISOString();
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture}/>);expect(html).toContain('No recibido');expect(html).toContain('FALTANTE_APROBADO_164');expect(html).not.toContain('Sin confirmar');
   });
   it('cuenta solo lo impreso y agrupa repetidos sin perder detalle ni cantidades', () => {
     const f = handover02Fixture();

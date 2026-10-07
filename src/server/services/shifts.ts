@@ -37,7 +37,7 @@ import {
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { fromMinor } from '@/domain/cash';
-import { buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
+import { lockReceptionSummary, buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import {
   cashBlockersForReceiving,
@@ -2282,7 +2282,6 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
     assertTransition(shift.status, ShiftStatus.PREPARANDO_ENTREGA);
   }
 
-  const snapshot = await buildHandoverSnapshot(user);
   /*
     El destino queda NULO a propósito: cuando alguien entrega, el turno que va
     a recibir todavía no existe —se crea cuando el relevo llega al mesón—. La
@@ -2292,10 +2291,15 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
   */
 
   return prisma.$transaction(async (tx) => {
-    const handover = shift.handoverOut
-      ? shift.handoverOut.status === HandoverStatus.ANULADA
+    await lockReceptionSummary(tx);
+    let existing=shift.handoverOut?await tx.shiftHandover.findUniqueOrThrow({where:{id:shift.handoverOut.id}}):null;
+    if(existing){await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${existing.id} FOR UPDATE`;existing=await tx.shiftHandover.findUniqueOrThrow({where:{id:existing.id}});}
+    if(existing&&!['BORRADOR','ANULADA'].includes(existing.status))throw new RuleError('Este turno ya envió su entrega.');
+    const snapshot=await buildHandoverSnapshot(user,new Date(),{client:tx});
+    const handover = existing
+      ? existing.status === HandoverStatus.ANULADA
         ? await tx.shiftHandover.update({
-            where: { id: shift.handoverOut.id },
+            where: { id: existing.id },
             data: {
               status: HandoverStatus.BORRADOR,
               toShiftId: null,
@@ -2312,7 +2316,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
               urgentAcknowledgedAt: null,
             },
           })
-        : shift.handoverOut
+        : existing
       : await tx.shiftHandover.create({
           data: {
             fromShiftId: shift.id,
@@ -2325,12 +2329,13 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
 
     // Cualquier regeneración cambia el contenido que la persona debe revisar:
     // las confirmaciones anteriores dejan de ser válidas.
-    await tx.shiftHandover.update({
+    const prepared=await tx.shiftHandover.update({
       where: { id: handover.id },
       data: {
         pendingsReviewedAt: null,
         finalReviewAt: null,
         urgentAcknowledgedAt: null,
+        receptionSummaryPreparedRevision:handover.receptionSummaryRevision,
       },
     });
 
@@ -2380,7 +2385,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
       );
     }
 
-    return handover;
+    return prepared;
   });
 }
 
@@ -2434,6 +2439,13 @@ export async function confirmHandoverReviewStep(
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    await lockReceptionSummary(tx);
+    await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
+    const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
+    if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
+    if(fresh.receptionSummaryRevision!==fresh.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de revisarlo.');
+    if(params.step==='FINAL'&&!fresh.pendingsReviewedAt)throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
+
     const row = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },
       data:
@@ -2508,6 +2520,7 @@ export async function sendHandover(
     await assertShiftCashClosed(shift.id);
   }
 
+  if(handover.receptionSummaryRevision!==handover.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de enviar.');
   if (!handover.pendingsReviewedAt) {
     throw new RuleError('Antes de enviar, confirma la revisión de los pendientes del turno.');
   }
@@ -2520,13 +2533,20 @@ export async function sendHandover(
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockReceptionSummary(tx);
+    await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
+    const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
+    if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
+    if(fresh.receptionSummaryRevision!==fresh.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de enviar.');
+    if(!fresh.pendingsReviewedAt||!fresh.finalReviewAt)throw new RuleError('Confirma de nuevo la revisión de pendientes y la revisión final antes de enviar.');
+
     // Sanitize old drafts at the shared boundary, preserving original item evidence.
     const originalItems = await tx.handoverItem.findMany({
       where: { handoverId: handover.id },
       orderBy: [{ level: 'asc' }, { order: 'asc' }],
     });
     const items = await visibleSnapshotItems(user, originalItems, true, tx);
-    if(items.some(item=>item.level===HandoverLevel.URGENTE)&&!handover.urgentAcknowledgedAt)throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
+    if(items.some(item=>item.level===HandoverLevel.URGENTE)&&!fresh.urgentAcknowledgedAt)throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
     const now = new Date();
     const sent = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },
@@ -2535,7 +2555,7 @@ export async function sendHandover(
         issuedAt: now,
         issuedById: user.id,
         issuerSessionId: user.sessionId,
-        notes: params.notes ?? handover.notes,
+        notes: params.notes ?? fresh.notes,
         // El destino sigue nulo al enviar; se enlaza sólo después de recibir.
         // Fotografía inmutable de lo entregado.
         snapshot: {
@@ -2552,9 +2572,9 @@ export async function sendHandover(
             informativo: items.filter((i) => i.level === HandoverLevel.INFORMATIVO).length,
           },
           review: {
-            pendingsReviewedAt: handover.pendingsReviewedAt?.toISOString() ?? null,
-            finalReviewAt: handover.finalReviewAt?.toISOString() ?? null,
-            urgentAcknowledgedAt: handover.urgentAcknowledgedAt?.toISOString() ?? null,
+            pendingsReviewedAt: fresh.pendingsReviewedAt?.toISOString() ?? null,
+            finalReviewAt: fresh.finalReviewAt?.toISOString() ?? null,
+            urgentAcknowledgedAt: fresh.urgentAcknowledgedAt?.toISOString() ?? null,
           },
           items: items.map((i) => ({
             level: i.level,
@@ -2640,7 +2660,7 @@ export async function sendHandover(
         `Urgentes: ${items.filter((item) => item.level === HandoverLevel.URGENTE).length}`,
         `Importantes: ${items.filter((item) => item.level === HandoverLevel.IMPORTANTE).length}`,
         `Informativos: ${items.filter((item) => item.level === HandoverLevel.INFORMATIVO).length}`,
-        `Nota general: ${params.notes ?? handover.notes ?? 'sin nota adicional'}`,
+        `Nota general: ${params.notes ?? fresh.notes ?? 'sin nota adicional'}`,
         '',
         'PUNTOS DE ENTREGA',
         ...(items.length === 0

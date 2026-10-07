@@ -1519,7 +1519,7 @@ export async function confirmReceptionReviewStep(
     throw new RuleError('Quedan elementos físicos declarados sin confirmar.');
   }
 
-  const hasUrgent = (await visibleSnapshotItems(user,handover.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgent = (await visibleHandover(user,handover)).items.some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgent && !params.urgentAcknowledged) {
     throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
   }
@@ -2131,7 +2131,7 @@ export async function receiveHandover(
   if (!incoming.receiverFinalReviewAt) {
     throw new RuleError('Primero confirma la revisión final de la recepción.');
   }
-  const hasUrgentItems = (await visibleSnapshotItems(user,incoming.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgentItems = (await visibleHandover(user,incoming)).items.some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgentItems && !incoming.receiverUrgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso en la recepción.');
   }

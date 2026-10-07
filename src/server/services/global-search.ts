@@ -156,7 +156,7 @@ export async function searchOperationalRecords(
       AND NOT EXISTS (
         SELECT 1 FROM hidden_entries hidden WHERE
           ("entityType"='OperationalEntry' AND hidden.id="HumanOperationalRecord"."entityId") OR
-          EXISTS (SELECT 1 FROM "bounded_native_entry_origin_ids"(lower("HumanOperationalRecord"."entityType"),"HumanOperationalRecord"."entityId") origin WHERE origin."entryId"=hidden.id)
+          EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"(lower("HumanOperationalRecord"."entityType"),"HumanOperationalRecord"."entityId") origin WHERE origin."entryId"=hidden.id)
       )
       AND NOT ("entityType"='Task' AND EXISTS (SELECT 1 FROM "Task" t JOIN "Alert" a ON a.id=t."alertId" WHERE t.id="HumanOperationalRecord"."entityId" AND a."dedupeKey" LIKE 'shift-validation:%'))
       AND ${user.isSystemAdmin || user.permissions.includes('supervision.center.view') ? Prisma.sql`TRUE` : Prisma.sql`NOT ("entityType"='Alert' AND EXISTS (SELECT 1 FROM "Alert" a WHERE a.id="HumanOperationalRecord"."entityId" AND a."dedupeKey" LIKE 'shift-validation:%'))`}

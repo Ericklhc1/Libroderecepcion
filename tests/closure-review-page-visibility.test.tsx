@@ -7,8 +7,12 @@ import {executeFrontiPageContextTool} from '@/server/ai/fronti-v2/page-context-t
 import {resolveFrontiPageContext} from '@/server/ai/fronti-v2/page-context';
 const auth=vi.hoisted(()=>({user:null as CurrentUser|null}));
 vi.mock('@/server/auth/guard',()=>({requirePageUser:async()=>auth.user}));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh(){},push(){},replace(){},prefetch(){}}),usePathname:()=>'/alertas/sistema',useSearchParams:()=>new URLSearchParams()}));
 vi.mock('next/link',()=>({default:'a'}));
 vi.mock('@/components/supervision/closure-review-form',()=>({ClosureReviewForm:()=> <span>FORMULARIO_VALIDAR</span>}));
+import {resolveAlert,softDeleteAlert} from '@/server/services/alerts';
+import {createTask} from '@/server/services/tasks';
+import AlertsPage from '@/app/(app)/alertas/sistema/page';
 import ClosureReviewPage from '@/app/(app)/supervision/cierres/[id]/page';
 
 describe('cierre histórico: evidencia vigente en ficha, Centro y Fronti',()=>{
@@ -27,6 +31,25 @@ describe('cierre histórico: evidencia vigente en ficha, Centro y Fronti',()=>{
     expect(validated.archivedAt).toEqual(archived.archivedAt);
     expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).not.toContain(shift.id);
     expect(await prisma.auditLog.count({where:{entity:'Shift',entityId:shift.id,action:'CAMBIO_ESTADO'}})).toBe(2);
+  });
+  it('una alerta histórica sólo enlaza el cierre y no permite resolverlo ni crear tareas invisibles',async()=>{
+    const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});auth.user=supervisor;
+    const shift=await createShift({userId:reception.id,type:'DIA'});
+    await prisma.shift.update({where:{id:shift.id},data:{status:'CERRADO',actualEnd:new Date(),closedById:reception.id}});
+    const old=await prisma.shift.update({where:{id:shift.id},data:{closureReviewRequestedAt:null}});
+    const legacy=await prisma.alert.create({data:{type:'OTRO',title:'Validar cierre de turno',dedupeKey:`shift-validation:${shift.id}`}});
+    const count=await prisma.auditLog.count();
+    await expect(resolveAlert(supervisor,{id:legacy.id,note:'Intento de resolución directa'})).rejects.toThrow(/Centro de Supervisión/);
+    await expect(softDeleteAlert(supervisor,{id:legacy.id,reason:'Intento de omisión'})).rejects.toThrow(/se conservan/);
+    await expect(createTask(supervisor,{title:'Tarea invisible prohibida',alertId:legacy.id,priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow(/Centro de Supervisión/);
+    expect(await prisma.alert.findUnique({where:{id:legacy.id}})).toMatchObject({status:'NUEVA'});expect(await prisma.task.count()).toBe(0);expect(await prisma.auditLog.count()).toBe(count);
+    expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).toContain(shift.id);
+    const html=renderToStaticMarkup(await AlertsPage({searchParams:Promise.resolve({})}));
+    expect(html).toContain(`/supervision/cierres/${shift.id}`);expect(html).toContain('Validar / Observar');expect(html).not.toContain('Crear tarea desde la alerta');expect(html).not.toContain('Resolver señal');
+    const validated=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'VALIDADA',note:'Caja y evidencias revisadas',revision:old.updatedAt.toISOString()});
+    expect(validated.closureReviewDecision).toBe('VALIDADA');expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).not.toContain(shift.id);
+    expect(await prisma.auditLog.count({where:{entity:'Shift',entityId:shift.id,summary:{startsWith:'Cierre validado'},reason:'Caja y evidencias revisadas'}})).toBe(1);
+    expect(await prisma.alert.findUnique({where:{id:legacy.id}})).toMatchObject({status:'NUEVA'});
   });
   for(const status of ['NUEVA','RESUELTA'] as const)it(`una alerta eliminada ${status} no habilita revisión ni acredita validación`,async()=>{
     const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});auth.user=supervisor;

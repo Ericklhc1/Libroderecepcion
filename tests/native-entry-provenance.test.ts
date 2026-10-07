@@ -27,6 +27,7 @@ import {getAreaAttention,listAreaAttentions,decideAreaAttention} from '@/server/
 import {Prisma} from '@prisma/client';
 import {restoreFollowUp} from '@/server/services/followups';
 import {changeHkWork} from '@/server/services/housekeeping-work';
+import {resolveAlert} from '@/server/services/alerts';
 import { hotelDateKey } from '@/domain/time';
 
 let reception: CurrentUser, supervisor: CurrentUser, management: CurrentUser;
@@ -462,6 +463,38 @@ describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=
     expect(await prisma.comment.count()).toBe(2);
   });
 
+  it('la aprobación real de Caja conserva origen requestEntryId y filtra su auditoría, historial y Fronti',async()=>{
+    const e=await entry({category:'AJUSTE_CAJA_SOLICITADO',tags:['direccion-ENTRADA','moneda-CLP','monto-12500','referencia-CONFIDENCIAL_CAJA_164']});
+    await prisma.operationalEntry.update({where:{id:e.id},data:{status:'EN_ESPERA',tags:['direccion-ENTRADA','moneda-CLP','monto-12500','referencia-CONFIDENCIAL_CAJA_164']}});
+    const alert=await prisma.alert.create({data:{entryId:e.id,type:'OTRO',title:'Autorizar movimiento',dedupeKey:`cash-manual:${e.id}`}});
+    await hide(e.id,[managementArea]);
+    await resolveAlert(supervisor,{id:alert.id});
+    const audit=await prisma.auditLog.findFirstOrThrow({where:{entity:'CashMovement',summary:{contains:'CONFIDENCIAL_CAJA_164'}}});
+    expect(audit.after).toMatchObject({requestEntryId:e.id,amount:12500});
+    expect(await prisma.auditLog.count({where:{id:audit.id,AND:[auditFollowUpReadWhere(management)]}})).toBe(0);
+    expect(await getHistory({entity:'OperationalEntry',entityId:e.id},management)).toHaveLength(0);
+    const fronti=await executeFrontiV2ReadTool(management,'consultar_auditoria',{entity:'CashMovement'});
+    expect(JSON.stringify(fronti)).not.toContain('CONFIDENCIAL_CAJA_164');
+    expect(await prisma.auditLog.count({where:{id:audit.id,AND:[auditFollowUpReadWhere(supervisor)]}})).toBe(1);
+    expect(await prisma.cashMovement.findUnique({where:{id:audit.entityId}})).not.toBeNull();expect(await prisma.auditLog.findUnique({where:{id:audit.id}})).not.toBeNull();
+  });
+
+  for(const sourceKind of ['entry','task','followup','housekeeping','procedure'] as const)it(`un aviso histórico de automatización ${sourceKind} revalida su fuente antes de feed/push/marcar`,async()=>{
+    const e=await entry();let sourceId=e.id;
+    if(sourceKind==='task'||sourceKind==='procedure')sourceId=(await prisma.task.create({data:{entryId:e.id,title:'Trabajo automatizado',createdById:supervisor.id,status:'COMPLETADA'}})).id;
+    if(sourceKind==='followup')sourceId=(await prisma.followUp.create({data:{entryId:e.id,action:'Seguimiento automatizado',ownerId:supervisor.id,createdById:supervisor.id,status:'CUMPLIDO',visibility:'OPERATIVO'}})).id;
+    if(sourceKind==='housekeeping')sourceId=(await prisma.housekeepingRequest.create({data:{requestKey:'automation-provenance-hk-164',sourceEntryId:e.id,departmentId:receptionArea,createdById:supervisor.id,status:'CANCELADO',title:'Trabajo automatizado'}})).id;
+    const policy=await prisma.operationalAutomation.create({data:{ownerId:supervisor.id,departmentId:receptionArea,name:'Política histórica',kind:sourceKind==='procedure'?'PROCEDURE':'ESCALATION',configuration:{},expiresAt:new Date(Date.now()+60000)}});
+    const run=await prisma.operationalAutomationRun.create({data:{policyId:policy.id,occurrence:'histórico-164',policyVersion:1,snapshot:{},status:'SUCCEEDED',result:sourceKind==='procedure'?{taskId:sourceId}:{sourceId,recipientId:management.id}}});
+    const n=await prisma.notification.create({data:{userId:management.id,type:'ACCION_REQUERIDA',title:'Aviso automatizado',entity:'OperationalAutomation',entityId:run.id,link:`/libro/${e.id}`}});
+    expect(await prisma.notification.count({where:{id:n.id,...await notificationWhereForUser(management.id)}})).toBe(1);
+    await hide(e.id,[managementArea]);
+    expect(await prisma.notification.count({where:{id:n.id,...await notificationWhereForUser(management.id)}})).toBe(0);
+    const endpoint=`https://push.invalid/automation-${sourceKind}-164`;await prisma.pushSubscription.create({data:{userId:management.id,endpoint,createdAt:new Date(Date.now()-10000)}});expect(await getWebPushPayload({userId:management.id,endpoint})).toMatchObject({unread:0,items:[]});expect(await markReadableNotifications(management.id,n.id)).toMatchObject({count:0});
+    expect(await prisma.notification.findUnique({where:{id:n.id}})).toMatchObject({readAt:null});expect(await prisma.operationalAutomationRun.findUnique({where:{id:run.id}})).toMatchObject({result:sourceKind==='procedure'?{taskId:sourceId}:{sourceId,recipientId:management.id}});
+    const origins=await prisma.scopedNotificationSourceEntry.findMany({where:{notificationId:n.id}});expect(origins).toMatchObject([{notificationId:n.id,entryId:e.id}]);
+  });
+
   it('una consulta Prisma de una tarea usa su índice y recorrido propio aun con miles de auditorías y avisos ajenos',async()=>{
     const {PrismaClient}=await import('@prisma/client');
     const e=await entry();const task=await prisma.task.create({data:{entryId:e.id,title:'Objetivo acotado',createdById:supervisor.id}});
@@ -472,7 +505,7 @@ describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=
     const client=new PrismaClient({log:[{level:'query',emit:'event'}]});client.$on('query',q=>queries.push(q));
     try {
       expect(await client.task.findFirst({where:{id:task.id,AND:[taskFollowUpReadWhere(management)]},select:{id:true}})).toEqual({id:task.id});
-      const query=queries.find(q=>q.query.includes('BoundedTaskSourceEntry'))!;
+      const query=queries.find(q=>q.query.includes('CompleteTaskSourceEntry'))!;
       const rows=await client.$queryRawUnsafe<Record<string,unknown>[]>(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.query}`,...JSON.parse(query.params));
       const plan=(rows[0]!['QUERY PLAN'] as {Plan:Record<string,unknown>}[])[0]!.Plan;
       const buffers=Number(plan['Shared Hit Blocks']??0)+Number(plan['Shared Read Blocks']??0);
@@ -493,7 +526,7 @@ describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=
       expect((await read(admin))[0]!._count).toEqual({comments:0,followUps:0});
       expect((await read(management))[0]!._count).toEqual({comments:0,followUps:0});
       expect((await read(supervisor))[0]!._count).toEqual({comments:1,followUps:1});
-      const query=queries.find(q=>q.query.includes('BoundedFollowUpSourceEntry'))!;
+      const query=queries.find(q=>q.query.includes('CompleteFollowUpSourceEntry'))!;
       // The suite shares this synthetic DB and deletes fixtures between tests.
       // Refresh estimates for this measured fixture, not earlier files' row counts.
       await client.$executeRawUnsafe('ANALYZE "OperationalEntry", "FollowUp", "Task", "Alert", "Comment"');

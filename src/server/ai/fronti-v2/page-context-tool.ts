@@ -1,4 +1,4 @@
-import { visibleSnapshotItems } from '@/server/services/handover-snapshot';
+import { visibleHandover } from '@/server/services/handover-snapshot';
 import { assertClosureReviewer, legacyClosureAlertWhere, closureReviewState } from '@/server/services/closure-review';
 import { outstandingAmount } from '@/domain/guarantees';
 import { listAreaAttentions } from '@/server/services/subject-distribution';
@@ -348,6 +348,7 @@ async function detailSnapshot(
         status: true,
         issuedAt: true,
         receivedAt: true,
+        snapshot: true,
         issuedBy: { select: { name: true } },
         receivedBy: { select: { name: true } },
         fromShift: { select: { id: true, type: true, date: true, status: true } },
@@ -361,7 +362,7 @@ async function detailSnapshot(
         },
       },
     });
-    return handover ? { ...handover, items:await visibleSnapshotItems(user,handover.items,true), elements: handover.elements.map(element => ({ ...element, elementId: element.id, revision: element.updatedAt.toISOString() })) } : { found: false };
+    return handover ? { ...await visibleHandover(user,handover), elements: handover.elements.map(element => ({ ...element, elementId: element.id, revision: element.updatedAt.toISOString() })) } : { found: false };
   }
 
   if (page.entityType === 'ChecklistRun') {

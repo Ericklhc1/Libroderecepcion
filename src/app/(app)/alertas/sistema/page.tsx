@@ -281,6 +281,9 @@ export default async function AlertsPage({
 
                 {canManage && alert.status !== AlertStatus.RESUELTA ? (
                   <div className="flex flex-wrap items-end gap-2 border-t border-slate-200 px-4 py-3 no-print">
+                    {alert.dedupeKey?.startsWith('shift-validation:') ? (
+                      <Link className="font-medium text-petrol-600 hover:underline" href={`/supervision/cierres/${alert.dedupeKey.slice('shift-validation:'.length)}`}>Abrir cierre · Validar / Observar</Link>
+                    ) : <>
                     {alert.status === AlertStatus.NUEVA ? (
                       <AcknowledgeAlertForm alertId={alert.id} />
                     ) : null}
@@ -302,6 +305,7 @@ export default async function AlertsPage({
                         />
                       </Dialog>
                     ) : null}
+                    </>}
                   </div>
                 ) : null}
 

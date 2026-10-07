@@ -49,7 +49,7 @@ export function directFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permission
     (f."visibility" = 'PRIVADO' AND f."createdById" = ${user.id}) OR
     (f."visibility" = 'SUPERVISION' AND ${manager}) OR
     (f."visibility" = 'OPERATIVO' AND (${manager} OR f."ownerId" = ${user.id} OR f."createdById" = ${user.id}))
-  ) AND NOT EXISTS (SELECT 1 FROM "OperationalEntry" e WHERE EXISTS (SELECT 1 FROM "bounded_native_entry_origin_ids"('followup',f.id) origin WHERE origin."entryId"=e.id) AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})}))`;
+  ) AND NOT EXISTS (SELECT 1 FROM "OperationalEntry" e WHERE EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"('followup',f.id) origin WHERE origin."entryId"=e.id) AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})}))`;
 }
 
 export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted=false) {
@@ -60,13 +60,13 @@ export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & 
 }
 
 export function taskFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>) {
-  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "bounded_native_entry_origin_ids"('task',t.id) origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"('task',t.id) origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."taskId"=t.id AND NOT (${directFollowUpReadSql(user,true)}))`;
 }
 
 export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>) {
-  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "bounded_native_entry_origin_ids"('alert',a.id) origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "AlertSourceFollowUp" origin
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"('alert',a.id) origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "AlertSourceFollowUp" origin
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."alertId"=a.id AND NOT (${directFollowUpReadSql(user,true)}))`;
 }

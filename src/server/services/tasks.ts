@@ -80,7 +80,7 @@ export type TaskCreateInput = {
 export async function assertTaskSourceRecipients(db: Prisma.TransactionClient, ids: Iterable<string>, source: {id?:string;status?:string;departmentId?:string|null;entryId?:string|null;followUpId?:string|null;alertId?:string|null}, lockSources = false) {
   if (!source.id && !source.entryId && !source.followUpId && !source.alertId) return;
   if (lockSources) {
-    const roots=[...(source.id?[Prisma.sql`SELECT "entryId" FROM bounded_native_entry_origin_ids('task',${source.id})`]:[]),...(source.alertId?[Prisma.sql`SELECT "entryId" FROM bounded_native_entry_origin_ids('alert',${source.alertId})`]:[]),...(source.followUpId?[Prisma.sql`SELECT "entryId" FROM bounded_native_entry_origin_ids('followup',${source.followUpId})`]:[]),...(source.entryId?[Prisma.sql`SELECT ${source.entryId}::text AS "entryId"`]:[])];
+    const roots=[...(source.id?[Prisma.sql`SELECT "entryId" FROM complete_native_entry_origin_ids('task',${source.id})`]:[]),...(source.alertId?[Prisma.sql`SELECT "entryId" FROM complete_native_entry_origin_ids('alert',${source.alertId})`]:[]),...(source.followUpId?[Prisma.sql`SELECT "entryId" FROM complete_native_entry_origin_ids('followup',${source.followUpId})`]:[]),...(source.entryId?[Prisma.sql`SELECT ${source.entryId}::text AS "entryId"`]:[])];
     const entryRows=roots.length?await db.$queryRaw<{id:string}[]>(Prisma.sql`SELECT e.id FROM "OperationalEntry" e WHERE e.id IN (${Prisma.join(roots,' UNION ')}) ORDER BY e.id FOR SHARE`):[];
     if(source.departmentId&&(!source.id||!source.status||TASK_OPEN_STATUSES.includes(source.status as TaskStatus)))for(const row of entryRows)await assertEntryWorkDestination(db,row.id,source.departmentId);
     const [followUps, alerts, taskOrigins] = await Promise.all([
@@ -179,6 +179,11 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
+    if(input.alertId){
+      await tx.$queryRaw`SELECT "id" FROM "Alert" WHERE "id"=${input.alertId} FOR UPDATE`;
+      const source=await tx.alert.findUnique({where:{id:input.alertId},select:{dedupeKey:true}});
+      if(source?.dedupeKey?.startsWith('shift-validation:'))throw new RuleError('La validación del cierre es una acción del Centro de Supervisión y no admite crear tareas.');
+    }
     if(input.alertId)await lockEntrySourcesForRecord(tx,user,'alert',input.alertId);
     if(input.followUpId)await lockEntrySourcesForRecord(tx,user,'followup',input.followUpId);
     if(input.entryId){

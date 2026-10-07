@@ -1,7 +1,7 @@
 import { assertEntryVisibleForWrite, lockEntrySourcesForRecord } from './entry-visibility';
 import {alertReadWhere,taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
-import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus, TaskStatus } from '@prisma/client';
+import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -323,10 +323,8 @@ export async function resolveAlert(
     );
   }
 
-  if (shiftValidation && user.roleKey !== ROLE_KEYS.SUPERVISOR && !user.isSystemAdmin) {
-    throw new RuleError(
-      'Los cierres de turno sólo pueden ser validados por Supervisión o por el Administrador de sistema.',
-    );
+  if (shiftValidation) {
+    throw new RuleError('Valida u observa este cierre desde el Centro de Supervisión, con evidencia y revisión vigente.');
   }
 
   if (cashManual) {
@@ -370,23 +368,6 @@ export async function resolveAlert(
       include: alertInclude,
     });
 
-    if (shiftValidation) {
-      await tx.task.updateMany({
-        where: {
-          alertId: alert.id,
-          deletedAt: null,
-          status: { notIn: [TaskStatus.VALIDADA, TaskStatus.CANCELADA] },
-        },
-        data: {
-          status: TaskStatus.VALIDADA,
-          validatedAt: resolvedAt,
-          validatedById: user.id,
-          completedAt: resolvedAt,
-          completedById: user.id,
-        },
-      });
-    }
-
     await finishSupervisionTrackingForSource(tx, user, 'Alert', alert.id, 'RESUELTO');
     await recordAudit(
       {
@@ -399,9 +380,7 @@ export async function resolveAlert(
             ? `Movimiento manual de Caja autorizado por ${user.name}: ${alert.title}`
             : noElements
               ? `Entrega sin elementos validada por Supervisor: ${alert.title}`
-              : shiftValidation
-                ? `Cierre de turno validado por ${user.isSystemAdmin ? 'Administrador de sistema' : 'Supervisión'}: ${alert.title}`
-                : `Alerta #${alert.humanId} resuelta: ${alert.title}`,
+              : `Alerta #${alert.humanId} resuelta: ${alert.title}`,
         user,
         before: { status: alert.status },
         after: { status: AlertStatus.RESUELTA, ...(checkoutDismissed ? { auto: false } : {}) },
@@ -418,6 +397,7 @@ export async function softDeleteAlert(
   input: { id: string; reason: string },
 ) {
   const alert = await loadAlert(user,input.id);
+  if(alert.dedupeKey?.startsWith('shift-validation:'))throw new RuleError('Las alertas históricas de cierre se conservan como evidencia. Revisa el cierre en el Centro de Supervisión.');
   return prisma.$transaction(async (tx) => {
     const deleted = await tx.alert.update({
       where: { id: input.id,AND:[alertReadWhere(user)] },

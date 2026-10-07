@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AuditAction, EntryType, ShiftType, ShiftStatus } from '@prisma/client';
 import { createUser, createShift, openShiftAs, seedCatalog, resetOperationalData, prisma, ROLE_KEYS } from './helpers';
-import { getShiftBriefing, prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift } from '@/server/services/shifts';
+import { getShiftBriefing, prepareHandover, receiveHandover, confirmHandoverReviewStep, sendHandover, closeShift, startReceptionShift, confirmReceptionReviewStep } from '@/server/services/shifts';
 import { listPendingClosureReviews, reviewShiftClosure } from '@/server/services/closure-review';
 import { getSupervisionData } from '@/server/services/supervision';
 import { createEntry, getSubjectEntry, updateEntryVisibility, updateEntry } from '@/server/services/entries';
@@ -85,13 +85,24 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
 
 
   it('desocultar después de enviar no convierte una fila del borrador excluida en contenido de la foto enviada',async()=>{
-    const e=await notice();const shift=await createShift({userId:reception.id,type:ShiftType.DIA});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});const handover=await prepareHandover(reception,shift.id);
+    const e=await notice(supervisor,{priority:'CRITICA'});const shift=await createShift({userId:reception.id,type:ShiftType.DIA});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});const handover=await prepareHandover(reception,shift.id);
     let source=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});await updateEntryVisibility(supervisor,{id:e.id,revision:source.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:false});
     await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});await sendHandover(reception,{shiftId:shift.id});
     const before=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});expect(JSON.stringify(before.snapshot)).not.toContain(e.id);expect(before.items.some(i=>i.refId===e.id)).toBe(true);
     source=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});await updateEntryVisibility(supervisor,{id:e.id,revision:source.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:true});
     const after=await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});expect(after.snapshot).toEqual(before.snapshot);expect(after.items.some(i=>i.refId===e.id)).toBe(true);
     expect((await visibleHandover(reception,after)).items.some(i=>i.refId===e.id)).toBe(false);
+    const context=await executeFrontiPageContextTool(other,resolveFrontiPageContext({pathname:`/turno/entrega/${handover.id}`}));
+    expect(JSON.stringify(context)).not.toContain(e.id);expect(JSON.stringify(context)).not.toContain(e.title);
+    await closeShift(reception,{shiftId:shift.id});
+    await startReceptionShift(other,{handoverId:handover.id,type:'NOCHE'});
+    await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'BRIEFING'});
+    await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'CUSTODY'});
+    const reviewed=await confirmReceptionReviewStep(other,{handoverId:handover.id,step:'FINAL'});
+    expect(reviewed.receiverFinalReviewAt).not.toBeNull();expect(reviewed.receiverUrgentAcknowledgedAt).toBeNull();
+    await receiveHandover(other,{handoverId:handover.id});
+    expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({status:'RECIBIDA',snapshot:before.snapshot});
+    expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(1);
   });
 
   it('habilitar una novedad después de enviar conserva íntegra la fotografía enviada',async()=>{

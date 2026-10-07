@@ -175,7 +175,7 @@ export async function getDashboardData(user: CurrentUser) {
     // El «turno siguiente» ya no se deduce por adyacencia: es el que esté
     // en curso, que puede ser el propio o ninguno.
     getCurrentShift(),
-    myShift ? getShiftMetrics(myShift.id) : null,
+    myShift ? getShiftMetrics(myShift.id,user) : null,
     prisma.operationalEntry.count({
       where: {
         AND: [entryReadWhere(user)],

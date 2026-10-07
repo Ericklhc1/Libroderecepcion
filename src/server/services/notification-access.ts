@@ -21,8 +21,9 @@ export async function notificationWhereForUser(userId:string):Promise<Prisma.Not
     prisma.alert.findMany({where:{sourceEntries:{some:{entryId:{in:entryIds}}}},select:{id:true}}),
     prisma.followUp.findMany({where:{sourceEntries:{some:{entryId:{in:entryIds}}}},select:{id:true}}),
   ]):[[],[],[]];
+  const hiddenHk=entryIds.length?await prisma.housekeepingRequest.findMany({where:{OR:[{sourceEntryId:{in:entryIds}},{maintenanceEntryId:{in:entryIds}}]},select:{id:true}}):[];
   const legacyVisible=reader.roleKey==='SUPERVISOR'||reader.isSystemAdmin;
-  const hidden=[['OperationalEntry',hiddenEntries],['Task',[...linkedTasks,...(legacyVisible?[]:legacyTasks)]],['Alert',[...linkedAlerts,...(legacyVisible?[]:legacyAlerts)]],['FollowUp',linkedFollowUps]] as const;
+  const hidden=[['OperationalEntry',hiddenEntries],['Task',[...linkedTasks,...(legacyVisible?[]:legacyTasks)]],['Alert',[...linkedAlerts,...(legacyVisible?[]:legacyAlerts)]],['FollowUp',linkedFollowUps],['HousekeepingRequest',hiddenHk],['HousekeepingWork',hiddenHk]] as const;
   return {userId,deletedAt:null,...notificationReadWhere(reader),AND:hidden.filter(([,rows])=>rows.length).map(([entity,rows])=>({OR:[{entity:null},{entityId:null},{NOT:{entity,entityId:{in:rows.map(row=>row.id)}}}]}))};
 }
 

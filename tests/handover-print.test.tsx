@@ -37,9 +37,10 @@ describe('impresión de entrega 02-10-2026', () => {
     expect(closurePrintValidation(null,current,legacy)).toEqual(legacy);
   });
 
+  // CI cold browser startup/PDF rendering gets its own budget; all page/content assertions remain.
   for (const confirmed of [false, true]) it(`PDF real ${confirmed ? 'recibido' : 'enviado'}: A4 horizontal, ≤2 páginas, todos los registros y firmas`, async () => {
     const fixture = confirmed ? confirmedHandover02Fixture() : handover02Fixture();
-    const browser = await chromium.launch({ headless: true, ...(existsSync('/usr/bin/chromium') ? {executablePath:'/usr/bin/chromium'} : {}), args:['--no-sandbox'] });
+    const browser = await chromium.launch({ timeout:60_000, headless: true, ...(existsSync('/usr/bin/chromium') ? {executablePath:'/usr/bin/chromium'} : {}), args:['--no-sandbox'] });
     try {
       const page = await browser.newPage();
       await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div style="min-height:100vh"><header class="no-print">MENÚ_NO_IMPRIMIR</header><main id="contenido-principal" style="padding:20px 16px 80px">${renderToStaticMarkup(<HandoverPrint {...fixture} />)}<div class="handover-screen">PANTALLA_NO_IMPRIMIR</div></main><div>AROH_PIE_GLOBAL_NO_IMPRIMIR</div></div><aside>FRONTI_NO_IMPRIMIR</aside></body></html>`);
@@ -68,5 +69,5 @@ describe('impresión de entrega 02-10-2026', () => {
       mkdirSync('work', {recursive:true}); writeFileSync(`work/handover-02-10-${confirmed ? 'recibida' : 'enviada'}.pdf`, pdf);
       await doc.destroy();
     } finally { await browser.close(); }
-  });
+  }, 90_000);
 });

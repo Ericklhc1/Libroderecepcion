@@ -1,3 +1,4 @@
+import { legacyClosureAlertWhere } from '@/server/services/closure-review';
 import { closurePrintValidation } from '@/domain/handover-print';
 import { HandoverPrint } from '@/components/operational/handover-print';
 import { ClosureReviewLink } from '@/components/supervision/closure-review-form';
@@ -86,8 +87,8 @@ export default async function HandoverPage({
     getHandoverCashState(handover.id),
     listDenominations(),
     getShiftCashClosure(handover.fromShiftId),
-    prisma.alert.findUnique({
-      where: { dedupeKey: `shift-validation:${handover.fromShiftId}` },
+    prisma.alert.findFirst({
+      where: { ...legacyClosureAlertWhere(handover.fromShiftId), status:'RESUELTA' },
       select: {
         status: true,
         resolvedAt: true,

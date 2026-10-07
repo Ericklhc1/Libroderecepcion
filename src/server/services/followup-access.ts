@@ -3,9 +3,9 @@ import 'server-only';
 import { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 // The source's reserved visibility is checked before projecting any linked work.
-function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted = false, shared = false): Prisma.FollowUpWhereInput {
+function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted = false, shared = false, areaPolicy?:Prisma.OperationalEntryWhereInput): Prisma.FollowUpWhereInput {
   const manager = user.permissions.includes('supervision.followup.manage');
-  const area:Prisma.FollowUpWhereInput={sourceEntries:{none:{entry:{NOT:shared?receptionHandoverEntryWhere:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}};
+  const area:Prisma.FollowUpWhereInput={sourceEntries:{none:{entry:{NOT:areaPolicy??(shared?receptionHandoverEntryWhere:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false}))}}}};
   if (shared) return { AND:[area], ...(includeDeleted ? {} : {deletedAt:null}), visibility:'OPERATIVO' };
   return { AND:[area], ...(includeDeleted ? {} : {deletedAt: null}), OR: [
     { visibility: 'PRIVADO', createdById: user.id },
@@ -20,11 +20,11 @@ export function followUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> 
 
 // An archived origin retains its authorization; active work does not disappear.
 // The views resolve every native source edge, including old chains and cycles.
-export function taskFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, shared=false): Prisma.TaskWhereInput {
+export function taskFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, shared=false, areaPolicy?:Prisma.OperationalEntryWhereInput): Prisma.TaskWhereInput {
   return { AND: [
-    { sourceEntries: {none: {entry: {NOT: shared ? receptionHandoverEntryWhere : entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}} },
+    { sourceEntries: {none: {entry: {NOT: areaPolicy??(shared ? receptionHandoverEntryWhere : entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false}))}}} },
     { OR: [{ alertId: null }, { sourceAlert: { OR: [{dedupeKey:null}, {NOT:closureValidationAlertWhere}] } }] },
-    { sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}},
+    { sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared,areaPolicy)}}}},
   ] };
 }
 

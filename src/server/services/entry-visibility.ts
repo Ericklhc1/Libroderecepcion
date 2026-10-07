@@ -46,9 +46,9 @@ export function entryReadSql(user: EntryReader) {
 }
 
 /** Source lookups and visibility changes serialize on the same entry row. */
-export async function assertEntryVisibleForWrite(tx: Prisma.TransactionClient, user: EntryReader, id: string) {
+export async function assertEntryVisibleForWrite(tx: Prisma.TransactionClient, user: EntryReader, id: string, includeDeleted=false) {
   await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${id} FOR UPDATE`;
-  if (!await tx.operationalEntry.count({where:{id,deletedAt:null,AND:[entryReadWhere(user)]}})) throw new NotFoundError('El registro de origen no está visible para tu área.');
+  if (!await tx.operationalEntry.count({where:{id,...(includeDeleted?{}:{deletedAt:null}),AND:[entryReadWhere(user)]}})) throw new NotFoundError('El registro de origen no está visible para tu área.');
 }
 
 /** Locks every native ancestor before authorizing a derived mutation. */
@@ -65,4 +65,16 @@ export async function assertEntryOwnerVisibility(tx: Prisma.TransactionClient, i
   if(!owner)throw new RuleError('El responsable no está disponible.');
   if(owner.id===input.createdById || ['SUPERVISOR','ADMINISTRADOR_SISTEMA'].includes(owner.role.key))return;
   if(await tx.department.count({where:{id:{in:input.hiddenDepartmentIds},OR:[{id:owner.departmentId??''},{users:{some:{id:owner.id}}},...(isReceptionDeskRole(owner.role.key)?[{key:'RECEPCION'}]:[])]}}))throw new RuleError('El responsable no podrá ver la novedad. Reasigna o quita al responsable antes de ocultarla a su área.');
+}
+
+/** Native Housekeeping work cannot expose an entry hidden from its reader. */
+export function housekeepingEntryReadWhere(user: EntryReader): Prisma.HousekeepingRequestWhereInput {
+  return {AND:[{OR:[{sourceEntryId:null},{sourceEntry:entryReadWhere(user)}]},{OR:[{maintenanceEntryId:null},{maintenanceEntry:entryReadWhere(user)}]}]};
+}
+export async function assertEntryWorkDestination(tx: Prisma.TransactionClient, sourceId: string, departmentId: string, assignedToId?: string|null) {
+  if(await tx.operationalEntry.count({where:{id:sourceId,hiddenFromDepartments:{some:{id:departmentId}}}}))throw new RuleError('La novedad está oculta al área de destino. Cambia su visibilidad antes de solicitar trabajo.');
+  if(!assignedToId)return;
+  const person=await tx.user.findFirst({where:{id:assignedToId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
+  if(!person)throw new RuleError('El responsable no está disponible.');
+  await assertEntryVisibleForWrite(tx,{id:person.id,departmentId:person.departmentId,roleKey:person.role.key,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]},sourceId);
 }

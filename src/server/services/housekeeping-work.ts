@@ -1,4 +1,4 @@
-import { entryReadWhere } from './entry-visibility';
+import { entryReadWhere, housekeepingEntryReadWhere, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import {sourceStakeholders,notifyNativeWork} from './work-notifications';
 import 'server-only';
@@ -57,12 +57,12 @@ export async function hkCapability(user: CurrentUser, departmentId: string, perm
 async function requireCapability(user: CurrentUser, departmentId: string, permission: PermissionKey, tx: Tx = prisma) { if (!await hkCapability(user, departmentId, permission, tx)) throw new ForbiddenError('Esta función no está habilitada para tu cargo y área.'); }
 export async function hkWorkVisibility(user: CurrentUser, tx: Tx = prisma): Promise<Prisma.HousekeepingRequestWhereInput> {
   hasAccess(user);
-  if (user.roleKey === ADMIN) return { deletedAt: null };
-  if (user.permissions.includes('housekeeping.view.all')) return { deletedAt: null, isDemo: false };
+  if (user.roleKey === ADMIN) return { deletedAt: null, AND:[housekeepingEntryReadWhere(user)] };
+  if (user.permissions.includes('housekeeping.view.all')) return { deletedAt: null, isDemo: false, AND:[housekeepingEntryReadWhere(user)] };
   const areas = await hkAreaIds(user, tx);
   const full = hkHas(user, 'housekeeping.view') || hkHas(user, 'housekeeping.assign') || hkHas(user, 'housekeeping.inspect') || hkHas(user, 'housekeeping.plan');
   const delegated = await tx.housekeepingDelegation.findMany({ where: { userId: user.id, departmentId: { in: areas }, revokedAt: null, startsAt: { lte: new Date() }, endsAt: { gt: new Date() }, grantedBy: { active: true, deletedAt: null, role: { OR: [{ key: ADMIN }, { permissions: { some: { permission: { key: 'housekeeping.plan' } } } }] } } }, select: { departmentId: true } });
-  return { deletedAt: null, isDemo: false, OR: [{ createdById: user.id }, { assignedToId: user.id, departmentId: { in: areas } }, { departmentId: { in: full ? areas : delegated.map(d => d.departmentId) } }] };
+  return { deletedAt: null, isDemo: false, AND:[housekeepingEntryReadWhere(user)], OR: [{ createdById: user.id }, { assignedToId: user.id, departmentId: { in: areas } }, { departmentId: { in: full ? areas : delegated.map(d => d.departmentId) } }] };
 }
 async function record(tx: Tx, user: CurrentUser, id: string, humanId: number | null, action: string, note: string) {
   await tx.auditLog.create({ data: { entity: 'HousekeepingWork', entityId: id, userId: user.id, sessionId: user.sessionId, action: 'CAMBIO_ESTADO', summary: humanId ? `Housekeeping #${humanId}: ${action}` : `Housekeeping: ${action}`, reason: note } });
@@ -82,10 +82,10 @@ export async function notifyHkWork(tx: Tx, request: { id: string; humanId: numbe
   const permissions = request.status === 'POR_REVISAR' ? ['housekeeping.inspect','housekeeping.plan','housekeeping.manage'] : ['housekeeping.assign','housekeeping.plan','housekeeping.manage'];
   const team = await coordinatingTeam(tx, request.departmentId, permissions);
   const ids = [...new Set([previousAssigneeId,request.assignedToId, request.createdById, ...team.map(u => u.id)].filter((id): id is string => !!id && id !== actorId))];
-  const candidates = await tx.user.findMany({ where: { id: { in: ids }, active: true, deletedAt: null }, select: { id: true, role: {select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}} } });
+  const candidates = await tx.user.findMany({ where: { id: { in: ids }, active: true, deletedAt: null }, select: { id: true, departmentId:true, role: {select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}} } });
   const active:Array<{id:string}>=[];
   for (const candidate of candidates) {
-    const reader={id:candidate.id,roleKey:candidate.role.key,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)} as CurrentUser;
+    const reader={id:candidate.id,departmentId:candidate.departmentId,roleKey:candidate.role.key,isSystemAdmin:candidate.role.key===ADMIN,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)} as CurrentUser;
     if (canAccessHousekeeping(reader) && await tx.housekeepingRequest.count({where:{id:request.id,AND:[await hkWorkVisibility(reader,tx)]}})) active.push({id:candidate.id});
   }
   await notify(active.map(u => ({ internalOnly, userId: u.id, type: 'ACTUALIZACION_OPERATIVA' as const, title: `Housekeeping #${request.humanId}: ${message}`, link: `/housekeeping?area=${request.departmentId}&aviso=${request.humanId}`, entity: 'HousekeepingRequest', entityId: request.id })), tx);
@@ -125,6 +125,7 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput, clie
     const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] }, ...sourceScope(user, input.departmentId, canAssign) }, select: { id: true, roomId: true } }) : null;
     if(source?.roomId&&room?.id!==source.roomId)throw new RuleError('La habitación debe coincidir con la novedad de origen.');
     if (input.sourceEntryId && !source) throw new RuleError('La novedad ya no está disponible para vincular.');
+    if(source)await assertEntryWorkDestination(tx,source.id,input.departmentId,input.assignedToId);
     const request = await tx.housekeepingRequest.create({ data: { ...input, roomId: room?.id, zoneId: zone?.id, location: room?.number ?? zone?.name ?? input.location!.trim(), title: source ? null : input.title.trim(), description: source ? null : input.description.trim(), assignedToId: input.assignedToId || null, workAssignedAt: input.assignedToId ? new Date() : null, sourceEntryId: source?.id, workflowVersion: 1, requiresInspection: hkInspectionRequired(input.workKind, input.requiresInspection), createdById: user.id, events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Trabajo creado. La planificación no acredita asistencia ni modifica el PMS.' } } } });
     await record(tx, user, request.id, request.humanId, 'CREAR', 'Trabajo del día'); await notifyHkWork(tx, request, user.id, 'Nuevo trabajo',undefined,internalOnly); return request;
   };
@@ -147,14 +148,14 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     if (permission === 'housekeeping.work' && current.assignedToId !== user.id) throw new ForbiddenError('Sólo puedes ejecutar tus trabajos asignados.');
     if ((permission === 'housekeeping.inspect') && current.assignedToId === user.id) throw new RuleError('La inspección debe realizarla otra persona.');
     if (current.sourceEntryId) {
-      await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${current.sourceEntryId} FOR SHARE`;
+      await assertEntryVisibleForWrite(tx,user,current.sourceEntryId,true);
       current.sourceEntry = await tx.operationalEntry.findUnique({ where: { id: current.sourceEntryId }, select: { updatedAt: true, deletedAt: true,status:true } });
     }
     if(input.action==='REABRIR'&&current.sourceEntry&&['RESUELTO','CERRADO'].includes(current.sourceEntry.status))throw new RuleError('Reabre el asunto antes de reactivar su atención especializada.');
     const changed = !!current.acknowledgedAt && !!current.sourceEntry && current.sourceVersion?.getTime() !== current.sourceEntry.updatedAt.getTime();
     if (!hkAllowedActions(current.status, !!current.assignedToId, changed, current.requiresInspection).includes(input.action)) throw new RuleError(changed ? 'La instrucción cambió: el supervisor debe revisarla antes de continuar.' : 'Esta acción no corresponde al estado del trabajo.');
     if (current.sourceEntry?.deletedAt && input.action !== 'CANCELAR') throw new RuleError('El origen fue archivado. Revisa el caso y cancela con motivo.');
-    if (input.action === 'ASIGNAR') { if (!input.assignedToId) throw new RuleError('Selecciona un responsable.'); await validateWorker(tx, current.departmentId, input.assignedToId, current.workDate ?? undefined); }
+    if (input.action === 'ASIGNAR') { if (!input.assignedToId) throw new RuleError('Selecciona un responsable.'); await validateWorker(tx, current.departmentId, input.assignedToId, current.workDate ?? undefined); if(current.sourceEntryId)await assertEntryWorkDestination(tx,current.sourceEntryId,current.departmentId,input.assignedToId); }
     if (current.maintenanceEntryId && ['COMENZAR','RETOMAR','TERMINAR','RESOLVER','APROBAR'].includes(input.action)) {
       // Lock the dependency before the optimistic request update, as the native result publisher does.
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.maintenanceEntryId} FOR SHARE`;
@@ -197,6 +198,15 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
   };
   return transaction ? perform(transaction) : prisma.$transaction(perform);
 }
+/** Historic photographs retain evidence, but use current source visibility on read. */
+async function visibleHkHandovers<T extends {snapshot:Prisma.JsonValue}>(user:CurrentUser,rows:T[]):Promise<T[]> {
+  const hidden=await prisma.housekeepingRequest.findMany({where:{NOT:housekeepingEntryReadWhere(user)},select:{id:true,humanId:true}});
+  const ids=new Set(hidden.map(r=>r.id));const folios=new Set(hidden.map(r=>r.humanId));
+  return rows.map(row=>{const snapshot=row.snapshot;if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot)||!Array.isArray(snapshot.work))return row;
+    return {...row,snapshot:{...snapshot,work:snapshot.work.filter(w=>!w||typeof w!=='object'||Array.isArray(w)||!(typeof w.id==='string'&&ids.has(w.id)||typeof w.humanId==='number'&&folios.has(w.humanId)))}};
+  });
+}
+
 export async function getHkWorkday(user: CurrentUser, input: { date?: string; departmentId?: string; view?: string; floor?: string; responsible?: string; page?: number; focusId?: number;q?:string;state?:string } = {}) {
   hasAccess(user); const visibility = await hkWorkVisibility(user);
   const focused = input.focusId ? await prisma.housekeepingRequest.findFirst({where:{humanId:input.focusId,AND:[visibility]},select:{workDate:true,departmentId:true}}) : null;
@@ -238,7 +248,7 @@ export async function getHkWorkday(user: CurrentUser, input: { date?: string; de
   const workload = team.map(person=>({ ...person, tasks:active.filter(r=>r.assignedToId===person.id).length, estimatedMinutes:active.filter(r=>r.assignedToId===person.id&&r.status!=='POR_REVISAR').reduce((n,r)=>n+r.effortMinutes,0), available:confirmations.find(c=>c.userId===person.id)?.available??null, note:confirmations.find(c=>c.userId===person.id)?.note??null, scheduled:slots.filter(s=>s.collaborator.userId===person.id) }));
   const proposedLoad = new Map(workload.filter(p=>p.available===true).map(p=>[p.id,p.estimatedMinutes]));
   const suggestions = canAssign ? requests.filter(r=>r.workflowVersion===1&&!r.assignedToId&&!terminal.includes(r.status)).flatMap(r=>{const candidates=workload.filter(p=>proposedLoad.has(p.id)).sort((a,b)=>(proposedLoad.get(a.id)!-proposedLoad.get(b.id)!)||a.name.localeCompare(b.name,'es'));const person=candidates[0];if(!person)return[];const before=proposedLoad.get(person.id)!;proposedLoad.set(person.id,before+r.effortMinutes);return[{id:r.id,humanId:r.humanId,version:r.version,title:r.sourceEntry?.title??r.title,location:r.location,userId:person.id,name:person.name,reason:`Disponible confirmado · ${before} min estimados antes de este trabajo`}];}) : [];
-  return { date, departmentId, roomBoard: buildHkRoomBoard(rooms, all), suggestions, requests,total,page,counts,areas,rooms,zones,canAssign:!!canAssign,canInspect:!!canInspect,canPlan:!!canPlan,canWork:!!canWork,canRequest:hkHas(user,'housekeeping.request')||canAssign,teamVisible,workload,routines,handovers,delegations,loans };
+  return { date, departmentId, roomBoard: buildHkRoomBoard(rooms, all), suggestions, requests,total,page,counts,areas,rooms,zones,canAssign:!!canAssign,canInspect:!!canInspect,canPlan:!!canPlan,canWork:!!canWork,canRequest:hkHas(user,'housekeeping.request')||canAssign,teamVisible,workload,routines,handovers:await visibleHkHandovers(user,handovers),delegations,loans };
 }
 
 export async function saveHkRoutine(user: CurrentUser, input: { departmentId:string;id?:string;version?:number;title:string;description:string;location:string;effortMinutes:number;requiresInspection:boolean;active:boolean }) {
@@ -279,7 +289,7 @@ export async function saveHkHandover(user:CurrentUser,input:{requestKey:string;d
   validDate(input.workDate);await requireCapability(user,input.departmentId,'housekeeping.assign');if(!input.note.trim())throw new RuleError('Indica las instrucciones para el equipo que recibe.');
   return prisma.$transaction(async tx=>{
     const previous=await tx.housekeepingHandover.findUnique({where:{requestKey:input.requestKey}});if(previous){if(previous.createdById!==user.id)throw new ForbiddenError();return previous;}
-    const [work,loans]=await Promise.all([tx.housekeepingRequest.findMany({where:{departmentId:input.departmentId,isDemo:false,status:{notIn:terminal},OR:[{workDate:{lte:input.workDate}},{workDate:null}]},select:{humanId:true,title:true,sourceEntry:{select:{title:true}},location:true,status:true,blockReason:true,resolution:true,assignedTo:{select:{name:true}},dueAt:true,version:true}}),tx.keyStaffLoan.findMany({where:{departmentId:input.departmentId,items:{some:{returnedAt:null}}},select:{humanId:true,collaboratorName:true,items:{where:{returnedAt:null},select:{keyCode:true,destinationName:true}}}})]);
+    const [work,loans]=await Promise.all([tx.housekeepingRequest.findMany({where:{departmentId:input.departmentId,isDemo:false,AND:[housekeepingEntryReadWhere(user)],status:{notIn:terminal},OR:[{workDate:{lte:input.workDate}},{workDate:null}]},select:{id:true,humanId:true,title:true,sourceEntry:{select:{title:true}},location:true,status:true,blockReason:true,resolution:true,assignedTo:{select:{name:true}},dueAt:true,version:true}}),tx.keyStaffLoan.findMany({where:{departmentId:input.departmentId,items:{some:{returnedAt:null}}},select:{humanId:true,collaboratorName:true,items:{where:{returnedAt:null},select:{keyCode:true,destinationName:true}}}})]);
     const snapshot=JSON.parse(JSON.stringify({work,loans})) as Prisma.InputJsonValue;
     const row=await tx.housekeepingHandover.create({data:{...input,note:input.note.trim(),snapshot,createdById:user.id}});
     const receivers=await coordinatingTeam(tx, input.departmentId, ['housekeeping.assign','housekeeping.plan','housekeeping.manage']);

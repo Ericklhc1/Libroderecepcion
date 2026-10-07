@@ -1,5 +1,5 @@
 import { visibleSnapshotItems } from '@/server/services/handover-snapshot';
-import { assertClosureReviewer } from '@/server/services/closure-review';
+import { assertClosureReviewer, legacyClosureAlertWhere, closureReviewState } from '@/server/services/closure-review';
 import { outstandingAmount } from '@/domain/guarantees';
 import { listAreaAttentions } from '@/server/services/subject-distribution';
 import { getChangesSinceLastShift } from '@/server/services/shift-changes';
@@ -306,8 +306,8 @@ async function detailSnapshot(
     assertClosureReviewer(user);
     const shift=await prisma.shift.findFirst({where:{id:page.entityId,...(user.isSystemAdmin?{}:{isDemo:false})},select:{id:true,humanId:true,date:true,type:true,status:true,actualEnd:true,archivedAt:true,closureReviewRequestedAt:true,closureReviewDecision:true,closureReviewNote:true,closureReviewedAt:true,handoverOut:{select:{id:true,status:true,issuedAt:true,receivedAt:true,issuedBy:{select:{name:true}},receivedBy:{select:{name:true}}}}}});
     if(!shift)return {found:false};
-    const legacy=await prisma.alert.findUnique({where:{dedupeKey:`shift-validation:${shift.id}`},select:{status:true}});
-    return {found:true,...shift,pending:shift.status==='CERRADO'&&!shift.archivedAt&&shift.closureReviewDecision!=='VALIDADA'&&Boolean(shift.closureReviewRequestedAt||legacy&&legacy.status!=='RESUELTA'),href:`/supervision/cierres/${shift.id}`,handoverHref:shift.handoverOut?`/turno/entrega/${shift.handoverOut.id}`:null};
+    const legacy=await prisma.alert.findFirst({where:legacyClosureAlertWhere(shift.id),select:{status:true}});
+    return {found:true,...shift,pending:closureReviewState(shift,legacy).pending,href:`/supervision/cierres/${shift.id}`,handoverHref:shift.handoverOut?`/turno/entrega/${shift.handoverOut.id}`:null};
   }
 
   if (page.entityType === 'CashAudit') {
@@ -991,7 +991,7 @@ export async function executeFrontiPageContextTool(
       requireAny(user, ['metrics.view'], 'No tienes permiso para consultar Indicadores.');
       const requested = Number(page.filters.dias ?? 30);
       const days = [7, 30, 90].includes(requested) ? requested : 30;
-      return { ...base, snapshot: await getMetrics(defaultRange(days)) };
+      return { ...base, snapshot: await getMetrics(defaultRange(days),user) };
     }
     case 'supervision':
       if(page.sectionKey==='documentos-locales'){

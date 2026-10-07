@@ -21,6 +21,12 @@ import { executeFrontiPageContextTool } from '@/server/ai/fronti-v2/page-context
 import { addComment } from '@/server/services/comments';
 import { lockEntrySourcesForRecord } from '@/server/services/entry-visibility';
 import { alertReadWhere, followUpReadWhere } from '@/server/services/followup-access';
+import { createManualAlert } from '@/server/services/alerts';
+import { getShiftMetrics, getMetrics, defaultRange } from '@/server/services/metrics';
+import { getDashboardData } from '@/server/services/dashboard';
+import { createHkWork, getHkWorkday, saveHkHandover } from '@/server/services/housekeeping-work';
+import { createHousekeepingRequest, getHousekeepingBoard, searchHousekeepingRecords } from '@/server/services/housekeeping';
+import { hotelDateKey } from '@/domain/time';
 import { entryCreateSchema } from '@/server/schemas';
 import type { CurrentUser } from '@/server/auth/current-user';
 
@@ -300,6 +306,58 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     await Promise.all([write,hide]);
     await expect(addComment(other,{taskId:t.id,body:'Después de ocultar'})).rejects.toThrow();
     expect(await prisma.comment.count({where:{taskId:t.id}})).toBe(1);
+  });
+
+  it('HK filtra trabajos y fotografías existentes, sus contadores, búsqueda y avisos; rechaza destinos ocultos',async()=>{
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const manager=await createUser({roleKey:ROLE_KEYS.HK_MANAGER});const maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});
+    await prisma.user.updateMany({where:{id:{in:[manager.id,maid.id]}},data:{departmentId:area.id}});
+    const e=await notice(supervisor,{title:'HK_ORIGEN_OCULTO'});const date=hotelDateKey(new Date());
+    const work=await createHkWork(admin,{requestKey:'aroh164-hk-modern',title:'Vinculado',description:'Instrucción vinculada',sourceEntryId:e.id,departmentId:area.id,assignedToId:maid.id,workDate:date,workKind:'REPOSICION',location:'Zona de prueba',effortMinutes:20,priority:'MEDIA'});
+    const legacyEntry=await notice(supervisor,{title:'HK_HISTORICO_OCULTO'});
+    const legacy=await createHousekeepingRequest(admin,{requestKey:'aroh164-hk-legacy',sourceEntryId:legacyEntry.id,departmentId:area.id,priority:'MEDIA'});
+    const photograph=await saveHkHandover(manager,{requestKey:'aroh164-hk-photo',departmentId:area.id,workDate:date,note:'Pendientes de prueba'});
+    const before=JSON.stringify(photograph.snapshot);expect(before).toContain(e.title);expect(before).toContain(legacyEntry.title);
+    for(const entry of [e,legacyEntry])await updateEntryVisibility(supervisor,{id:entry.id,revision:entry.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    const day=await getHkWorkday(manager,{departmentId:area.id,date});expect(day.requests).toHaveLength(0);expect(day.total).toBe(0);expect(day.counts.active).toBe(0);
+    expect(JSON.stringify(day.handovers)).not.toContain(e.title);expect(JSON.stringify(day.handovers)).not.toContain(legacyEntry.title);
+    expect((await getHkWorkday(maid,{departmentId:area.id,date})).requests).toHaveLength(0);
+    expect(await getHousekeepingBoard(manager)).toMatchObject({total:0,active:0});
+    expect(await searchHousekeepingRecords(manager,'HK_')).toHaveLength(0);expect(await searchOperationalRecords(manager,'HK_')).toHaveLength(0);
+    const n=await prisma.notification.create({data:{userId:maid.id,entity:'HousekeepingRequest',entityId:work.id,type:'ACCION_REQUERIDA',title:e.title}});
+    expect((await getNotificationFeedForUser(maid.id)).items.map(row=>row.id)).not.toContain(n.id);
+    expect(JSON.stringify((await prisma.housekeepingHandover.findUniqueOrThrow({where:{id:photograph.id}})).snapshot)).toBe(before);
+    expect(await prisma.housekeepingRequest.count({where:{id:{in:[work.id,legacy.id]}}})).toBe(2);
+    const hidden=await notice(supervisor,{hiddenDepartmentIds:[area.id]});
+    await expect(createHkWork(admin,{requestKey:'aroh164-hk-denied',title:'No crear',description:'No crear',sourceEntryId:hidden.id,departmentId:area.id,assignedToId:maid.id,workDate:date,workKind:'REPOSICION',location:'Prueba',effortMinutes:20,priority:'MEDIA'})).rejects.toThrow(/área de destino/);
+    await expect(createHousekeepingRequest(admin,{requestKey:'aroh164-hk-legacy-denied',sourceEntryId:hidden.id,departmentId:area.id,priority:'MEDIA'})).rejects.toThrow(/área de destino/);
+  });
+
+  it('las métricas de Inicio/turno y de indicadores no cuentan novedades ni fuentes ocultas al lector',async()=>{
+    const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);
+    const visible=await notice(supervisor,{includeInReceptionHandover:false});const hidden=await notice(supervisor,{type:'INCIDENCIA',severity:'CRITICA'});
+    await prisma.operationalEntry.updateMany({where:{id:{in:[visible.id,hidden.id]}},data:{shiftId:shift.id}});
+    await prisma.task.create({data:{shiftId:shift.id,entryId:hidden.id,createdById:supervisor.id,title:'Tarea de fuente oculta'}});
+    await prisma.task.create({data:{shiftId:shift.id,entryId:visible.id,createdById:supervisor.id,title:'Visible aunque no viaje en entrega'}});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:hidden.id}});
+    await updateEntryVisibility(supervisor,{id:hidden.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    expect(await getShiftMetrics(shift.id,reception)).toMatchObject({entries:1,incidents:0,tasksCreated:1});
+    expect((await getDashboardData(reception)).shiftMetrics).toMatchObject({entries:1,incidents:0,tasksCreated:1});
+    expect(await getShiftMetrics(shift.id,supervisor)).toMatchObject({entries:2,incidents:1,tasksCreated:2});
+    const metrics=await getMetrics(defaultRange(),reception);expect(metrics.incidents.open).toBe(0);expect(metrics.volumeByShift.map(r=>r.count)).toEqual([1]);
+  });
+
+  it('una alerta manual comprueba y bloquea su fuente nativa, sin alerta ni auditoría ante un ID oculto',async()=>{
+    const e=await notice(supervisor);const source=await prisma.task.create({data:{entryId:e.id,createdById:supervisor.id,title:'Fuente de alerta'}});
+    const allowed=await createManualAlert(other,{entryId:e.id,type:'OTRO',level:'INFORMATIVA',title:'Alerta autorizada'});
+    expect(allowed.entryId).toBe(e.id);
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    const alerts=await prisma.alert.count();const audits=await prisma.auditLog.count();
+    await expect(createManualAlert(other,{entryId:e.id,type:'OTRO',level:'INFORMATIVA',title:'No crear por ID retenido'})).rejects.toThrow();
+    await expect(createManualAlert(other,{taskId:source.id,type:'OTRO',level:'INFORMATIVA',title:'No crear por derivado'})).rejects.toThrow();
+    expect(await prisma.alert.count()).toBe(alerts);expect(await prisma.auditLog.count()).toBe(audits);
   });
 
   it('la creación rechaza áreas inexistentes y booleanos inválidos',async()=>{

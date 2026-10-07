@@ -1137,3 +1137,7 @@ queda sin documentar acá.
 - Resto de usuarios: deshabilitado por defecto hasta aprobación explícita.
 - El bloqueo se aplica tanto en UI como en `/api/fronti`; no es sólo ocultamiento visual.
 - Durante alpha se conserva FRONTI v1 como fallback técnico mientras se construye el nuevo núcleo multi-paso, Context Builder y Tool Registry.
+
+## 2026-10-07 · candidato AROH 1.63.0 · Nivel 1 restante
+
+La instrucción vigente elimina el filtro por rol del autor en Novedades, incorpora sus responsabilidades en Supervisión y corrige la presentación de fecha de calendario del turno. Recepción queda sin Auditoría global; editar contenido exige entry.content.edit independiente de atender/reasignar. Se añade limpieza individual SysAdmin lógica, confirmada y auditada sobre datos existentes, incluido retiro de una persona conservando turno e historial. Fronti muestra actividad sin esperar el heartbeat y reporta timeout/transporte en español. Cancelar apertura propia o desde SysAdmin usa estado terminal CANCELADO, mantiene evidencia y marca preparación vencida por día Santiago. Migraciones nuevas exclusivamente aditivas; sin datos hoteleros, configuración HK, infraestructura ni despliegues. Detalle y evidencia del candidato en docs/AGENT_HANDOFF.md.

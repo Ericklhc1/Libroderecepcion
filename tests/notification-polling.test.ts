@@ -54,7 +54,7 @@ describe('notificaciones con sincronización eficiente', () => {
     expect(readRoute).toContain('markReadableNotifications(user.id, parsed.id)');
     const access=readFileSync('src/server/services/notification-access.ts','utf-8');
     expect(access).toContain('notificationWhereForUser(userId)');
-    expect(access).toContain('userId,...notificationReadWhere');
+    expect(access).toContain('userId,deletedAt:null,...notificationReadWhere');
     expect(access).toContain('readAt:null');
   });
 });

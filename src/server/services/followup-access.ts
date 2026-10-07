@@ -1,12 +1,13 @@
-import { entryReadWhere, closureValidationAlertWhere } from './entry-visibility';
+import { entryReadWhere, entryReadSql, receptionHandoverEntryWhere, closureValidationAlertWhere } from './entry-visibility';
 import 'server-only';
 import { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 // The source's reserved visibility is checked before projecting any linked work.
 function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted = false, shared = false): Prisma.FollowUpWhereInput {
   const manager = user.permissions.includes('supervision.followup.manage');
-  if (shared) return { ...(includeDeleted ? {} : {deletedAt:null}), visibility:'OPERATIVO' };
-  return { ...(includeDeleted ? {} : {deletedAt: null}), OR: [
+  const area:Prisma.FollowUpWhereInput={OR:[{entryId:null},{entry:shared?receptionHandoverEntryWhere:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}]};
+  if (shared) return { AND:[area], ...(includeDeleted ? {} : {deletedAt:null}), visibility:'OPERATIVO' };
+  return { AND:[area], ...(includeDeleted ? {} : {deletedAt: null}), OR: [
     { visibility: 'PRIVADO', createdById: user.id },
     ...(manager ? [{ visibility: 'SUPERVISION' as const }] : []),
     { visibility: 'OPERATIVO', ...(manager ? {} : { OR: [{ ownerId: user.id }, { createdById: user.id }] }) },
@@ -14,7 +15,7 @@ function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> &
 }
 
 export function followUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted = false, shared = false): Prisma.FollowUpWhereInput {
-  return {AND:[{OR:[{entryId:null},{entry:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}]},directFollowUpReadWhere(user,includeDeleted,shared),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
+  return {AND:[{OR:[{taskId:null},{task:taskFollowUpReadWhere(user,shared)}]},{OR:[{entryId:null},{entry:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}]},directFollowUpReadWhere(user,includeDeleted,shared),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
 }
 
 // An archived origin retains its authorization; active work does not disappear.
@@ -48,7 +49,7 @@ export function directFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permission
     (f."visibility" = 'PRIVADO' AND f."createdById" = ${user.id}) OR
     (f."visibility" = 'SUPERVISION' AND ${manager}) OR
     (f."visibility" = 'OPERATIVO' AND (${manager} OR f."ownerId" = ${user.id} OR f."createdById" = ${user.id}))
-  )`;
+  ) AND NOT EXISTS (SELECT 1 FROM "OperationalEntry" e WHERE (e.id=f."entryId" OR (f."sourceEntity"='OperationalEntry' AND e.id=f."sourceId")) AND NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})}))`;
 }
 
 export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted=false) {

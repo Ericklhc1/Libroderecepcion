@@ -17,9 +17,9 @@ export async function notificationWhereForUser(userId:string):Promise<Prisma.Not
   ]);
   const entryIds=hiddenEntries.map(e=>e.id);
   const [linkedTasks,linkedAlerts,linkedFollowUps]=entryIds.length?await Promise.all([
-    prisma.task.findMany({where:{entryId:{in:entryIds}},select:{id:true}}),
-    prisma.alert.findMany({where:{OR:[{entryId:{in:entryIds}},{task:{entryId:{in:entryIds}}},{followUp:{entryId:{in:entryIds}}} ]},select:{id:true}}),
-    prisma.followUp.findMany({where:{OR:[{entryId:{in:entryIds}},{task:{entryId:{in:entryIds}}},{sourceEntity:'OperationalEntry',sourceId:{in:entryIds}}]},select:{id:true}}),
+    prisma.task.findMany({where:{OR:[{entryId:{in:entryIds}},{sourceAlert:{entryId:{in:entryIds}}},{sourceFollowUps:{some:{followUp:{entryId:{in:entryIds}}}}}]},select:{id:true}}),
+    prisma.alert.findMany({where:{OR:[{entryId:{in:entryIds}},{task:{entryId:{in:entryIds}}},{followUp:{entryId:{in:entryIds}}},{sourceFollowUps:{some:{followUp:{entryId:{in:entryIds}}}}} ]},select:{id:true}}),
+    prisma.followUp.findMany({where:{OR:[{entryId:{in:entryIds}},{task:{entryId:{in:entryIds}}},{sourceEntity:'OperationalEntry',sourceId:{in:entryIds}},{sourceFollowUps:{some:{followUp:{entryId:{in:entryIds}}}}}]},select:{id:true}}),
   ]):[[],[],[]];
   const legacyVisible=reader.roleKey==='SUPERVISOR'||reader.isSystemAdmin;
   const hidden=[['OperationalEntry',hiddenEntries],['Task',[...linkedTasks,...(legacyVisible?[]:legacyTasks)]],['Alert',[...linkedAlerts,...(legacyVisible?[]:legacyAlerts)]],['FollowUp',linkedFollowUps]] as const;

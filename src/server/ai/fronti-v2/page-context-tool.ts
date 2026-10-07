@@ -1,3 +1,4 @@
+import { visibleSnapshotItems } from '@/server/services/handover-snapshot';
 import { assertClosureReviewer } from '@/server/services/closure-review';
 import { outstandingAmount } from '@/domain/guarantees';
 import { listAreaAttentions } from '@/server/services/subject-distribution';
@@ -340,8 +341,8 @@ async function detailSnapshot(
       ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
       'No tienes permiso para consultar entregas de turno.',
     );
-    const handover = await prisma.shiftHandover.findUnique({
-      where: { id: page.entityId },
+    const handover = await prisma.shiftHandover.findFirst({
+      where: { id: page.entityId, ...(user.isSystemAdmin?{}:{fromShift:{isDemo:false}}) },
       select: {
         id: true,
         status: true,
@@ -355,12 +356,12 @@ async function detailSnapshot(
           select: { id: true, declared: true, confirmed: true, missingReason: true, missingReportedById: true, missingApprovedAt: true, missingApprovalNote: true, updatedAt: true, elementType: { select: { name: true } } },
         },
         items: {
-          select: { id: true, level: true, title: true, detail: true, order: true },
+          select: { id: true, level: true, title: true, detail: true, order: true, section:true, refType:true, refId:true },
           orderBy: [{ level: 'asc' }, { order: 'asc' }],
         },
       },
     });
-    return handover ? { ...handover, elements: handover.elements.map(element => ({ ...element, elementId: element.id, revision: element.updatedAt.toISOString() })) } : { found: false };
+    return handover ? { ...handover, items:await visibleSnapshotItems(user,handover.items,true), elements: handover.elements.map(element => ({ ...element, elementId: element.id, revision: element.updatedAt.toISOString() })) } : { found: false };
   }
 
   if (page.entityType === 'ChecklistRun') {

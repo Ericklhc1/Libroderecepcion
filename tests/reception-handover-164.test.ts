@@ -11,7 +11,7 @@ import { getCoordinationBoard } from '@/server/services/coordination';
 import { searchOperationalRecords } from '@/server/services/global-search';
 import { notificationWhereForUser } from '@/server/services/notification-access';
 import { getHkSources } from '@/server/services/housekeeping-work';
-import { createTask } from '@/server/services/tasks';
+import { getTask, createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
 import { getWebPushPayload } from '@/server/services/web-push';
 import { getNotificationFeedForUser } from '@/server/services/notification-feed';
@@ -174,16 +174,33 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
   it('un ID retenido no permite crear tarea, seguimiento directo/transversal ni comentario oculto',async()=>{
     const e=await notice(supervisor);const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
     await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    const existingTask=await prisma.task.create({data:{entryId:e.id,title:'Origen oculto',createdById:supervisor.id}});
+    const existingAlert=await prisma.alert.create({data:{entryId:e.id,title:'Origen oculto',type:'OTRO'}});
+    const existingFollow=await prisma.followUp.create({data:{entryId:e.id,action:'Origen oculto',createdById:supervisor.id,ownerId:other.id}});
     const auditCount=await prisma.auditLog.count();const noticeCount=await prisma.notification.count();
     await expect(createTask(other,{entryId:e.id,title:'Trabajo prohibido',priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow();
     await expect(createFollowUp(other,{entryId:e.id,action:'Seguimiento prohibido'})).rejects.toThrow();
     await expect(createFollowUp(other,{sourceEntity:'OperationalEntry',sourceId:e.id,action:'Vínculo transversal prohibido'})).rejects.toThrow();
+    for(const [sourceEntity,sourceId] of [['Task',existingTask.id],['Alert',existingAlert.id],['FollowUp',existingFollow.id]]) await expect(createFollowUp(other,{sourceEntity,sourceId,action:'Fuente retenida prohibida'})).rejects.toThrow();
     await expect(addComment(other,{entryId:e.id,body:'Comentario prohibido'})).rejects.toThrow();
     await expect(createTask(supervisor,{entryId:e.id,assigneeId:other.id,title:'Asignación invisible',priority:'MEDIA',tags:[],checklist:[]})).rejects.toThrow();
     await expect(createFollowUp(supervisor,{entryId:e.id,ownerId:other.id,action:'Responsable invisible'})).rejects.toThrow();
-    expect(await prisma.task.count({where:{entryId:e.id}})).toBe(0);expect(await prisma.followUp.count({where:{OR:[{entryId:e.id},{sourceId:e.id}]}})).toBe(0);expect(await prisma.comment.count({where:{entryId:e.id}})).toBe(0);
+    expect(await prisma.task.count({where:{entryId:e.id}})).toBe(1);expect(await prisma.followUp.count({where:{OR:[{entryId:e.id},{sourceId:e.id}]}})).toBe(1);expect(await prisma.comment.count({where:{entryId:e.id}})).toBe(0);
     expect(await prisma.auditLog.count()).toBe(auditCount);expect(await prisma.notification.count()).toBe(noticeCount);
     expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}})).requiresFollowUp).toBe(false);
+  });
+
+  it('los descendientes conservan el ocultamiento del origen en lectura, búsqueda y avisos',async()=>{
+    const e=await notice(supervisor);const f=await createFollowUp(other,{entryId:e.id,action:'Fuente para descendiente'});
+    const t=await createTask(other,{followUpId:f.id,title:'DESCENDIENTE_OCULTO',priority:'MEDIA',tags:[],checklist:[]});
+    const n=await prisma.notification.create({data:{userId:other.id,type:'ACCION_REQUERIDA',entity:'Task',entityId:t.id,title:t.title}});
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    await expect(getTask(t.id,other)).rejects.toThrow();
+    expect((await searchOperationalRecords(other,t.title)).map(row=>row.entityId)).not.toContain(t.id);
+    expect((await getNotificationFeedForUser(other.id)).items.map(row=>row.id)).not.toContain(n.id);
+    expect(await prisma.task.findUnique({where:{id:t.id}})).not.toBeNull();
   });
 
   it('observar una alerta histórica materializa el pendiente aunque luego se resuelva la señal antigua',async()=>{
@@ -207,6 +224,17 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
     const live=await prisma.alert.create({data:{type:'OTRO',title:'Alerta viva',status:'NUEVA'}});
     const ids=(await buildHandoverSnapshot(reception,now)).map(i=>i.refId);
     expect(ids).not.toContain(resolved.id);expect(ids).not.toContain(future.id);expect(ids).toContain(resumed.id);expect(ids).toContain(live.id);
+  });
+
+  it('el contexto Fronti de entrega filtra fotografías históricas sin cambiar sus ítems',async()=>{
+    const e=await notice(supervisor);const {handover}=await sentShift();
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    await prisma.handoverItem.create({data:{handoverId:handover.id,section:'Tareas pendientes',title:'TAREA_HISTORICA_NO_MOSTRAR',detail:'Evidencia histórica',refType:'task',refId:'historica'}});
+    await updateEntryVisibility(supervisor,{id:e.id,revision:e.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
+    const context=await executeFrontiPageContextTool(other,resolveFrontiPageContext({pathname:`/turno/entrega/${handover.id}`}));
+    expect(JSON.stringify(context)).not.toContain(e.title);expect(JSON.stringify(context)).not.toContain('TAREA_HISTORICA_NO_MOSTRAR');
+    expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(1);
+    expect(await prisma.handoverItem.count({where:{handoverId:handover.id,title:'TAREA_HISTORICA_NO_MOSTRAR'}})).toBe(1);
   });
 
   it('Fronti lee sólo la garantía o cierre abiertos, con permisos y sin fallback general',async()=>{

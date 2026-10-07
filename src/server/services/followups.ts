@@ -1,6 +1,6 @@
 import { entryReadWhere, assertEntryVisibleForWrite, type EntryReader } from './entry-visibility';
 import {lockOpenSubjectForWork} from './subject-completion';
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import {
@@ -44,8 +44,8 @@ async function assertDerivedFollowUpAccess(tx:Prisma.TransactionClient, user:Cur
     await tx.$queryRaw`SELECT "id" FROM "FollowUp" WHERE "id"=${source.followUpId} FOR SHARE`;
   }
   if(!await tx.followUp.count({where:{id:follow.id,AND:[followUpReadWhere(user,true)]}}))throw new RuleError('No puedes acceder al origen reservado del seguimiento.');
-  const owner=await tx.user.findFirst({where:{id:follow.ownerId,active:true,deletedAt:null},select:{id:true,role:{select:{permissions:{where:{permission:{key:'supervision.followup.manage'}},select:{permissionId:true}}}}}});
-  if(!owner||!await tx.followUp.count({where:{id:follow.id,AND:[followUpReadWhere({id:owner.id,permissions:owner.role.permissions.length?['supervision.followup.manage']:[]},true)]}}))throw new RuleError('El responsable no puede acceder al origen reservado del seguimiento.');
+  const owner=await tx.user.findFirst({where:{id:follow.ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true,permissions:{where:{permission:{key:'supervision.followup.manage'}},select:{permissionId:true}}}}}});
+  if(!owner||!await tx.followUp.count({where:{id:follow.id,AND:[followUpReadWhere({id:owner.id,departmentId:owner.departmentId,roleKey:owner.role.key,isSystemAdmin:owner.role.key==='ADMINISTRADOR_SISTEMA',permissions:owner.role.permissions.length?['supervision.followup.manage']:[]},true)]}}))throw new RuleError('El responsable no puede acceder al origen reservado del seguimiento.');
   if(validateVisibility){
     const currentSources=await tx.followUpSourceFollowUp.findMany({where:{descendantId:follow.id,followUpId:{not:follow.id}},select:{followUp:{select:{visibility:true}}}});
     if(currentSources.some(s=>s.followUp.visibility==='PRIVADO'&&follow.visibility!=='PRIVADO'||s.followUp.visibility==='SUPERVISION'&&follow.visibility==='OPERATIVO'))throw new RuleError('La visibilidad del seguimiento debe conservar la reserva del origen.');
@@ -76,7 +76,9 @@ export async function createFollowUp(
     sourceId?: string | null;
   },
 ) {
-  const entryId=input.entryId ?? (input.sourceEntity==='OperationalEntry'?input.sourceId:null);
+  let entryId=input.entryId ?? (input.sourceEntity==='OperationalEntry'?input.sourceId:null);
+  const taskId=input.taskId ?? (input.sourceEntity==='Task'?input.sourceId:null);
+  if(input.entryId && input.sourceEntity==='OperationalEntry' && input.sourceId!==input.entryId || input.taskId && input.sourceEntity==='Task' && input.sourceId!==input.taskId) throw new RuleError('La fuente transversal debe coincidir con el registro asociado.');
   const supervisionShift = await prisma.supervisionShift.findFirst({
     where: { supervisorId: user.id, status: 'ACTIVO' },
     select: { id: true },
@@ -111,13 +113,20 @@ export async function createFollowUp(
     });
     if (entry === 0) throw new NotFoundError('El registro asociado no existe.');
   }
-  if (input.taskId) {
-    const task = await prisma.task.count({ where: { id: input.taskId, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
+  if (taskId) {
+    const task = await prisma.task.count({ where: { id: taskId, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
     if (task === 0) throw new NotFoundError('La tarea asociada no existe.');
   }
 
   return prisma.$transaction(async (tx) => {
-    await lockOpenSubjectForWork(tx,{...input,entryId});
+    if(taskId) {
+      const task=await tx.task.findFirst({where:{id:taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{entryId:true}});
+      if(!task)throw new NotFoundError('La tarea asociada no existe.');
+      entryId=entryId??task.entryId;
+    }
+    if(input.sourceEntity==='Alert' && input.sourceId && !await tx.alert.count({where:{id:input.sourceId,deletedAt:null,AND:[alertReadWhere(user)]}})) throw new NotFoundError('La alerta de origen no existe.');
+    if(input.sourceEntity==='FollowUp' && input.sourceId && !await tx.followUp.count({where:{id:input.sourceId,AND:[followUpReadWhere(user)]}})) throw new NotFoundError('El seguimiento de origen no existe.');
+    await lockOpenSubjectForWork(tx,{...input,entryId,taskId});
     if(entryId) {
       await assertEntryVisibleForWrite(tx,user,entryId);
       const owner=await tx.user.findFirst({where:{id:ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
@@ -125,11 +134,11 @@ export async function createFollowUp(
       const reader:EntryReader={id:owner.id,departmentId:owner.departmentId,roleKey:owner.role.key,isSystemAdmin:owner.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]};
       await assertEntryVisibleForWrite(tx,reader,entryId);
     }
-    if(input.taskId && !await tx.task.count({where:{id:input.taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]}})) throw new NotFoundError('La tarea asociada no existe.');
+    if(taskId && !await tx.task.count({where:{id:taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]}})) throw new NotFoundError('La tarea asociada no existe.');
     const created = await tx.followUp.create({
       data: {
         entryId: entryId ?? null,
-        taskId: input.taskId ?? null,
+        taskId: taskId ?? null,
         action: input.action,
         result: input.result ?? null,
         nextAction: input.nextAction ?? null,

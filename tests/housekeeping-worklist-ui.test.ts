@@ -19,7 +19,7 @@ describe('bandeja contextual de Housekeeping sobre contratos nativos', () => {
   });
   it('mantiene identidad, versión, capacidades e impedimento técnico sin estados simulados', () => {
     expect(page).toContain('WorkActionCluster id={r.id} humanId={r.humanId} version={r.version} status={r.status}');
-    expect(page).toContain('HK_WORK_ACTIONS.filter(action => allowed(action, r.assignedToId))');
+    expect(page).toContain('HK_WORK_ACTIONS.filter(action => allowed(action, r.assignedToId, r.requiresInspection))');
     expect(page).toContain('assignedToId!==user.id');
     expect(page).toContain('maintenanceAllowsContinuation(r.maintenanceEntry)');
     expect(page).toContain('waitingMaintenance={waitingMaintenance}');

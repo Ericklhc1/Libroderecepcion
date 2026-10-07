@@ -7,7 +7,8 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
 import { canAccessHousekeeping } from '@/domain/housekeeping';
-import { hkHas, hkAllowedActions, hkNextStatus, hkInspectionRequired, HK_ACTION_PERMISSION, HK_NOTE_REQUIRED, type HkWorkAction, type HkWorkKind } from '@/domain/housekeeping-work';
+import { hkActionPermission, hkHas, hkAllowedActions, hkNextStatus, hkInspectionRequired, HK_NOTE_REQUIRED, type HkWorkAction, type HkWorkKind } from '@/domain/housekeeping-work';
+import { buildHkRoomBoard } from '@/domain/housekeeping-room-board';
 import { hotelDateKey, hotelWallDateTime, addCalendarDateDays, calendarDateKey } from '@/domain/time';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { ensureIncidentWorkflow } from './incident-workflow';
@@ -140,19 +141,19 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
     const current = await tx.housekeepingRequest.findFirst({ where: { id: input.id, workflowVersion: 1, AND: [await hkWorkVisibility(user, tx)] }, include: { sourceEntry: { select: { updatedAt: true, deletedAt: true, status:true } } } });
     if (!current || !current.departmentId) throw new NotFoundError();
     if (current.version !== input.version) throw new RuleError('El trabajo cambió. Actualiza antes de continuar.');
-    const permission = HK_ACTION_PERMISSION[input.action]; await requireCapability(user, current.departmentId, permission, tx);
+    const permission = hkActionPermission(input.action, current.requiresInspection); await requireCapability(user, current.departmentId, permission, tx);
     if (permission === 'housekeeping.work' && current.assignedToId !== user.id) throw new ForbiddenError('Sólo puedes ejecutar tus trabajos asignados.');
-    if (['APROBAR','CORREGIR'].includes(input.action) && current.assignedToId === user.id) throw new RuleError('La inspección debe realizarla otra persona.');
+    if ((permission === 'housekeeping.inspect') && current.assignedToId === user.id) throw new RuleError('La inspección debe realizarla otra persona.');
     if (current.sourceEntryId) {
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${current.sourceEntryId} FOR SHARE`;
       current.sourceEntry = await tx.operationalEntry.findUnique({ where: { id: current.sourceEntryId }, select: { updatedAt: true, deletedAt: true,status:true } });
     }
     if(input.action==='REABRIR'&&current.sourceEntry&&['RESUELTO','CERRADO'].includes(current.sourceEntry.status))throw new RuleError('Reabre el asunto antes de reactivar su atención especializada.');
     const changed = !!current.acknowledgedAt && !!current.sourceEntry && current.sourceVersion?.getTime() !== current.sourceEntry.updatedAt.getTime();
-    if (!hkAllowedActions(current.status, !!current.assignedToId, changed).includes(input.action)) throw new RuleError(changed ? 'La instrucción cambió: el supervisor debe revisarla antes de continuar.' : 'Esta acción no corresponde al estado del trabajo.');
+    if (!hkAllowedActions(current.status, !!current.assignedToId, changed, current.requiresInspection).includes(input.action)) throw new RuleError(changed ? 'La instrucción cambió: el supervisor debe revisarla antes de continuar.' : 'Esta acción no corresponde al estado del trabajo.');
     if (current.sourceEntry?.deletedAt && input.action !== 'CANCELAR') throw new RuleError('El origen fue archivado. Revisa el caso y cancela con motivo.');
     if (input.action === 'ASIGNAR') { if (!input.assignedToId) throw new RuleError('Selecciona un responsable.'); await validateWorker(tx, current.departmentId, input.assignedToId, current.workDate ?? undefined); }
-    if (current.maintenanceEntryId && ['COMENZAR','RETOMAR','TERMINAR','APROBAR'].includes(input.action)) {
+    if (current.maintenanceEntryId && ['COMENZAR','RETOMAR','TERMINAR','RESOLVER','APROBAR'].includes(input.action)) {
       // Lock the dependency before the optimistic request update, as the native result publisher does.
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.maintenanceEntryId} FOR SHARE`;
       const maintenance=await tx.operationalEntry.findUnique({where:{id:current.maintenanceEntryId},select:{status:true,resolution:true,deletedAt:true}});
@@ -178,8 +179,8 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
       ...(['COMENZAR','RETOMAR'].includes(input.action) ? { startedAt: current.startedAt ?? now, acknowledgedAt: current.acknowledgedAt ?? now, sourceVersion: current.sourceEntry?.updatedAt ?? null, blockReason: null } : {}),
       ...(input.action === 'RECONFIRMAR' ? { acknowledgedAt: now, sourceVersion: current.sourceEntry?.updatedAt ?? null, ...(changed && current.status === 'POR_REVISAR' ? { finishedAt:null,inspectedAt:null,inspectedById:null,resolution:null } : {}) } : {}),
       ...(input.action === 'IMPEDIMENTO' ? { blockReason: note } : {}),
-      ...(input.action === 'TERMINAR' ? { finishedAt: now, resolution: note, blockReason: null } : {}),
-      ...(input.action === 'APROBAR' ? { inspectedAt: now, inspectedById: user.id, resolution: `${current.resolution ?? ''}\nRevisión: ${note}`, blockReason: null } : {}),
+      ...((input.action === 'TERMINAR' || input.action === 'RESOLVER' && !current.requiresInspection) ? { finishedAt: now, resolution: note, blockReason: null } : {}),
+      ...((input.action === 'APROBAR' || input.action === 'RESOLVER' && current.requiresInspection) ? { inspectedAt: now, inspectedById: user.id, resolution: `${current.resolution ?? ''}\nRevisión: ${note}`, blockReason: null } : {}),
       ...(input.action === 'CORREGIR' ? { inspectedAt: null, inspectedById: null, finishedAt: null, blockReason: null, resolution: null, description: current.sourceEntryId ? current.description : `${current.description ?? ''}\nCorrección: ${note}` } : {}),
       ...(input.action === 'REABRIR' ? { acknowledgedAt: null, sourceVersion: null, finishedAt: null, inspectedAt: null, inspectedById: null, resolvedAt: null, resolution: null, blockReason: null } : {}),
       ...(terminal.includes(next) ? { resolvedAt: now } : {}),
@@ -210,7 +211,7 @@ export async function getHkWorkday(user: CurrentUser, input: { date?: string; de
   const page = Number.isSafeInteger(input.page) ? Math.max(1, Math.min(10000,input.page!)) : 1;
   const [requests, all, total, areas, rooms, zones] = await Promise.all([
     prisma.housekeepingRequest.findMany({ where, include: relations, orderBy: [{ priority: 'desc' }, { dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }], take: 30, skip: (page-1)*30 }),
-    prisma.housekeepingRequest.findMany({ where: day, select: { id:true, status:true, assignedToId:true, effortMinutes:true, workDate:true, dueAt:true, requiresInspection:true, finishedAt:true, inspectedAt:true } }),
+    prisma.housekeepingRequest.findMany({ where: day, select: { id:true, humanId:true, roomId:true, workKind:true, workflowVersion:true, status:true, assignedToId:true, effortMinutes:true, workDate:true, dueAt:true, requiresInspection:true, finishedAt:true, inspectedAt:true } }),
     prisma.housekeepingRequest.count({ where }),
     prisma.department.findMany({ where: { active:true, ...(user.roleKey === ADMIN || user.permissions.includes('housekeeping.view.all') ? {} : { OR:[{id:{in:await hkAreaIds(user)}},{key:{in:['HOUSEKEEPING','AREAS_PUBLICAS']}}] }) }, select:{id:true,name:true,key:true}, orderBy:{order:'asc'} }),
     prisma.room.findMany({where:{active:true},select:{id:true,number:true,floor:true},orderBy:{number:'asc'}}),
@@ -235,7 +236,7 @@ export async function getHkWorkday(user: CurrentUser, input: { date?: string; de
   const workload = team.map(person=>({ ...person, tasks:active.filter(r=>r.assignedToId===person.id).length, estimatedMinutes:active.filter(r=>r.assignedToId===person.id&&r.status!=='POR_REVISAR').reduce((n,r)=>n+r.effortMinutes,0), available:confirmations.find(c=>c.userId===person.id)?.available??null, note:confirmations.find(c=>c.userId===person.id)?.note??null, scheduled:slots.filter(s=>s.collaborator.userId===person.id) }));
   const proposedLoad = new Map(workload.filter(p=>p.available===true).map(p=>[p.id,p.estimatedMinutes]));
   const suggestions = canAssign ? requests.filter(r=>r.workflowVersion===1&&!r.assignedToId&&!terminal.includes(r.status)).flatMap(r=>{const candidates=workload.filter(p=>proposedLoad.has(p.id)).sort((a,b)=>(proposedLoad.get(a.id)!-proposedLoad.get(b.id)!)||a.name.localeCompare(b.name,'es'));const person=candidates[0];if(!person)return[];const before=proposedLoad.get(person.id)!;proposedLoad.set(person.id,before+r.effortMinutes);return[{id:r.id,humanId:r.humanId,version:r.version,title:r.sourceEntry?.title??r.title,location:r.location,userId:person.id,name:person.name,reason:`Disponible confirmado · ${before} min estimados antes de este trabajo`}];}) : [];
-  return { date, departmentId, suggestions, requests,total,page,counts,areas,rooms,zones,canAssign:!!canAssign,canInspect:!!canInspect,canPlan:!!canPlan,canWork:!!canWork,canRequest:hkHas(user,'housekeeping.request')||canAssign,teamVisible,workload,routines,handovers,delegations,loans };
+  return { date, departmentId, roomBoard: buildHkRoomBoard(rooms, all), suggestions, requests,total,page,counts,areas,rooms,zones,canAssign:!!canAssign,canInspect:!!canInspect,canPlan:!!canPlan,canWork:!!canWork,canRequest:hkHas(user,'housekeeping.request')||canAssign,teamVisible,workload,routines,handovers,delegations,loans };
 }
 
 export async function saveHkRoutine(user: CurrentUser, input: { departmentId:string;id?:string;version?:number;title:string;description:string;location:string;effortMinutes:number;requiresInspection:boolean;active:boolean }) {

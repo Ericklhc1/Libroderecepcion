@@ -45,6 +45,28 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     expect(await prisma.notification.count({where:{userId:reception.id,entityId:r.id,title:{contains:'Resultado'}}})).toBe(1);
     expect(await prisma.roomStay.count()).toBe(0);expect(await prisma.shift.count()).toBe(0);expect(await prisma.room.count()).toBe(89);
   });
+  it('HK-2 conecta tablero, mucama, inspección por tercero y Resolver auditado',async()=>{
+    const r=await createHkWork(supervisor,{...input(),assignedToId:maid.id});
+    const state=async()=> (await getHkWorkday(supervisor)).roomBoard.find(room=>room.id===roomId)?.state;
+    expect(await state()).toBe('SUCIA');
+    await expect(change(supervisor,r.id,'RESOLVER')).rejects.toThrow();
+    await change(maid,r.id,'COMENZAR');await change(maid,r.id,'TERMINAR','Limpieza realizada');
+    expect(await state()).toBe('PENDIENTE_INSPECCION');
+    await expect(change(maid,r.id,'RESOLVER')).rejects.toThrow();
+    const own=await createHkWork(admin,{...input(),assignedToId:admin.id,roomId:(await prisma.room.findUniqueOrThrow({where:{number:'513'}})).id});
+    await change(admin,own.id,'COMENZAR');await change(admin,own.id,'TERMINAR');
+    await expect(change(admin,own.id,'RESOLVER')).rejects.toThrow('otra persona');
+    const done=await change(supervisor,r.id,'RESOLVER','Inspección conforme por tercero');
+    expect(done.status).toBe('RESUELTO');expect(done.inspectedById).toBe(supervisor.id);
+    expect(done.finishedAt).not.toBeNull();expect(done.inspectedAt).not.toBeNull();
+    expect(done.resolution).toContain('Limpieza realizada');expect(await state()).toBe('LIMPIA');
+    expect(await prisma.housekeepingEvent.count({where:{requestId:r.id,action:'RESOLVER',actorId:supervisor.id}})).toBe(1);
+    expect(await prisma.auditLog.count({where:{entityId:r.id,entity:'HousekeepingWork',userId:supervisor.id,summary:{contains:'RESOLVER'}}})).toBe(1);
+    await expect(change(supervisor,r.id,'RESOLVER')).rejects.toThrow();
+    const simple=await createHkWork(supervisor,{...input(),workKind:'REPOSICION',assignedToId:maid.id});
+    await change(maid,simple.id,'COMENZAR');
+    expect((await change(supervisor,simple.id,'RESOLVER','Toallas entregadas')).inspectedAt).toBeNull();
+  });
   it('sólo muestra asignaciones propias a la mucama, niega ejecución ajena y bloquea inspección propia incluso al administrador',async()=>{
     const r=await createHkWork(supervisor,{...input(),assignedToId:maid.id});
     expect((await getHkWorkday(other)).requests).toHaveLength(0);expect((await getHkWorkday(maid)).requests).toHaveLength(1);

@@ -249,6 +249,7 @@ async function recentMessages(conversationId: string, limit: number): Promise<Me
           FROM ai_message
          WHERE conversation_id = ${conversationId}
            AND expires_at > NOW()
+           AND "deletedAt" IS NULL
          ORDER BY created_at DESC
          LIMIT ${limit}
       ) recent
@@ -289,6 +290,7 @@ async function relevantMemories(user: CurrentUser, query: string): Promise<Memor
           FROM ai_memory
          WHERE user_id = ${user.id}
            AND expires_at > NOW()
+           AND "deletedAt" IS NULL
            AND (scope = 'PERSONAL' OR (scope = 'TURNO' AND shift_id = ${shiftId}))
          ORDER BY updated_at DESC
          LIMIT ${MEMORY_CANDIDATE_LIMIT}
@@ -298,6 +300,7 @@ async function relevantMemories(user: CurrentUser, query: string): Promise<Memor
           FROM ai_memory
          WHERE user_id = ${user.id}
            AND expires_at > NOW()
+           AND "deletedAt" IS NULL
            AND scope = 'PERSONAL'
          ORDER BY updated_at DESC
          LIMIT ${MEMORY_CANDIDATE_LIMIT}
@@ -360,6 +363,7 @@ async function upsertMemory(
        AND scope = ${scope}
        AND summary = ${summary}
        AND expires_at > NOW()
+           AND "deletedAt" IS NULL
      ORDER BY updated_at DESC
      LIMIT 1
   `;

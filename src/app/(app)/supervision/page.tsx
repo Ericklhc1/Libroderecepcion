@@ -4,9 +4,11 @@ import { ArrowUpRight, Gauge, NotebookPen, ShieldCheck } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import {getCoordinationBoard} from '@/server/services/coordination';
+import { getBookItems } from '@/server/services/book';
 import { getSupervisionData, type SupervisionBlock } from '@/server/services/supervision';
 import {
   getSupervisionCenterSummary,
+  listCancelableSupervisionOpenings,
   getSupervisionOpeningReadiness,
 } from '@/server/services/supervision-center';
 import { getTeamPerformance } from '@/server/services/performance';
@@ -47,6 +49,8 @@ import {
   hotelDateKey,
   hotelWallDateTime,
 } from '@/domain/time';
+import { CancelSupervisionOpeningDialog } from '@/components/supervision/cancel-opening';
+import { supervisionOpeningExpired } from '@/domain/supervision-opening';
 import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
 
 export const metadata = { title: 'Centro de Supervisión' };
@@ -155,7 +159,8 @@ export default async function SupervisionCenterPage({
   const canAssignTasks = hasPermission(user, 'task.create') && hasPermission(user, 'task.assign');
   const canFollow = hasPermission(user, 'supervision.followup.manage');
   const canAnnounce = hasPermission(user, 'announcement.manage');
-  const [center, review, options, announcements, operationalUsers, performance, blockedBoard, reviewBoard, unassignedBoard, continuityBoard] = await Promise.all([
+  const entryPage = Math.max(1, Math.min(10000, Math.floor(Number(params.novedadesPagina) || 1)));
+  const [center, review, options, announcements, operationalUsers, performance, blockedBoard, reviewBoard, unassignedBoard, continuityBoard, openPreparations, assignedEntries] = await Promise.all([
     getSupervisionCenterSummary(user),
     getSupervisionData(user),
     getFormOptions(user),
@@ -166,8 +171,11 @@ export default async function SupervisionCenterPage({
     getCoordinationBoard(user,{state:'revision',q}),
     getCoordinationBoard(user,{view:'unassigned',q}),
     getCoordinationBoard(user,{view:'carryover',q}),
+    user.isSystemAdmin ? listCancelableSupervisionOpenings(user) : Promise.resolve([]),
+    getBookItems({ kinds: ['entry'], receptionEntriesOnly: true, ownerId: user.id, onlyOpen: true, q, priority: priority || undefined, page: entryPage }, user),
   ]);
 
+  const otherOpenings = openPreparations.filter(s => s.supervisorId !== user.id);
   const openingReadiness =
     isSupervisor && center.currentShift?.status === 'PREPARACION'
       ? await getSupervisionOpeningReadiness(user)
@@ -177,6 +185,8 @@ export default async function SupervisionCenterPage({
     !q || values.filter(Boolean).join(' ').toLocaleLowerCase('es-CL').includes(q);
   const inPeriod = (value: Date) => value >= period.from && value <= period.to;
   // La continuidad activa no se oculta por antigüedad: si sigue abierta, sigue siendo trabajo.
+  const myEntries = assignedEntries.items;
+  const entryPageHref = (page: number) => sectionHref('pendientes').replace('#pendientes', `&novedadesPagina=${page}#pendientes`);
   const tasks = center.myTasks.filter(
     (task) =>
       (!priority || task.priority === priority) &&
@@ -411,6 +421,14 @@ export default async function SupervisionCenterPage({
         </div>
       </Card>
 
+      {otherOpenings.length > 0 ? <DisclosureCard title="Aperturas en preparación del equipo" count={otherOpenings.length} defaultOpen>
+        <ul className="divide-y">{otherOpenings.map(shift => <li key={shift.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+          <div><p>{shift.supervisor.name} · #{shift.humanId}</p><p className="text-sm text-slate-600">{formatDateTime(shift.startedAt)}</p>
+          <Badge tone={supervisionOpeningExpired(shift.startedAt) ? 'critico' : 'pendiente'}>{supervisionOpeningExpired(shift.startedAt) ? 'Preparación vencida' : 'Preparación'}</Badge></div>
+          <CancelSupervisionOpeningDialog shiftId={shift.id}/>
+        </li>)}</ul>
+      </DisclosureCard> : null}
+
       <SupervisionAuditDashboard
         rows={center.auditImports}
         defaultBusinessDate={center.businessDateKey}
@@ -428,12 +446,16 @@ export default async function SupervisionCenterPage({
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <DisclosureCard id="pendientes" title="Asignado a mí" count={tasks.length} defaultOpen={requestedSection === 'pendientes'}>
+        <DisclosureCard id="pendientes" title="Asignado a mí" count={tasks.length + myEntries.length} defaultOpen={requestedSection === 'pendientes'}>
         <Card className="flex h-[30rem] flex-col overflow-hidden">
 
-          {tasks.length === 0 ? <EmptyState message="No tienes tareas asignadas con estos filtros." /> : (
+          {tasks.length + myEntries.length === 0 ? <EmptyState message="No tienes asuntos asignados con estos filtros." /> : (
             <CardScroll className="flex-1" maxHeight="max-h-none">
               <ul className="divide-y divide-slate-100">
+                {myEntries.map(entry => <li key={entry.id} className="px-4 py-3">
+                  <Link href={entry.href} className="font-medium text-petrol-900 hover:underline">{entry.ref} · {entry.title}</Link>
+                  <p className="text-xs text-slate-500">{entry.statusLabel} · {entry.departmentName}</p>
+                </li>)}
                 {tasks.map((task) => (
                   <li key={task.id} className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -448,6 +470,10 @@ export default async function SupervisionCenterPage({
             </CardScroll>
           )}
         </Card>
+        {(entryPage > 1 || assignedEntries.hasMore) && <nav aria-label="Novedades asignadas" className="flex gap-4 p-3 text-sm">
+          {entryPage > 1 && <Link href={entryPageHref(entryPage-1)}>Novedades anteriores</Link>}
+          {assignedEntries.hasMore && <Link href={entryPageHref(entryPage+1)}>Más novedades asignadas</Link>}
+        </nav>}
         </DisclosureCard>
 
         <DisclosureCard id="seguimientos" title="En seguimiento" count={followUps.length} defaultOpen={requestedSection === 'seguimientos'}>

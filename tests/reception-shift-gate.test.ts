@@ -208,16 +208,16 @@ describe('Recepción · relevo secuencial', () => {
 });
 
 describe('Novedades · vista operativa limpia', () => {
-  it('muestra sólo novedades/incidencias abiertas creadas por Recepción', () => {
+  it('muestra novedades/incidencias abiertas sin excluir al Supervisor por autor', () => {
     const service = readFileSync('src/server/services/book.ts', 'utf8');
     const page = readFileSync('src/app/(app)/libro/page.tsx', 'utf8');
 
     expect(service).toContain('receptionEntriesOnly');
     expect(service).toContain('EntryType.NOVEDAD, EntryType.INCIDENCIA');
-    expect(service).toContain('RECEPTION_DESK_ROLE_KEYS');
-    expect(service).toContain('key: { in: [...RECEPTION_DESK_ROLE_KEYS] }');
+    expect(service).not.toContain('key: { in: [...RECEPTION_DESK_ROLE_KEYS] }');
+    expect(service).toContain('status: { in: ENTRY_OPEN_STATUSES }');
     expect(service).toContain("startsWith: 'shift-validation:'");
-    expect(page).toContain('Sólo aparecen novedades e incidencias creadas por Recepción');
+    expect(page).toContain('Aparecen novedades e incidencias que siguen en gestión');
     expect(page).toContain('Ver historial');
   });
 });

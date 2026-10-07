@@ -251,6 +251,83 @@ export async function endShiftParticipation(
   });
 }
 
+/** Shared atomic terminal lifecycle: participation and timers always end together. */
+export async function endShiftLifecycle(tx: Prisma.TransactionClient, shiftId: string, at: Date) {
+  await endShiftParticipation(tx, shiftId, at);
+  await cancelShiftTimers(tx, shiftId, at);
+}
+
+/** Release only an incomplete reception, preserving confirmed custody and cash. */
+export async function releaseIncompleteShiftReception(
+  tx: Prisma.TransactionClient, shiftId: string, status: ShiftStatus, user: CurrentUser, reason: string,
+) {
+  const linkedReception =
+    status === ShiftStatus.INICIADO
+      ? await tx.shiftHandover.findFirst({
+          where: { toShiftId: shiftId, receivedAt: null },
+          select: { id: true },
+        })
+      : null;
+
+  if (linkedReception) {
+    await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id = ${linkedReception.id} FOR UPDATE`;
+    const currentHandover = await tx.shiftHandover.findUnique({
+      where: { id: linkedReception.id },
+      select: { id: true, receivedAt: true, status: true },
+    });
+    if (!currentHandover || currentHandover.receivedAt) {
+      throw new RuleError(
+        'La recepción ya cambió de estado. Actualiza la pantalla antes de intentar anular el inicio.',
+      );
+    }
+
+    const [confirmedCash, confirmedCustody] = await Promise.all([
+      tx.cashCount.count({
+        where: { handoverId: currentHandover.id, kind: 'CONFIRMADO' },
+      }),
+      tx.handoverElement.count({
+        where: {
+          handoverId: currentHandover.id,
+          OR: [{ confirmed: true }, { missingApprovedAt: { not: null } }],
+        },
+      }),
+    ]);
+
+    if (confirmedCash > 0 || confirmedCustody > 0) {
+      throw new RuleError(
+        'La recepción ya confirmó Caja o custodia física. Para conservar la trazabilidad, completa o regulariza el relevo en lugar de cancelar el inicio.',
+      );
+    }
+
+    await tx.shiftHandover.update({
+      where: { id: currentHandover.id },
+      data: {
+        toShiftId: null,
+        receiverBriefingReviewedAt: null,
+        receiverCustodyReviewedAt: null,
+        receiverFinalReviewAt: null,
+        receiverUrgentAcknowledgedAt: null,
+        receiverSessionId: null,
+      },
+    });
+
+    await recordAudit(
+      {
+        entity: 'ShiftHandover',
+        entityId: currentHandover.id,
+        action: AuditAction.CAMBIO_ESTADO,
+        summary: `Recepción liberada al anular el inicio del turno por ${user.name}`,
+        user,
+        before: { toShiftId: shiftId, receiving: true },
+        after: { toShiftId: null, receiving: false },
+        reason,
+      },
+      tx,
+    );
+  }
+
+}
+
 /**
  * ============================ TURNOS: EL MODELO =============================
  *
@@ -1653,13 +1730,16 @@ export async function addShiftMember(
  */
 export async function removeShiftMember(
   actor: CurrentUser,
-  input: { shiftId: string; userId: string },
+  input: { shiftId: string; userId: string; adminCleanup?: boolean; reason?: string },
 ): Promise<void> {
+  if (input.adminCleanup && (!actor.isSystemAdmin || actor.roleKey !== 'ADMINISTRADOR_SISTEMA')) throw new RuleError('Sólo SysAdmin puede retirar personas desde Administración.');
+  if (input.adminCleanup && (!input.reason || input.reason.trim().length < 5)) throw new RuleError('Indica el motivo de la limpieza.');
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw<Array<{ locked: boolean }>>`
       SELECT pg_advisory_xact_lock(1279873620) IS NULL AS "locked"
     `;
 
+    await tx.$queryRaw`SELECT id FROM "Shift" WHERE id = ${input.shiftId} FOR UPDATE`;
     const shift = await tx.shift.findUnique({
       where: { id: input.shiftId },
       include: {
@@ -1690,7 +1770,7 @@ export async function removeShiftMember(
     if (!target) {
       throw new RuleError('Esa persona ya no participa activamente en este turno.');
     }
-    if (activeAssignments.length <= 1) {
+    if (activeAssignments.length <= 1 && !input.adminCleanup) {
       throw new RuleError(
         'No puedes sacar a la única persona activa del turno. Debes cerrar o reasignar la operación antes.',
       );
@@ -1702,6 +1782,11 @@ export async function removeShiftMember(
         ? remaining.find((assignment) => assignment.role === AssignmentRole.APOYO) ?? remaining[0]!
         : null;
     const now = new Date();
+    if (input.adminCleanup && remaining.length === 0) {
+      await releaseIncompleteShiftReception(tx, shift.id, shift.status, actor, input.reason!);
+      await endShiftLifecycle(tx, shift.id, now);
+      await tx.shift.update({ where: { id: shift.id }, data: { status: ShiftStatus.ANULADO, actualEnd: now } });
+    }
 
     await tx.shiftAssignment.update({
       where: { id: target.id },
@@ -1742,7 +1827,10 @@ export async function removeShiftMember(
       tx,
     );
 
-    if (actor.id !== target.userId) {
+    if (input.adminCleanup) {
+      await tx.auditLog.create({ data: { entity: 'ShiftAssignment', entityId: target.id, action: 'ELIMINAR', userId: actor.id, sessionId: actor.sessionId, reason: input.reason, summary: 'Persona retirada desde Administración; turno e historial conservados', before: { shiftId: shift.id, userId: target.userId, status: shift.status }, after: { leftAt: now.toISOString(), promotedUserId: replacement?.userId ?? null, status: remaining.length ? shift.status : 'ANULADO' } } });
+    }
+    if (!input.adminCleanup && actor.id !== target.userId) {
       await notify(
         [
           {
@@ -2685,8 +2773,7 @@ export async function closeShift(
       throw new RuleError('Ese turno acaba de cambiar de estado. Actualiza la pantalla.');
     }
 
-    await endShiftParticipation(tx, shift.id, now);
-    await cancelShiftTimers(tx, shift.id, now);
+    await endShiftLifecycle(tx, shift.id, now);
 
     const emergencySuccessors = await tx.shift.findMany({
       where: {

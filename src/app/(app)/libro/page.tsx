@@ -96,7 +96,7 @@ export default async function BookPage({
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
             {isEntryView
-              ? 'Sólo aparecen novedades e incidencias creadas por Recepción que siguen en gestión. Lo resuelto pasa al Historial.'
+              ? 'Aparecen novedades e incidencias que siguen en gestión, con su responsable y área. Lo resuelto pasa al Historial.'
               : clase === 'task'
                 ? 'Tus tareas operativas abiertas.'
                 : 'Vista especializada del Libro.'}

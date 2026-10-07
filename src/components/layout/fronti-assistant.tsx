@@ -1,4 +1,6 @@
 'use client';
+
+import { frontiClientError } from '@/lib/fronti-client-error';
 import { FrontiSourceLinks } from './fronti-source-links';
 
 import { useEffect, useRef, useState } from 'react';
@@ -215,12 +217,8 @@ export function FrontiAssistant() {
   function reportFailure(error: unknown) {
     const fallback = `${config.displayName} no pudo procesar la solicitud.`;
 
-    if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
-      addFronti('No recibí respuesta a tiempo. Si estabas confirmando un cambio, revisa su resultado en el módulo antes de repetirlo.');
-      return;
-    }
     if (!(error instanceof FrontiFailure)) {
-      addFronti(error instanceof Error ? error.message : fallback);
+      addFronti(frontiClientError(error, fallback));
       lastFailureRef.current = null;
       return;
     }
@@ -243,7 +241,7 @@ export function FrontiAssistant() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(60_000),
     });
     const data = (await response.json()) as FrontiResponse;
     if (response.status === 401) {
@@ -455,9 +453,9 @@ export function FrontiAssistant() {
             ))}
 
             {busy ? (
-              <div className="flex items-center gap-2 px-1 text-xs text-slate-500">
+              <div role="status" aria-live="polite" className="flex items-center gap-2 px-1 text-xs text-slate-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                {config.displayName} está revisando…
+                {config.displayName} está pensando…
               </div>
             ) : null}
             <div ref={endRef} />

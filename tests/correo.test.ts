@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   canSend,
@@ -356,27 +358,28 @@ describe('consola de correo', () => {
     expect(await credentialsRecipient()).toBe('gerencia@hoteleshw.com');
   });
 
-  /*
-    Una prueba contra un servidor que no existe DEBE fallar y dejar constancia,
-    no romperse. Es el caso normal: se configura mal y hay que poder leer por
-    qué.
-  */
+  // A native SMTP rejection on loopback avoids DNS-dependent timeouts and any external delivery.
   it('una prueba fallida se guarda con el detalle del servidor', async () => {
-    await saveMailConfig(admin, {
-      smtpHost: 'servidor.que.no.existe.invalido',
-      smtpPort: 465,
-      mailFrom: 'recepcion@hoteleshw.com',
-    });
-
-    const result = await sendMailTest(admin, { to: 'recepcion@hoteleshw.com' });
-    expect(result.ok).toBe(false);
-    expect(result.detail).toBeTruthy();
-
-    const view = await getMailConfigView();
-    expect(view.lastTestOk).toBe(false);
-    expect(view.lastTestAt).toBeTruthy();
-    expect(view.lastTestTo).toBe('recepcion@hoteleshw.com');
-    expect(view.lastTestDetail).toBeTruthy();
+    const server = createServer(socket => socket.end('421 4.3.0 Fallo SMTP sintetico de prueba\r\n'));
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      await saveMailConfig(admin, {
+        smtpHost: '127.0.0.1',
+        smtpPort: (server.address() as AddressInfo).port,
+        mailFrom: 'recepcion@hoteleshw.com',
+      });
+      const result = await sendMailTest(admin, { to: 'recepcion@hoteleshw.com' });
+      expect(result.ok).toBe(false);
+      expect(result.detail).toContain('421');
+      expect(result.detail).toContain('Fallo SMTP sintetico');
+      const view = await getMailConfigView();
+      expect(view.lastTestOk).toBe(false);
+      expect(view.lastTestAt).toBeTruthy();
+      expect(view.lastTestTo).toBe('recepcion@hoteleshw.com');
+      expect(view.lastTestDetail).toBe(result.detail);
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    }
   }, 30_000);
 
   it('sin destino, la prueba no se intenta', async () => {

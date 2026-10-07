@@ -72,7 +72,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   // Linked records are grouped under their source. Hidden source work is never inferred from counts.
   const entryWhere: Prisma.OperationalEntryWhereInput = { AND: [coordinationEntries(user),entryView,...(state?[{status:{in:state.entry}}]:[]),...(q?[{OR:[...(human?[human]:[]),{title:{contains:q,mode:'insensitive' as const}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area,
     ...(history ? { status: { in: ['RESUELTO','CERRADO'] } } : { status: { notIn: ['RESUELTO','CERRADO'] } }),
-    ...(owner ? { ownerId:owner } : {}),...(due?{dueAt:due}:{}), tasks:{none:{AND:[coordinationTasks(user)],status:{notIn:[...taskClosed]}}}, housekeepingRequests:{none:{workflowVersion:1,isDemo:false,status:{notIn:['RESUELTO','CANCELADO']},AND:[hkScope]}},
+    ...(owner ? { ownerId:owner } : {}),...(due?{dueAt:due}:{}), tasks:{none:{AND:[coordinationTasks(user)],...(owner?{assigneeId:owner}:{}),...area,status:{notIn:[...taskClosed]}}}, housekeepingRequests:{none:{deletedAt:null,...(owner?{assignedToId:owner}:{}),...area,workflowVersion:1,isDemo:false,status:{notIn:['RESUELTO','CANCELADO']},AND:[hkScope]}},
   };
   const taskWhere: Prisma.TaskWhereInput = { AND: [coordinationTasks(user),taskView,...(state?[{status:{in:state.task}}]:[]),...(q?[{OR:[...(human?[human,{entry:human}]:[]),{title:{contains:q,mode:'insensitive' as const}},{entry:{title:{contains:q,mode:'insensitive' as const}}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area, OR: [{entryId:null},{entry:{NOT:entryWhere}}],
     status: history ? { in: [...taskClosed] } : { notIn: [...taskClosed] }, ...(owner ? { assigneeId:owner } : {}),...(due?{dueAt:due}:{}) };
@@ -119,7 +119,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
     prisma.operationalEntry.findMany({ where: {AND:[entryWhere],id:{in:pageIds('entry')}}, orderBy, include: {
       owner: { select: { name: true } }, department: { select: { name: true } },
       tasks: { where: coordinationTasks(user), select: { id:true,humanId:true,title:true,status:true,assigneeId:true,procedureOccurrenceKey:true }, take:20 },
-      housekeepingRequests: {where:{workflowVersion:1,isDemo:false},select:{humanId:true,status:true,departmentId:true}},
+      housekeepingRequests: {where:{deletedAt:null,workflowVersion:1,isDemo:false},select:{humanId:true,status:true,departmentId:true}},
       followUps: { where: coordinationFollowUps(user), select: { id:true,humanId:true,action:true }, take:20 },
     } }),
     prisma.task.findMany({ where: {AND:[taskWhere],id:{in:pageIds('task')}}, orderBy, include: { assignee: { select: { name:true } }, department: { select: { name:true } }, followUps:{where:coordinationFollowUps(user),select:{humanId:true,action:true},take:20} } }),

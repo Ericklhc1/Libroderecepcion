@@ -23,6 +23,7 @@ import { addCalendarDateDays, calendarDateKey } from '@/domain/time';
 import {
   OPTIONAL_SUPERVISION_OPENING_REPORTS,
   REQUIRED_SUPERVISION_AUDIT_REPORTS,
+  supervisionOpeningExpired,
   SUPERVISION_OPERATIONAL_FALLBACK_REPORTS,
   SUPERVISION_OPERATIONAL_PRIMARY_REPORT,
   SUPERVISION_REPORT_LABELS,
@@ -478,6 +479,7 @@ export async function getSupervisionOpeningReadiness(user: CurrentUser) {
       id: shift.id,
       status: shift.status,
       startedAt: shift.startedAt,
+      expired: supervisionOpeningExpired(shift.startedAt),
     },
     businessDate,
     businessDateKey: calendarDateKey(businessDate),
@@ -773,6 +775,7 @@ export async function completeSupervisionOpening(
   ) as Prisma.InputJsonObject;
 
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "SupervisionShift" WHERE "id"=${input.shiftId} FOR UPDATE`;
     const current = await tx.supervisionShift.findUnique({
       where: { id: input.shiftId },
       select: { id: true, supervisorId: true, status: true },
@@ -1580,4 +1583,28 @@ export async function getSupervisionCenterSummary(user: CurrentUser) {
       measuresOpen: measureOpenCount,
     },
   };
+}
+
+/** Cancellation is a terminal preparation state, never an operational close. */
+export async function cancelSupervisionOpening(user: CurrentUser, input: { shiftId: string; reason: string; confirmation: string }) {
+  const reason = input.reason.trim();
+  if (reason.length < 5 || reason.length > 500 || input.confirmation !== 'CANCELAR') throw new RuleError('Confirma CANCELAR e indica un motivo de 5 a 500 caracteres.');
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT "id" FROM "SupervisionShift" WHERE "id"=${input.shiftId} FOR UPDATE`;
+    const shift = await tx.supervisionShift.findUnique({where:{id:input.shiftId}});
+    if (!shift || shift.departmentId) throw new NotFoundError('La apertura de Supervisión no existe.');
+    if (shift.supervisorId !== user.id && !user.isSystemAdmin) throw new RuleError('Sólo quien inició la apertura o SysAdmin puede cancelarla.');
+    if (shift.status !== 'PREPARACION') throw new RuleError('Sólo se puede cancelar una apertura en Preparación. Recarga su estado.');
+    const now = new Date();
+    const changed = await tx.supervisionShift.updateMany({where:{id:shift.id,status:'PREPARACION'},data:{status:'CANCELADO',canceledAt:now,canceledById:user.id,cancellationReason:reason}});
+    if (changed.count !== 1) throw new RuleError('La apertura cambió. Recarga su estado.');
+    await tx.auditLog.create({data:{entity:'SupervisionShift',entityId:shift.id,action:'CAMBIO_ESTADO',userId:user.id,sessionId:user.sessionId,reason,
+      summary:'Apertura de Supervisión cancelada sin iniciar turno',
+      before:{status:shift.status,startedAt:shift.startedAt.toISOString(),expired:supervisionOpeningExpired(shift.startedAt,now)},
+      after:{status:'CANCELADO',canceledAt:now.toISOString(),canceledById:user.id}}});
+    return tx.supervisionShift.findUniqueOrThrow({where:{id:shift.id}});
+  });
+}
+export async function listCancelableSupervisionOpenings(user: CurrentUser) {
+  return prisma.supervisionShift.findMany({where:{departmentId:null,status:'PREPARACION',...(user.isSystemAdmin?{}:{supervisorId:user.id})},include:{supervisor:{select:{name:true}}},orderBy:{startedAt:'asc'},take:100});
 }

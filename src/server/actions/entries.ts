@@ -65,8 +65,13 @@ export async function updateEntryAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('entry.edit');
-    const input = parseOrThrow(entryUpdateWithContextSchema, formDataToObject(formData));
+    const user = await requirePermission('entry.content.edit');
+    const raw = formDataToObject(formData);
+    const contentFields = new Set(['id', 'title', 'description', 'category', 'tags', 'immediateAction', 'rootCause', 'resolution']);
+    if (Object.keys(entryUpdateWithContextSchema.shape).some(key => key in raw && !contentFields.has(key))) {
+      await requirePermission('entry.edit');
+    }
+    const input = parseOrThrow(entryUpdateWithContextSchema, raw);
     const entry = await updateEntry(user, input, revisionFromForm(formData));
     refreshOperationalViews(entry.id);
     return { ok: true as const, message: 'Registro actualizado.', id: entry.id, committedRevision: operationalRecordRevision('entries', entry) };

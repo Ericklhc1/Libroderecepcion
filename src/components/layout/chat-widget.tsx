@@ -1,4 +1,6 @@
 'use client';
+
+import { frontiClientError } from '@/lib/fronti-client-error';
 import { FrontiSourceLinks } from './fronti-source-links';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -84,7 +86,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
     cache: 'no-store',
-    signal: init?.signal ?? AbortSignal.timeout(90_000),
+    signal: init?.signal ?? AbortSignal.timeout(60_000),
     headers: {
       'Content-Type': 'application/json',
       ...(init?.headers ?? {}),
@@ -1143,7 +1145,7 @@ export function ChatWidget({
       await loadConversation(selectedId, { mark: true, busy: false });
       void loadBootstrap();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'No se pudo enviar el mensaje.');
+      setError(expectsFronti ? frontiClientError(cause) : cause instanceof Error ? cause.message : 'No se pudo enviar el mensaje.');
     } finally {
       if (expectsFronti) setFrontiBusy(false);
     }
@@ -1167,7 +1169,7 @@ export function ChatWidget({
       await loadConversation(selectedId, { mark: true, busy: false });
       void loadBootstrap();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'No se pudo confirmar la acción de Fronti.');
+      setError(frontiClientError(cause, 'No se pudo confirmar la acción de Fronti.'));
     } finally {
       setFrontiBusy(false);
     }
@@ -1190,7 +1192,7 @@ export function ChatWidget({
     const quoted = replyTo;
     setContext(null);
     setReplyTo(null);
-    await stopTyping();
+    void stopTyping();
 
     if (file) {
       await uploadAttachment(file, text || undefined, quoted?.id);
@@ -2518,7 +2520,7 @@ export function ChatWidget({
               })}
 
               {frontiBusy ? (
-                <div className="flex justify-start">
+                <div role="status" aria-live="polite" className="flex justify-start">
                   <div className="flex items-center gap-2 rounded-lg rounded-bl-md border border-gold-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-sm">
                     <Sparkles className="h-3.5 w-3.5 animate-pulse text-gold-600" aria-hidden="true" />
                     Fronti está pensando…

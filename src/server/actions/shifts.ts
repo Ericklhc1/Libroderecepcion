@@ -22,7 +22,8 @@ import {
   closeShift,
   confirmHandoverReviewStep,
   confirmReceptionReviewStep,
-  endShiftParticipation,
+  endShiftLifecycle,
+  releaseIncompleteShiftReception,
   getShiftById,
   openShift,
   prepareHandover,
@@ -730,70 +731,7 @@ export async function cancelShiftAction(
         );
       }
 
-      const linkedReception =
-        shift.status === ShiftStatus.INICIADO
-          ? await tx.shiftHandover.findFirst({
-              where: { toShiftId: shift.id, receivedAt: null },
-              select: { id: true },
-            })
-          : null;
-
-      if (linkedReception) {
-        await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id = ${linkedReception.id} FOR UPDATE`;
-        const currentHandover = await tx.shiftHandover.findUnique({
-          where: { id: linkedReception.id },
-          select: { id: true, receivedAt: true, status: true },
-        });
-        if (!currentHandover || currentHandover.receivedAt) {
-          throw new RuleError(
-            'La recepción ya cambió de estado. Actualiza la pantalla antes de intentar anular el inicio.',
-          );
-        }
-
-        const [confirmedCash, confirmedCustody] = await Promise.all([
-          tx.cashCount.count({
-            where: { handoverId: currentHandover.id, kind: 'CONFIRMADO' },
-          }),
-          tx.handoverElement.count({
-            where: {
-              handoverId: currentHandover.id,
-              OR: [{ confirmed: true }, { missingApprovedAt: { not: null } }],
-            },
-          }),
-        ]);
-
-        if (confirmedCash > 0 || confirmedCustody > 0) {
-          throw new RuleError(
-            'La recepción ya confirmó Caja o custodia física. Para conservar la trazabilidad, completa o regulariza el relevo en lugar de cancelar el inicio.',
-          );
-        }
-
-        await tx.shiftHandover.update({
-          where: { id: currentHandover.id },
-          data: {
-            toShiftId: null,
-            receiverBriefingReviewedAt: null,
-            receiverCustodyReviewedAt: null,
-            receiverFinalReviewAt: null,
-            receiverUrgentAcknowledgedAt: null,
-            receiverSessionId: null,
-          },
-        });
-
-        await recordAudit(
-          {
-            entity: 'ShiftHandover',
-            entityId: currentHandover.id,
-            action: AuditAction.CAMBIO_ESTADO,
-            summary: `Recepción liberada al anular el inicio del turno por ${user.name}`,
-            user,
-            before: { toShiftId: shift.id, receiving: true },
-            after: { toShiftId: null, receiving: false },
-            reason: input.reason,
-          },
-          tx,
-        );
-      }
+      await releaseIncompleteShiftReception(tx, shift.id, shift.status, user, input.reason);
 
       const now = new Date();
       await tx.shift.update({
@@ -804,7 +742,7 @@ export async function cancelShiftAction(
           notes: [shift.notes, `Anulación de inicio: ${input.reason}`].filter(Boolean).join('\n'),
         },
       });
-      await endShiftParticipation(tx, shift.id, now);
+      await endShiftLifecycle(tx, shift.id, now);
 
       await recordAudit(
         {

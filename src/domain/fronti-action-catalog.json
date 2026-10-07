@@ -948,7 +948,7 @@
       "title",
       "type"
     ],
-    "permission": "entry.edit",
+    "permission": "entry.content.edit",
     "risk": "normal",
     "physical": false,
     "requiredFields": [

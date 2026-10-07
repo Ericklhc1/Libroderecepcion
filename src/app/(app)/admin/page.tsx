@@ -102,6 +102,13 @@ const SECTIONS: Array<{
     icon: ClipboardList,
   },
   {
+    href: '/admin/limpieza',
+    title: 'Limpiar datos individuales',
+    description: 'Mensajes de Fronti, notificaciones, Caja y trabajos HK, con confirmación y auditoría. Sólo SysAdmin.',
+    permission: 'system.configure',
+    icon: Trash2,
+  },
+  {
     href: '/admin/puesta-en-cero',
     title: 'Dejar el sistema en cero',
     description: 'Borrar los datos de prueba para empezar a operar limpio.',
@@ -147,7 +154,7 @@ const ADMIN_GROUPS = [
     id: 'estado',
     title: 'Estado operativo',
     description: 'Diagnóstico, soporte y trazabilidad del sistema.',
-    hrefs: ['/admin/diagnostico', '/admin/soporte', '/admin/turnos', '/admin/auditoria', '/admin/eliminados', '/admin/puesta-en-cero'],
+    hrefs: ['/admin/diagnostico', '/admin/soporte', '/admin/turnos', '/admin/auditoria', '/admin/eliminados', '/admin/limpieza', '/admin/puesta-en-cero'],
   },
 ] as const;
 
@@ -160,7 +167,7 @@ export default async function AdminPage() {
     redirect('/sin-permisos');
   }
   const allowed = SECTIONS.filter((section) =>
-    user.permissions.includes(section.permission),
+    user.permissions.includes(section.permission) && (section.href !== '/admin/limpieza' || user.isSystemAdmin),
   );
   if (allowed.length === 0) redirect('/sin-permisos');
 

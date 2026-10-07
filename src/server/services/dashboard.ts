@@ -24,7 +24,7 @@ import {
   resolveOperationalBusinessDate,
 } from './shifts';
 import { getShiftMetrics } from './metrics';
-import { ROLE_KEYS, isReceptionDeskRole } from '@/lib/permissions';
+import { isReceptionDeskRole } from '@/lib/permissions';
 import { buildOperationalAttention } from '@/domain/operational-attention';
 import { countMyActiveOperationalAlarms } from './operational-alarms';
 
@@ -92,7 +92,6 @@ export async function getDashboardData(user: CurrentUser) {
         ...(receptionEntriesOnly
           ? {
               type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
-              createdBy: { role: { key: { in: [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR] } } },
             }
           : {}),
         OR: [
@@ -182,7 +181,6 @@ export async function getDashboardData(user: CurrentUser) {
         ...(receptionEntriesOnly
           ? {
               type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
-              createdBy: { role: { key: ROLE_KEYS.RECEPTIONIST } },
             }
           : {}),
       },
@@ -195,9 +193,6 @@ export async function getDashboardData(user: CurrentUser) {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
-        ...(receptionEntriesOnly
-          ? { createdBy: { role: { key: { in: [ROLE_KEYS.RECEPTIONIST, ROLE_KEYS.NIGHT_AUDITOR] } } } }
-          : {}),
       },
     }),
     countMyActiveOperationalAlarms(user.id),

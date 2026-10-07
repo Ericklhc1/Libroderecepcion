@@ -144,6 +144,7 @@ enum SupervisionVisibility {
 }
 
 enum SupervisionShiftStatus {
+  CANCELADO
   PREPARACION
   ACTIVO
   ENTREGADO
@@ -1290,6 +1291,9 @@ model HandoverItem {
 /// ni PMS. Su apertura sí verifica y fotografía esas fuentes reales para dejar
 /// constancia de qué estado operacional recibió el Supervisor, sin duplicarlas.
 model SupervisionShift {
+  canceledAt DateTime?
+  canceledById String?
+  cancellationReason String?
   id           String                 @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   supervisorId String
@@ -1479,6 +1483,10 @@ model OperationalEntry {
 
 // Operational coordination. Legacy administrative trials retain isDemo=true.
 model HousekeepingRequest {
+  deletedAt DateTime?
+  deletedById String?
+  deletionReason String?
+
   areaAttention SubjectAreaAttention?
   workAssignedAt DateTime?
   workflowVersion Int @default(0)
@@ -2140,6 +2148,10 @@ model ChatMediaPreference {
 }
 
 model Notification {
+  deletedAt DateTime?
+  deletedById String?
+  deletionReason String?
+
   sourceFollowUps NotificationSourceFollowUp[]
   id        String           @id @default(cuid())
   userId    String
@@ -3386,6 +3398,10 @@ model CashMovement {
 
 /// Arqueo: denominaciones del fondo fijo + validación separada de garantías vigentes.
 model CashAudit {
+  deletedAt DateTime?
+  deletedById String?
+  deletionReason String?
+
   id             String   @id
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   currency       String   @db.VarChar(3)
@@ -3484,6 +3500,10 @@ model ai_conversation {
 }
 
 model ai_message {
+  deletedAt DateTime?
+  deletedById String?
+  deletionReason String?
+
   id              String          @id
   conversation_id String
   role            String
@@ -3497,6 +3517,10 @@ model ai_message {
 }
 
 model ai_memory {
+  deletedAt DateTime?
+  deletedById String?
+  deletionReason String?
+
   id              String           @id
   user_id         String
   conversation_id String?

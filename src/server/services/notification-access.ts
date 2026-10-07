@@ -7,7 +7,7 @@ import { notificationReadWhere } from './followup-access';
 export async function notificationWhereForUser(userId:string):Promise<Prisma.NotificationWhereInput> {
   const user=await prisma.user.findFirst({where:{id:userId,active:true,deletedAt:null},select:{id:true,role:{select:{permissions:{where:{permission:{key:'supervision.followup.manage'}},select:{permissionId:true}}}}}});
   if(!user)return {userId,id:{in:[]}};
-  return {userId,...notificationReadWhere({id:userId,permissions:user.role.permissions.length?['supervision.followup.manage']:[]})};
+  return {userId,deletedAt:null,...notificationReadWhere({id:userId,permissions:user.role.permissions.length?['supervision.followup.manage']:[]})};
 }
 
 /** Only visible notices may be acknowledged, including bulk and direct-id requests. */

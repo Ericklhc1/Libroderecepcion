@@ -125,13 +125,25 @@ export async function searchOperationalRecords(
   );
 
   const rows = await prisma.$queryRaw<SearchRow[]>(Prisma.sql`
-    WITH reserved_sources AS MATERIALIZED (
+    WITH candidate_records AS MATERIALIZED (
+      SELECT * FROM "HumanOperationalRecord"
+      WHERE "entityType" IN (${Prisma.join(types)})
+        AND ${Prisma.join(termFilters, ' AND ')}
+    ), candidate_origins AS MATERIALIZED (
+      SELECT "entityId" AS "entryId" FROM candidate_records WHERE "entityType"='OperationalEntry'
+      UNION
+      SELECT origin."entryId" FROM candidate_records candidate
+      CROSS JOIN LATERAL "complete_native_entry_origin_ids"(lower(candidate."entityType"),candidate."entityId") origin
+      WHERE candidate."entityType"<>'OperationalEntry'
+    ), candidate_entries AS MATERIALIZED (
+      SELECT e.* FROM candidate_origins origin JOIN "OperationalEntry" e ON e.id=origin."entryId"
+    ), reserved_sources AS MATERIALIZED (
       SELECT DISTINCT o.kind,o.id FROM "OperationalSourceFollowUp" o
       JOIN "FollowUp" f ON f.id=o."followUpId"
       WHERE NOT (${directFollowUpReadSql(user,true)})
     )
     , hidden_entries AS MATERIALIZED (
-      SELECT e.id FROM "OperationalEntry" e WHERE NOT (${entryReadSql(user)})
+      SELECT e.id FROM candidate_entries e WHERE NOT (${entryReadSql(user)})
     )
     SELECT
       "humanId",
@@ -150,10 +162,8 @@ export async function searchOperationalRecords(
       "targetUserId",
       "scope",
       "createdByUserId"
-    FROM "HumanOperationalRecord"
-    WHERE "entityType" IN (${Prisma.join(types)})
-      AND ${Prisma.join(termFilters, ' AND ')}
-      AND NOT EXISTS (
+    FROM candidate_records AS "HumanOperationalRecord"
+    WHERE NOT EXISTS (
         SELECT 1 FROM hidden_entries hidden WHERE
           ("entityType"='OperationalEntry' AND hidden.id="HumanOperationalRecord"."entityId") OR
           EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"(lower("HumanOperationalRecord"."entityType"),"HumanOperationalRecord"."entityId") origin WHERE origin."entryId"=hidden.id)

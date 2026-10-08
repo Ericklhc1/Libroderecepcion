@@ -1,5 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { EntryType, Priority, SupervisionVisibility } from '@prisma/client';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { EntryType, Priority, SupervisionVisibility, Prisma } from '@prisma/client';
 import {
   ROLE_KEYS,
   createUser,
@@ -11,6 +11,7 @@ import { createEntry } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
 import { searchOperationalRecords } from '@/server/services/global-search';
+import { prisma as searchPrisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 
 describe('identificadores humanos globales', () => {
@@ -36,6 +37,31 @@ describe('identificadores humanos globales', () => {
       roleKey: ROLE_KEYS.SUPERVISOR,
       name: 'Supervisión IDs',
     });
+  });
+
+  it('limita el filtro de entradas ocultas a los candidatos y conserva privacidad de orígenes',async()=>{
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});
+    const unrelated=await prisma.operationalEntry.createManyAndReturn({data:Array.from({length:400},(_,index)=>({type:EntryType.NOVEDAD,title:`Historial ajeno ${index}`,description:'No coincide con el término',createdById:other.id}))});
+    const hidden=await prisma.operationalEntry.create({data:{type:EntryType.NOVEDAD,title:'SEARCH_BOUND oculto',description:'No devolver',createdById:other.id}});
+    await prisma.department.update({where:{id:area.id},data:{hiddenEntries:{connect:[...unrelated.map(row=>({id:row.id})),{id:hidden.id}]}}});
+    const visible=await prisma.operationalEntry.create({data:{type:EntryType.NOVEDAD,title:'SEARCH_BOUND visible',description:'Devolver',createdById:other.id}});
+    const visibleTask=await prisma.task.create({data:{title:'SEARCH_BOUND trabajo visible',entryId:visible.id,createdById:other.id}});
+    const hiddenTask=await prisma.task.create({data:{title:'SEARCH_BOUND trabajo oculto',entryId:hidden.id,createdById:other.id}});
+    const spy=vi.spyOn(searchPrisma,'$queryRaw');
+    let searchSql:Prisma.Sql;
+    try{
+      const results=await searchOperationalRecords(receptionist,'SEARCH_BOUND');
+      expect(results.map(row=>row.entityId).sort()).toEqual([visible.id,visibleTask.id].sort());
+      expect(results.some(row=>row.entityId===hidden.id||row.entityId===hiddenTask.id)).toBe(false);
+      searchSql=spy.mock.calls.map(call=>call[0]).find(query=>typeof query==='object'&&query!==null&&'text' in query&&typeof query.text==='string'&&query.text.includes('HumanOperationalRecord')) as Prisma.Sql;
+      expect(searchSql).toBeDefined();
+    }finally{spy.mockRestore();}
+    const plan=await prisma.$queryRaw<Array<{'QUERY PLAN':Array<{Plan:Record<string,unknown>}>}>>(Prisma.sql`EXPLAIN (ANALYZE,FORMAT JSON) ${searchSql!}`);
+    const nodes:Record<string,unknown>[]=[];const collect=(node:Record<string,unknown>)=>{nodes.push(node);for(const child of (node.Plans??[]) as Record<string,unknown>[])collect(child);};collect(plan[0]!['QUERY PLAN'][0]!.Plan);
+    expect(nodes.find(node=>node['Subplan Name']==='CTE candidate_entries')?.['Actual Rows']).toBe(2);
+    const hiddenSet=nodes.find(node=>node['Subplan Name']==='CTE hidden_entries');
+    expect(hiddenSet).toBeDefined();expect(hiddenSet!['Actual Rows']).toBe(1);
+    expect(await prisma.operationalEntry.count()).toBe(402);
   });
 
   it('usa un solo espacio numérico sin reemplazar los IDs técnicos', async () => {

@@ -44,7 +44,9 @@ export function canReadReceptionHandover(user:Pick<CurrentUser,'isSystemAdmin'|'
     ||user.permissions.some(p=>['supervision.center.view','management.dashboard.view','audit.view'].includes(p));
 }
 
-const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={...receptionHandoverEntryWhere,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
+// The photographed row must still exist; archived origins retain authorization
+// for independent legacy work through the shared area policy.
+const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={...receptionHandoverEntryWhere,deletedAt:null,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
 
 /** Preserve historical evidence and controls; redact reserved content for the current reader. */
 export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[], shared=false, db:Prisma.TransactionClient=prisma):Promise<T[]> {

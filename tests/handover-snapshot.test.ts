@@ -53,15 +53,17 @@ describe('resumen automático de la entrega', () => {
     const shift=await openShiftAs(user);await receiveHandover(user,{shiftId:shift.id});
     await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:simpleMode,category:'pruebas'}});
     const row=await createEntry(user,{type:'NOVEDAD',title:'Retirada después de preparar',description:'No entregar como pendiente vigente',priority:'MEDIA',tags:[],requiresFollowUp:false});
+    const followup=!simpleMode?await createFollowUp(user,{entryId:row.id,action:'Continuidad legada vigente',visibility:'OPERATIVO'}):null;
     const draft=await prepareHandover(user,shift.id);const photograph=await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id},include:{items:true}});
     expect(photograph.items.some(item=>item.refId===row.id)).toBe(true);
     const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});await softDeleteEntry(admin,{id:row.id,reason:'Retiro sintético autorizado'});
     const current=await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id},include:{items:true}});
     expect(current.receptionSummaryRevision).toBe(photograph.receptionSummaryRevision+(simpleMode?1:0));
-    expect((await visibleSnapshotItems(user,current.items,true)).some(item=>item.refId===row.id)).toBe(false);
+    const visible=await visibleSnapshotItems(user,current.items,true);expect(visible.some(item=>item.refId===row.id)).toBe(false);
+    if(followup)expect(visible.some(item=>item.refId===followup.id)).toBe(true);
     expect((await visibleHandover(user,{...current,snapshot:{items:photograph.items.map(item=>({level:item.level,section:item.section,title:item.title,detail:item.detail,refType:item.refType,refId:item.refId}))}})).items.some(item=>item.refId===row.id)).toBe(false);
     expect(await prisma.handoverItem.count({where:{handoverId:draft.id,refId:row.id}})).toBe(1);
-    if(!simpleMode){await confirmReview(user,draft.id);const sent=await sendHandover(user,{shiftId:shift.id});expect(JSON.stringify(sent.snapshot)).not.toContain(row.id);expect(await prisma.handoverItem.count({where:{handoverId:draft.id,refId:row.id}})).toBe(1);}
+    if(!simpleMode){await confirmReview(user,draft.id);const sent=await sendHandover(user,{shiftId:shift.id});expect(JSON.stringify(sent.snapshot)).not.toContain(row.id);expect(JSON.stringify(sent.snapshot)).toContain(followup!.id);expect(await prisma.handoverItem.count({where:{handoverId:draft.id,refId:row.id}})).toBe(1);}
   });
 
   for(const simpleMode of [true,false])it(`fotografía todas las novedades simples sin truncar y conserva límites legados: ${simpleMode}`,async()=>{

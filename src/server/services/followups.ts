@@ -125,6 +125,7 @@ export async function createFollowUp(
 
   return prisma.$transaction(async (tx) => {
     const simpleMode=await lockSimpleNoveltiesMode(tx);
+    if(input.sourceEntity&&input.sourceId)await lockEntrySourcesForRecord(tx,user,input.sourceEntity.toLowerCase(),input.sourceId);
     if(taskId)await lockEntrySourcesForRecord(tx,user,'task',taskId);
     if(input.sourceId && input.sourceEntity==='Alert')await lockEntrySourcesForRecord(tx,user,'alert',input.sourceId);
     if(input.sourceId && input.sourceEntity==='FollowUp')await lockEntrySourcesForRecord(tx,user,'followup',input.sourceId);
@@ -133,8 +134,9 @@ export async function createFollowUp(
       if(!task)throw new NotFoundError('La tarea asociada no existe.');
       entryId=entryId??task.entryId;
     }
-    if(input.sourceEntity==='Alert' && input.sourceId && !await tx.alert.count({where:{id:input.sourceId,deletedAt:null,AND:[alertReadWhere(user)]}})) throw new NotFoundError('La alerta de origen no existe.');
-    if(input.sourceEntity==='FollowUp' && input.sourceId && !await tx.followUp.count({where:{id:input.sourceId,AND:[followUpReadWhere(user)]}})) throw new NotFoundError('El seguimiento de origen no existe.');
+    if(input.sourceEntity?.toLowerCase()==='task'&&input.sourceId&&!taskId&&!await tx.task.count({where:{id:input.sourceId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]}}))throw new NotFoundError('La tarea de origen no existe.');
+    if(input.sourceEntity?.toLowerCase()==='alert' && input.sourceId && !await tx.alert.count({where:{id:input.sourceId,deletedAt:null,AND:[alertReadWhere(user)]}})) throw new NotFoundError('La alerta de origen no existe.');
+    if(input.sourceEntity?.toLowerCase()==='followup' && input.sourceId && !await tx.followUp.count({where:{id:input.sourceId,AND:[followUpReadWhere(user)]}})) throw new NotFoundError('El seguimiento de origen no existe.');
     const strategic=visibility!=='OPERATIVO'&&user.permissions.includes('supervision.followup.manage')&&Boolean(input.origin?.startsWith('SUPERVISION_'));
     const sourceIds=await lockOpenSubjectForWork(tx,{...input,entryId,taskId,...(simpleMode&&!strategic?{origin:null}:{})},simpleMode);
     if(!strategic)await assertNoSimpleNoveltyChain(tx,user,sourceIds,simpleMode);

@@ -1329,3 +1329,11 @@ Al crear/reactivar trabajo simple, `lockOpenSubjectForWork` recorre todos los or
 La incidencia de Mantenimiento es una dependencia del HK que espera su resultado, no una obligación de terminar ese HK antes de reparar: el detalle muestra ese trabajo por separado y la barrera sólo exige las atenciones cuyo origen es la novedad. La regresión ejecuta MANTENIMIENTO real, resuelve la incidencia simple y retoma el trabajo físico; evita una espera circular sin cambiar asignación/inspección. Las demás obligaciones transitivas siguen bloqueando el cierre.
 
 Lint/tipos aprobados y ejecuciones focales de 99 y 130 pruebas aprobadas (con casos comunes, no se suman). La Compuerta anterior de a7b7f4d terminó en verde y su verify local aprobó 2.494 pruebas y todos los recorridos; esta corrección nueva debe aprobar su propia Compuerta, verify, navegador y revisión de Codex antes de cerrar el bloque. No hay nuevas migraciones, flujos, datos reales ni despliegue.
+
+### 2026-10-08 — PR #282, reapertura y orígenes genéricos
+
+Se corrigió el P2 de la revisión de `460b04e`: toda transición de tarea terminada a trabajo abierto comprueba, bajo el candado del modo y de sus orígenes, que el grafo nativo completo permanezca abierto. Ocho regresiones cubren tarea por alerta/seguimiento, COMPLETADA→EN_CURSO y VALIDADA→DEVUELTA, con prueba encendida y apagada. La prueba apagada conserva la reapertura indirecta legada.
+
+El mismo walker PostgreSQL valida todos los tipos de origen de seguimiento y sus alias, sin una lista paralela: incluye HK, comentarios, atenciones de área, auditoría y avisos. Primero se autoriza lectura del origen y la privacidad de tareas/seguimientos; sólo después se consulta el estado, evitando revelar estados privados mediante errores. Regresiones rechazan nuevas cadenas simples, diez clases de origen resuelto y alias privados/ocultos, sin filas ni auditorías parciales.
+
+Aprobaron las 99 pruebas focales en tres archivos. El verify completo, navegador y Compuerta del nuevo commit se repiten antes de cerrar; no hay migraciones nuevas ni datos reales.

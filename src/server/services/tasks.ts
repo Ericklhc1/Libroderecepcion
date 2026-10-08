@@ -580,7 +580,9 @@ export async function changeTaskStatus(
 
   return prisma.$transaction(async (tx) => {
     if(TASK_OPEN_STATUSES.includes(input.status)&&!TASK_OPEN_STATUSES.includes(current.status)) {
+      const simpleMode=await lockSimpleNoveltiesMode(tx);
       await assertTaskActivationRecipients(tx,user,{...current,status:input.status});
+      await lockOpenSubjectForWork(tx,{...current,taskId:current.id},simpleMode);
     }
     if(current.entryId){
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.entryId} FOR UPDATE`;

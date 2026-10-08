@@ -24,8 +24,9 @@ export async function lockOpenSubjectForWork(tx:Prisma.TransactionClient,input:{
   const taskEntry=input.taskId?(await tx.task.findUnique({where:{id:input.taskId},select:{entryId:true}}))?.entryId:null;
   const ids=new Set([input.entryId,taskEntry,input.sourceEntity==='OperationalEntry'?input.sourceId:null].filter((id):id is string=>!!id));
   if(simpleMode){
-    const sourceKind:Record<string,string>={Task:'task',Alert:'alert',FollowUp:'followup'};
-    const roots=[['task',input.taskId],['alert',input.alertId],['followup',input.followUpId],...(sourceKind[input.sourceEntity??'']&&input.sourceId?[[sourceKind[input.sourceEntity!],input.sourceId]]:[])];
+    // The same PostgreSQL walker handles every native source kind and casing,
+    // including HK, comments, notifications and audit sources, without a second allowlist.
+    const roots=[['task',input.taskId],['alert',input.alertId],['followup',input.followUpId],[input.sourceEntity?.toLowerCase(),input.sourceId]];
     for(const [kind,id] of roots)if(kind&&id){
       const origins=await tx.$queryRaw<{entryId:string}[]>`SELECT "entryId" FROM "complete_native_entry_origin_ids"(${kind},${id})`;
       for(const origin of origins)ids.add(origin.entryId);

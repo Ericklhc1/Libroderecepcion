@@ -88,7 +88,7 @@ export async function assertEntryVisibleForWrite(tx: Prisma.TransactionClient, u
 }
 
 /** Locks every native ancestor before authorizing a derived mutation. */
-export async function lockEntrySourcesForRecord(tx: Prisma.TransactionClient, user: EntryReader, kind: 'task'|'alert'|'followup'|'operationalalarm', id: string) {
+export async function lockEntrySourcesForRecord(tx: Prisma.TransactionClient, user: EntryReader, kind: string, id: string) {
   const rows=await tx.$queryRaw<{id:string}[]>`SELECT e.id FROM "OperationalEntry" e WHERE e.id IN (SELECT "entryId" FROM "complete_native_entry_origin_ids"(${kind},${id})) ORDER BY e.id FOR UPDATE`;
   if(rows.length && await tx.operationalEntry.count({where:{id:{in:rows.map(r=>r.id)},AND:[entryReadWhere(user)]}})!==rows.length) throw new NotFoundError('El registro de origen no está visible para tu área.');
 }

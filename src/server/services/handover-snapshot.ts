@@ -1,5 +1,7 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import {createHash} from 'node:crypto';
 import { isReceptionHandoverItem } from '@/domain/handover-print';
-import {closureValidationAlertWhere} from './closure-validation-policy';
+import { receptionHandoverEntryWhere, closureValidationAlertWhere, entryReadWhere } from './entry-visibility';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
@@ -13,12 +15,15 @@ import {
 } from '@prisma/client';
 import type { Prisma, Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import { RuleError } from '@/server/errors';
 import {isReceptionDeskRole} from '@/lib/permissions';
+import { recordAudit } from '@/server/audit';
 import { formatDateTime } from '@/lib/format';
 import {
   ALERT_TYPE_LABEL,
   ENTRY_OPEN_STATUSES,
   ENTRY_TYPE_LABEL,
+  ENTRY_STATUS_LABEL,
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 
@@ -39,7 +44,9 @@ export function canReadReceptionHandover(user:Pick<CurrentUser,'isSystemAdmin'|'
     ||user.permissions.some(p=>['supervision.center.view','management.dashboard.view','audit.view'].includes(p));
 }
 
-const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={deletedAt:null,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
+// The photographed row must still exist; archived origins retain authorization
+// for independent legacy work through the shared area policy.
+const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={...receptionHandoverEntryWhere,deletedAt:null,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
 
 /** Preserve historical evidence and controls; redact reserved content for the current reader. */
 export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[], shared=false, db:Prisma.TransactionClient=prisma):Promise<T[]> {
@@ -48,15 +55,26 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
     db.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user,shared)]},select:{id:true}}),
     db.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true,shared)]},select:{id:true}}),
     db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}]},select:{id:true}}),
-    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere},select:{id:true}}),
+    readEntries(db, user).findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)]},select:{id:true}}),
   ]);
   const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
   const receptionEntries=new Set(entries.map(e=>e.id));
   const closureAlerts=await db.alert.findMany({where:{id:{in:ids('alert')},...closureValidationAlertWhere},select:{id:true}});
-  const excludedAlerts=new Set(closureAlerts.map(a=>a.id));
-  return items.filter(item=>!shared || (isReceptionHandoverItem({...item,section:'section' in item ? String(item.section) : ''}) && !(item.refType==='entry'&&item.refId&&!receptionEntries.has(item.refId)) && !(item.refType==='alert'&&item.refId&&excludedAlerts.has(item.refId)))).map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
+  const [hiddenAlerts,hiddenFollowUps]=shared?await Promise.all([
+    db.alert.findMany({where:{id:{in:ids('alert')},sourceEntries:{some:{entry:{NOT:{AND:[receptionHandoverEntryWhere,entryReadWhere(user)]}}}}},select:{id:true}}),
+    db.followUp.findMany({where:{id:{in:ids('followup')},sourceEntries:{some:{entry:{NOT:{AND:[receptionHandoverEntryWhere,entryReadWhere(user)]}}}}},select:{id:true}}),
+  ]):[[],[]];
+  const excludedAlerts=new Set([...closureAlerts,...hiddenAlerts].map(a=>a.id));
+  const excludedFollowUps=new Set(hiddenFollowUps.map(f=>f.id));
+  return items.filter(item=>!shared || (isReceptionHandoverItem({...item,section:'section' in item ? String(item.section) : ''}) && !(item.refType==='entry'&&item.refId&&!receptionEntries.has(item.refId)) && !(item.refType==='alert'&&item.refId&&excludedAlerts.has(item.refId)) && !(item.refType==='followup'&&item.refId&&excludedFollowUps.has(item.refId)))).map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
     ? {...item,title:'Asunto reservado',detail:'Requiere revisión por una persona autorizada. La evidencia original se conserva.',refType:null,refId:null}
     : item);
+}
+
+/** Exact visible photographed multiset, including duplicates; order does not change evidence. */
+export function receptionSummaryKey(items:SnapshotItem[]){
+  const rows=items.map(i=>JSON.stringify([i.level,i.section,i.title,i.detail??null,i.refType??null,i.refId??null])).sort();
+  return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 }
 
 /** Sanitizes both native items and the historic JSON photograph without rewriting either. */
@@ -82,7 +100,33 @@ export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:P
     const counts=snapshot.counts;
     if(counts&&typeof counts==='object'&&!Array.isArray(counts))snapshot={...snapshot,counts:{...counts,urgente:items.filter(i=>i.level===HandoverLevel.URGENTE).length,importante:items.filter(i=>i.level===HandoverLevel.IMPORTANTE).length,informativo:items.filter(i=>i.level===HandoverLevel.INFORMATIVO).length,...('total' in counts?{total:items.length}:{})}};
   }
-  return {...handover,items,snapshot};
+  let receptionReviewMask:{receiverBriefingReviewedAt?:null;receiverFinalReviewAt?:null;receiverUrgentAcknowledgedAt?:null}={};
+  if(handover.status==='ENVIADA'&&'receiverBriefingReviewedAt' in handover){
+    const key=receptionSummaryKey(items);
+    if(!('receiverBriefingSummaryKey' in handover)||handover.receiverBriefingSummaryKey!==key)receptionReviewMask={receiverBriefingReviewedAt:null,receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null};
+    else if(!('receiverFinalSummaryKey' in handover)||handover.receiverFinalSummaryKey!==key)receptionReviewMask={receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null};
+  }
+  return {...handover,items,snapshot,...receptionReviewMask};
+}
+
+/** Call under lockReceptionSummary: identities/areas are reloaded in the same transaction. */
+export async function reloadReceptionReader(tx:Prisma.TransactionClient,user:CurrentUser):Promise<CurrentUser>{
+  const account=await tx.user.findFirst({where:{id:user.id,active:true,deletedAt:null},select:{roleId:true,departmentId:true,role:{select:{key:true}}}});
+  if(!account||account.roleId!==user.roleId)throw new RuleError('La cuenta cambió. Actualiza antes de continuar con la entrega.');
+  return {...user,departmentId:account.departmentId,roleKey:account.role.key,isSystemAdmin:account.role.key==='ADMINISTRADOR_SISTEMA'};
+}
+
+/** Native identity writers invalidate only this preparer's drafts; sent evidence stays immutable. */
+export async function invalidateReceptionDraftsForUser(tx:Prisma.TransactionClient,actor:CurrentUser,userId:string){
+  const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR',issuedById:userId},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true}});
+  if(!drafts.length)return;
+  await tx.shiftHandover.updateMany({where:{id:{in:drafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
+  for(const draft of drafts)await recordAudit({entity:'ShiftHandover',entityId:draft.id,action:'EDITAR',summary:'Selección del borrador pendiente de regenerar por cambio de áreas del emisor',user:actor,before:{receptionSummaryRevision:draft.receptionSummaryRevision},after:{receptionSummaryRevision:draft.receptionSummaryRevision+1,preparedById:userId}},tx);
+}
+
+/** Serialize eligibility changes with prepare/review/send in the same engine. */
+export async function lockReceptionSummary(tx:Prisma.TransactionClient){
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('aroh.reception-handover-summary'))::text`;
 }
 
 const SECTIONS = {
@@ -124,11 +168,16 @@ type SnapshotOptions = {
   includeMetrics?: boolean;
 };
 
+type SimpleNoveltyPhoto={occurredAt:Date;status:EntryStatus;workNextAction:string|null;reservationReference:string|null;createdBy:{name:string};room:{number:string}|null;reservation:{code:string}|null;department:{name:string}|null};
+function simpleNoveltyPhotoFields(row:SimpleNoveltyPhoto){
+  return [`Fecha: ${fmt(row.occurredAt)}`,`Recepcionista: ${row.createdBy.name}`,`Reserva: ${row.reservationReference??row.reservation?.code??'—'}`,`HAB: ${row.room?.number??'—'}`,`Área: ${row.department?.name??'Recepción'}`,`Seguimiento: ${row.workNextAction??'—'}`,`Estado: ${ENTRY_STATUS_LABEL[row.status]}`];
+}
+
 /**
  * Snapshot de entrega v1.4.0.
  *
  * La entrega resume únicamente la continuidad operacional del Libro:
- * Novedades/Incidencias, Seguimientos operativos y Alertas.
+ * Novedades/Incidencias visibles para Recepción, Seguimientos operativos y Alertas.
  * Las tareas y acciones de Supervisión permanecen en sus motores, fuera del relevo. Caja mantiene su
  * propio snapshot y flujo de custodia. PMS, habitaciones, reservas, huéspedes,
  * llaves, multas y ocupación no se consultan ni se proyectan aquí.
@@ -139,6 +188,7 @@ export async function buildHandoverSnapshot(
   options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
   const db=options.client??prisma;
+  const simpleMode=(await db.systemSetting.findUnique({where:{key:'book.simpleNovelties'},select:{value:true}}))?.value===true;
   const soon = new Date(now.getTime() + 24 * 3600_000);
   const items: SnapshotItem[] = [];
 
@@ -170,14 +220,16 @@ export async function buildHandoverSnapshot(
     followUps,
     resolvedEntries,
   ] = await Promise.all([
-    db.operationalEntry.findMany({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere },
+    readEntries(db, user).findMany({
+      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)] },
       select: {
         id: true,
         humanId: true,
         type: true,
         title: true,
         description: true,
+        occurredAt:true,status:true,workNextAction:true,reservationReference:true,
+        createdBy:{select:{name:true}},room:{select:{number:true}},reservation:{select:{code:true}},
         priority: true,
         severity: true,
         dueAt: true,
@@ -185,10 +237,10 @@ export async function buildHandoverSnapshot(
         department: { select: { name: true } },
       },
       orderBy: [{ priority: 'desc' }, { occurredAt: 'desc' }],
-      take: 200,
+      ...(simpleMode?{}:{take:200}),
     }),
     db.alert.findMany({
-      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}], taskId:null} ,
+      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]},{OR:[{entryId:null},{entry:receptionHandoverEntryWhere}]}], taskId:null} ,
       select: {
         id: true,
         type: true,
@@ -208,6 +260,7 @@ export async function buildHandoverSnapshot(
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
         AND:[followUpReadWhere(user,false,true), { OR: [{ scheduledAt: null }, { scheduledAt: { lte: soon } }] }],
+        OR: [{ entryId: null }, { entry: receptionHandoverEntryWhere }],
       },
       select: {
         id: true,
@@ -223,9 +276,9 @@ export async function buildHandoverSnapshot(
       take: 100,
     }),
     currentShiftId
-      ? db.operationalEntry.findMany({
+      ? readEntries(db, user).findMany({
           where: {
-            ...receptionHandoverNoticeWhere,
+            ...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)],
             shiftId: currentShiftId,
             deletedAt: null,
             status: { in: [EntryStatus.RESUELTO, EntryStatus.CERRADO] },
@@ -235,12 +288,14 @@ export async function buildHandoverSnapshot(
             humanId: true,
             type: true,
             title: true,
+            description:true,occurredAt:true,status:true,workNextAction:true,reservationReference:true,
+            createdBy:{select:{name:true}},room:{select:{number:true}},reservation:{select:{code:true}},department:{select:{name:true}},
             resolution: true,
             closedAt: true,
             _count: { select: { tasks: {where:taskFollowUpReadWhere(user,true)}, followUps: {where:followUpReadWhere(user,false,true)} } },
           },
           orderBy: [{ closedAt: 'asc' }, { updatedAt: 'asc' }],
-          take: 150,
+          ...(simpleMode?{}:{take:150}),
         })
       : Promise.resolve([]),
   ]);
@@ -253,6 +308,7 @@ export async function buildHandoverSnapshot(
       detail: [
         ENTRY_TYPE_LABEL[resolved.type],
         resolved.resolution?.trim() || 'Resuelto durante el turno.',
+        ...(simpleMode?[resolved.description,...simpleNoveltyPhotoFields(resolved)]:[]),
         resolved._count.tasks > 0 ? `${resolved._count.tasks} tarea(s)` : null,
         resolved._count.followUps > 0
           ? `${resolved._count.followUps} seguimiento(s)`
@@ -269,8 +325,7 @@ export async function buildHandoverSnapshot(
   for (const entry of entries) {
     const detail = [
       entry.description,
-      entry.department ? `Área: ${entry.department.name}` : null,
-      entry.owner ? `Responsable: ${entry.owner.name}` : 'Sin responsable asignado',
+      ...(simpleMode?simpleNoveltyPhotoFields(entry):[entry.department ? `Área: ${entry.department.name}` : null,entry.owner ? `Responsable: ${entry.owner.name}` : 'Sin responsable asignado']),
       entry.dueAt ? `Vence: ${fmt(entry.dueAt)}` : null,
     ]
       .filter(Boolean)

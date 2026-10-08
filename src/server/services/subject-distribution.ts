@@ -1,3 +1,6 @@
+import { lockSimpleNoveltiesMode } from './settings';
+import { readEntries } from '@/server/services/entry-visibility';
+import {entryReadWhere,assertEntryWorkDestination} from './entry-visibility';
 import {assertSubjectDistributionEnabled} from './subject-distribution-gate';
 import 'server-only';
 import {createHash} from 'node:crypto';
@@ -37,7 +40,7 @@ async function canRead(user:CurrentUser,row:Attention,tx:Tx){
   return false;
 }
 export async function getAreaAttention(user:CurrentUser,id:string,tx:Tx=prisma){
-  const row=await tx.subjectAreaAttention.findUnique({where:{id},include});
+  const row=await tx.subjectAreaAttention.findFirst({where:{id,entry:{AND:[entryReadWhere(user)]}},include});
   if(!row||!await canRead(user,row,tx))throw new NotFoundError();
   return row;
 }
@@ -85,9 +88,13 @@ export async function distributeSubject(user:CurrentUser,input:{entryId:string;r
   await assertReceptionOperationPermission(user,user.permissions.includes('task.create')?'task.create':'housekeeping.manage');
   const hash=createHash('sha256').update(JSON.stringify({...input,departmentIds:ids})).digest('hex');
   return prisma.$transaction(async tx=>{
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
-    const entry=await tx.operationalEntry.findFirst({where:{id:input.entryId,AND:[coordinationEntries(user)]}});
+    const entry=await readEntries(tx, user).findFirst({where:{id:input.entryId,AND:[coordinationEntries(user)]}});
     if(!entry)throw new NotFoundError();
+    if(['NOVEDAD','INCIDENCIA'].includes(entry.type)&&simpleMode)throw new RuleError('En novedades simples se elige el área relacionada, sin cadenas de asignación.');
+    // Validate every destination under the source lock before receipts, rows or notices.
+    for(const departmentId of ids)await assertEntryWorkDestination(tx,entry.id,departmentId,input.urgent?input.urgentContacts?.[departmentId]:null);
     const prefix=`distribution:${user.id}:${input.requestKey}:`;
     const receipt=await tx.auditLog.findFirst({where:{entity:'SubjectDistribution',entityId:{startsWith:prefix},userId:user.id},select:{entityId:true,after:true}});
     if(receipt){
@@ -139,6 +146,7 @@ export async function decideAreaAttention(user:CurrentUser,input:{id:string;vers
       if(row.knownAt)return row;
       data={...data,knownAt:now,knownById:user.id};
     }else if(input.action==='REABRIR'){
+      await assertEntryWorkDestination(tx,row.entryId,row.departmentId,row.urgent?row.urgentContactId:null);
       if(row.task&&!['VALIDADA','COMPLETADA','CANCELADA'].includes(row.task.status)||row.housekeeping&&!['RESUELTO','CANCELADO'].includes(row.housekeeping.status)||!row.task&&!row.housekeeping&&row.status!=='INFORMADA')throw new RuleError('La intervención todavía está pendiente; continúa su atención vigente.');
       data={...data,status:'POR_REVISAR',knownAt:null,knownById:null,decisionAt:null,decidedById:null,decisionNote:`Nueva atención solicitada: ${note}`};
     }else if(responding){
@@ -195,7 +203,7 @@ export async function listAreaAttentions(user:CurrentUser,input:{entryId?:string
   const scope:Prisma.SubjectAreaAttentionWhereInput=user.isSystemAdmin?{}:{OR:[{createdById:user.id},{entry:{ownerId:user.id}},{entry:{createdById:user.id}},{departmentId:{in:reviewAreas}},{departmentId:{in:memberAreas},urgentContactId:user.id},{departmentId:{in:memberAreas},status:{in:['INFORMADA','ASIGNADA']}}]};
   const page=Math.max(1,Math.min(100000,Math.trunc(input.page||1)));
   const pageSize=input.entryId?100:25;
-  const rows=await prisma.subjectAreaAttention.findMany({where:{AND:[scope],entry:{deletedAt:null,isDemo:false,...(!input.entryId&&!input.id?{status:{notIn:['RESUELTO','CERRADO']}}:{})},...(input.entryId?{entryId:input.entryId}:{}),...(input.departmentId?{departmentId:input.departmentId}:{}),...(input.id?{id:input.id}:{})},include,orderBy:[{urgent:'desc'},{createdAt:'desc'},{id:'asc'}],take:pageSize+1,skip:(page-1)*pageSize});
+  const rows=await prisma.subjectAreaAttention.findMany({where:{AND:[scope],entry:{deletedAt:null,isDemo:false,AND:[entryReadWhere(user)],...(!input.entryId&&!input.id?{status:{notIn:['RESUELTO','CERRADO']}}:{})},...(input.entryId?{entryId:input.entryId}:{}),...(input.departmentId?{departmentId:input.departmentId}:{}),...(input.id?{id:input.id}:{})},include,orderBy:[{urgent:'desc'},{createdAt:'desc'},{id:'asc'}],take:pageSize+1,skip:(page-1)*pageSize});
   const result=[];
   for(const row of rows)if(await canRead(user,row,prisma))result.push({...row,canReview:await canReviewArea(user,row.departmentId,row.department.key),canRespond:row.createdById===user.id||row.entry.createdById===user.id||row.entry.ownerId===user.id,canClaim:row.urgentContactId===user.id&&!(row.task?.assigneeId||row.housekeeping?.assignedToId)});
   return {rows:result.slice(0,pageSize),hasMore:rows.length>pageSize,page,areas:areas.filter(a=>user.isSystemAdmin||memberAreas.includes(a.id)||reviewAreas.includes(a.id))};

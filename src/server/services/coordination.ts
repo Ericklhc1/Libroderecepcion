@@ -1,3 +1,6 @@
+import { getSettingBool, lockSimpleNoveltiesMode } from './settings';
+import { entryReadSql } from './entry-visibility';
+import { readEntries } from '@/server/services/entry-visibility';
 import {incidentResolutionAt} from '@/domain/operational-metrics';
 import {assertTaskAssignable,canReceiveGenericTask} from './task-assignment-access';
 import {notifyNativeWork,sourceStakeholders} from './work-notifications';
@@ -6,7 +9,7 @@ import 'server-only';
 import { activeRuleOverrides } from './automation-policy-scope';
 import { createHash } from 'node:crypto';
 import type { PermissionKey } from '@/lib/permissions';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, EntryType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
@@ -33,6 +36,7 @@ export type CoordinationView='all'|'reception'|'unassigned'|'unreceived'|'blocke
 export type CoordinationState='abierto'|'atencion'|'bloqueado'|'revision'|'resuelto';
 const COORDINATION_IDENTITY_SCAN_LIMIT=5000;
 export async function getCoordinationBoard(user: CurrentUser, input: { departmentId?: string; mine?: boolean; page?: number; history?: boolean; view?:CoordinationView;q?:string;ownerId?:string;state?:CoordinationState;date?:string } = {}) {
+  const simple = await getSettingBool('book.simpleNovelties',false);
   const states:Record<CoordinationState,{entry:Prisma.EnumEntryStatusFilter['in'];task:Prisma.EnumTaskStatusFilter['in'];hk:string[];follow:Prisma.EnumFollowUpStatusFilter['in']}>= {
     abierto:{entry:['ABIERTO'],task:['PENDIENTE','ACEPTADA','DEVUELTA'],hk:['PENDIENTE','RECIBIDO'],follow:['PENDIENTE','VENCIDO']},
     atencion:{entry:['EN_CURSO'],task:['EN_CURSO'],hk:['EN_GESTION'],follow:[]},
@@ -55,10 +59,10 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const receptionHkIds=view==='reception'?(await prisma.$queryRaw<Array<{id:string}>>`
     SELECT DISTINCT h."id"
     FROM "HousekeepingRequest" h
-    LEFT JOIN "OperationalEntry" source ON source."id"=h."sourceEntryId"
+    LEFT JOIN "OperationalEntry" e ON e."id"=h."sourceEntryId" AND (${entryReadSql(user)})
     LEFT JOIN "ShiftAssignment" assignment ON assignment."userId"=h."createdById"
     LEFT JOIN "Shift" shift ON shift."id"=assignment."shiftId"
-    WHERE source."shiftId" IS NOT NULL
+    WHERE e."shiftId" IS NOT NULL
        OR (
          assignment."activatedAt" IS NOT NULL
          AND h."createdAt" >= assignment."activatedAt"
@@ -70,7 +74,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const taskView:Prisma.TaskWhereInput = view==='reception'?{shiftId:{not:null}}:view==='unassigned'?{assigneeId:null}:view==='unreceived'?{assigneeId:{not:null},workAcknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADA'}:view==='clarification'?{status:'BLOQUEADA',workNextAction:{startsWith:'Aclaración requerida:'}}:view==='carryover'?{shift:{status:{in:[...carryoverShiftStatuses]}}}:{};
   const hkView:Prisma.HousekeepingRequestWhereInput = view==='reception'?{id:{in:receptionHkIds}}:view==='unassigned'?{assignedToId:null}:view==='unreceived'?{assignedToId:{not:null},acknowledgedAt:null}:view==='blocked'?{status:'BLOQUEADO'}:view==='clarification'?{id:{in:[]}}:view==='carryover'?{workDate:{lt:hotelDateKey(new Date())}}:{};
   // Linked records are grouped under their source. Hidden source work is never inferred from counts.
-  const entryWhere: Prisma.OperationalEntryWhereInput = { AND: [coordinationEntries(user),entryView,...(state?[{status:{in:state.entry}}]:[]),...(q?[{OR:[...(human?[human]:[]),{title:{contains:q,mode:'insensitive' as const}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area,
+  const entryWhere: Prisma.OperationalEntryWhereInput = { AND: [coordinationEntries(user),...(simple?[{type:{notIn:['NOVEDAD','INCIDENCIA'] as EntryType[]}}]:[]),entryView,...(state?[{status:{in:state.entry}}]:[]),...(q?[{OR:[...(human?[human]:[]),{title:{contains:q,mode:'insensitive' as const}},{room:{number:{contains:q,mode:'insensitive' as const}}}]}]:[])], ...area,
     ...(history ? { status: { in: ['RESUELTO','CERRADO'] } } : { status: { notIn: ['RESUELTO','CERRADO'] } }),
     ...(owner ? { ownerId:owner } : {}),...(due?{dueAt:due}:{}), tasks:{none:{AND:[coordinationTasks(user)],...(owner?{assigneeId:owner}:{}),...area,status:{notIn:[...taskClosed]}}}, housekeepingRequests:{none:{deletedAt:null,...(owner?{assignedToId:owner}:{}),...area,workflowVersion:1,isDemo:false,status:{notIn:['RESUELTO','CANCELADO']},AND:[hkScope]}},
   };
@@ -87,7 +91,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   // source to know whether totals are exact without materializing hotel lifetime data.
   const scanTake=COORDINATION_IDENTITY_SCAN_LIMIT+1;
   const [entryRefsRaw,taskRefsRaw,hkRefsRaw,followRefsRaw]=await Promise.all([
-    prisma.operationalEntry.findMany({where:entryWhere,select:identity,orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
+    readEntries(prisma, user).findMany({where:entryWhere,select:identity,orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
     prisma.task.findMany({where:taskWhere,select:{...identity,entryId:true},orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
     prisma.housekeepingRequest.findMany({where:hkWhere,select:{...identity,sourceEntryId:true},orderBy:[{dueAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
     prisma.followUp.findMany({where:followWhere,select:{id:true,humanId:true,status:true,scheduledAt:true,entryId:true,task:{select:{entryId:true}},owner:{select:{departmentId:true}}},orderBy:[{scheduledAt:{sort:'asc',nulls:'last'}},{id:'asc'}],take:scanTake}),
@@ -116,7 +120,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   const pageIds=(kind:CoordinationKind)=>pageGroups.map(representative).filter(row=>row.kind===kind).map(row=>row.id);
   const orderBy=[{dueAt:{sort:'asc' as const,nulls:'last' as const}},{id:'asc' as const}];
   const [entries,tasks,hk,followups,departments] = await Promise.all([
-    prisma.operationalEntry.findMany({ where: {AND:[entryWhere],id:{in:pageIds('entry')}}, orderBy, include: {
+    readEntries(prisma, user).findMany({ where: {AND:[entryWhere],id:{in:pageIds('entry')}}, orderBy, include: {
       owner: { select: { name: true } }, department: { select: { name: true } },
       tasks: { where: coordinationTasks(user), select: { id:true,humanId:true,title:true,status:true,assigneeId:true,procedureOccurrenceKey:true }, take:20 },
       housekeepingRequests: {where:{deletedAt:null,workflowVersion:1,isDemo:false},select:{humanId:true,status:true,departmentId:true}},
@@ -139,7 +143,7 @@ export async function getCoordinationBoard(user: CurrentUser, input: { departmen
   }
   const byArea=[...loads.values()].sort((a,b)=>b.total-a.total||a.name.localeCompare(b.name,'es'));
   const sourceIds=[...new Set([...tasks.map(t=>t.entryId),...hk.map(h=>h.sourceEntryId)].filter((id):id is string=>Boolean(id)))];
-  const visibleSources=sourceIds.length?await prisma.operationalEntry.findMany({where:{id:{in:sourceIds},OR:[{AND:[coordinationEntries(user)]},{tasks:{some:{id:{in:tasks.map(t=>t.id)}}}}]},select:{id:true,humanId:true}}):[];
+  const visibleSources=sourceIds.length?await readEntries(prisma, user).findMany({where:{id:{in:sourceIds},OR:[{AND:[coordinationEntries(user)]},{tasks:{some:{id:{in:tasks.map(t=>t.id)}}}}]},select:{id:true,humanId:true}}):[];
   const sources=new Map(visibleSources.map(entry=>[entry.id,{humanId:entry.humanId,href:`/libro/${entry.id}`} ]));
   const rows: CoordinationRow[] = [
     ...entries.map(r=>({id:r.id,humanId:r.humanId,kind:'entry' as const,title:r.title,status:r.status,priority:r.priority,departmentId:r.departmentId,department:r.department?.name??'Sin área',ownerId:r.ownerId,owner:r.owner?.name??'Por asignar',createdById:r.createdById,createdAt:r.createdAt,updatedAt:r.updatedAt,dueAt:r.dueAt,receivedAt:r.workAcknowledgedAt,assignedAt:r.workAssignedAt,availableAt:null,startedAt:r.workStartedAt,completedAt:incidentResolutionAt(r),nextAction:r.housekeepingRequests.some(h=>['RESUELTO','CANCELADO'].includes(h.status))||r.tasks.some(t=>['VALIDADA','COMPLETADA'].includes(t.status))?'Revisar resultados y pendientes del asunto':nextWorkAction(r.status,r.ownerId,r.workAcknowledgedAt,r.workNextAction),href:`/libro/${r.id}`,canAssign:user.permissions.includes('entry.edit'),children:[...r.tasks.map(t=>({label:`Tarea #${t.humanId} · ${t.title} · ${t.status}`,href:`/tareas/${t.id}`})),...r.followUps.map(f=>({label:`Seguimiento #${f.humanId} · ${f.action}`,href:`/seguimientos?q=${f.humanId}&estado=todos`}))]})),
@@ -172,12 +176,14 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
   await assertReceptionOperationPermission(user, input.kind==='task'?'task.edit':'entry.edit', transaction ?? prisma);
   if (!input.nextAction.trim()) throw new RuleError('Indica la siguiente acción para quien continúa.');
   const perform = async (tx:Prisma.TransactionClient)=>{
+    const simpleMode=input.kind==='entry'?await lockSimpleNoveltiesMode(tx):false;
     // Lock before checking revision and permissions: no stale assignment or receipt can win.
     if(input.kind==='entry') await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.id} FOR UPDATE`;
     else await tx.$queryRaw`SELECT "id" FROM "Task" WHERE "id"=${input.id} FOR UPDATE`;
-    const entry=input.kind==='entry'?await tx.operationalEntry.findFirst({where:{id:input.id,AND:[coordinationEntries(user)]}}):null;
+    const entry=input.kind==='entry'?await readEntries(tx, user).findFirst({where:{id:input.id,AND:[coordinationEntries(user)]}}):null;
     const task=input.kind==='task'?await tx.task.findFirst({where:{id:input.id,AND:[coordinationTasks(user)]}}):null;
     const current=entry??task;if(!current)throw new NotFoundError();
+    if(entry&&['NOVEDAD','INCIDENCIA'].includes(entry.type)&&simpleMode)throw new RuleError('En novedades simples se elige el área relacionada; no se asignan ni reciben novedades individualmente.');
     const ownerId=entry?entry.ownerId:task!.assigneeId;
     const assign=user.permissions.includes(input.kind==='entry'?'entry.edit':'task.assign');
     const responding=input.action==='RESPONDER_ACLARACION';
@@ -233,18 +239,18 @@ export async function escalateUnreceivedWork(now = new Date(), usePolicyOverride
   for(const kind of ['entry','task'] as const){
     const overrides=usePolicyOverrides?await activeRuleOverrides(kind,'UNRECEIVED',now):[];
     const where={...(overrides.length?{NOT:{OR:overrides}}:{}),workAssignedAt:{lte:cutoff},workAcknowledgedAt:null,workEscalatedAt:null,deletedAt:null,isDemo:false};
-    const rows=kind==='entry'?await prisma.operationalEntry.findMany({where:{...where,ownerId:{not:null},status:{notIn:['RESUELTO','CERRADO']}},take:100,orderBy:{workAssignedAt:'asc'}}):await prisma.task.findMany({where:{...where,assigneeId:{not:null},status:{notIn:[...taskClosed]},OR:[{startsAt:null},{startsAt:{lte:cutoff}}]},take:100,orderBy:{workAssignedAt:'asc'}});
+    const rows=kind==='entry'?await readEntries(prisma, {engine:"coordination"}).findMany({where:{...where,ownerId:{not:null},status:{notIn:['RESUELTO','CERRADO']}},take:100,orderBy:{workAssignedAt:'asc'}}):await prisma.task.findMany({where:{...where,assigneeId:{not:null},status:{notIn:[...taskClosed]},OR:[{startsAt:null},{startsAt:{lte:cutoff}}]},take:100,orderBy:{workAssignedAt:'asc'}});
     for(const row of rows)await prisma.$transaction(async tx=>{
       const claim={id:row.id,workAssignedAt:row.workAssignedAt,workAcknowledgedAt:null,workEscalatedAt:null,updatedAt:row.updatedAt};
       const result=kind==='entry'?await tx.operationalEntry.updateMany({where:claim,data:{workEscalatedAt:now}}):await tx.task.updateMany({where:claim,data:{workEscalatedAt:now}});
       if(!result.count)return;
       // Include coordinators who can act in the destination area, including cross-area requests.
       // Reuse source visibility before exposing even the existence of reserved work.
-      const candidates=await tx.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false,OR:[{id:row.createdById},...(row.departmentId?[{AND:[{OR:[{departmentId:row.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:row.departmentId,active:true}}}}]},{role:{permissions:{some:{permission:{key:kind==='entry'?'entry.edit':'task.assign'}}}}}]}]:[])]},select:{id:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
+      const candidates=await tx.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false,OR:[{id:row.createdById},...(row.departmentId?[{AND:[{OR:[{departmentId:row.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:row.departmentId,active:true}}}}]},{role:{permissions:{some:{permission:{key:kind==='entry'?'entry.edit':'task.assign'}}}}}]}]:[])]},select:{id:true,departmentId:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
       const recipients:string[]=[];
       for(const candidate of candidates){
-        const reader={id:candidate.id,roleKey:candidate.role.key,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)};
-        const visible=kind==='entry'?await tx.operationalEntry.count({where:{id:row.id,AND:[coordinationEntries(reader)]}}):await tx.task.count({where:{id:row.id,AND:[coordinationTasks(reader)]}});
+        const reader={id:candidate.id,departmentId:candidate.departmentId,isSystemAdmin:candidate.role.key==='ADMINISTRADOR_SISTEMA',roleKey:candidate.role.key,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)};
+        const visible=kind==='entry'?await readEntries(tx, reader).count({where:{id:row.id,AND:[coordinationEntries(reader)]}}):await tx.task.count({where:{id:row.id,AND:[coordinationTasks(reader)]}});
         if(visible)recipients.push(candidate.id);
       }
       await notify(recipients.map(userId=>({userId,type:'ACCION_REQUERIDA' as const,title:'Hay trabajo asignado sin confirmar recepción',link:'/coordinacion',entity:kind==='entry'?'OperationalEntry':'Task',entityId:row.id})),tx);

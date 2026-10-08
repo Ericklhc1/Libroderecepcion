@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import {createHash,randomUUID} from 'node:crypto';
 import {prisma} from '@/lib/prisma';
@@ -45,7 +46,7 @@ export async function executeNaturalHousekeeping(message:string,requestKey?:stri
   }
   let step:FrontiStep;
   if(parsed.kind==='maintenance'){
-    const entry=await prisma.operationalEntry.findFirst({where:{humanId:parsed.humanId,type:'INCIDENCIA',department:{key:'MANTENIMIENTO'},AND:[coordinationEntries(user)]},select:{id:true}});
+    const entry=await readEntries(prisma, user).findFirst({where:{humanId:parsed.humanId,type:'INCIDENCIA',department:{key:'MANTENIMIENTO'},AND:[coordinationEntries(user)]},select:{id:true}});
     if(!entry)throw new NotFoundError();
     if(!parsed.note)return reply('¿Qué hizo Mantenimiento y cuál fue el resultado? Indícalo después de dos puntos; no se ha cambiado el registro.');
     step={action:'changeEntryStatusAction',fields:{id:entry.id,status:'RESUELTO',resolution:parsed.note}};

@@ -35,7 +35,7 @@ export default async function SettingsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePagePermission('system.configure');
+  const user=await requirePagePermission('system.configure');
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const categoria = typeof params.categoria === 'string' ? params.categoria : '';
@@ -161,11 +161,11 @@ export default async function SettingsPage({
                   {setting.updatedAt ? ` · actualizado ${formatDateTime(setting.updatedAt)}` : ''}
                 </p>
                 <div className="mt-2">
-                  <SettingForm
+                  {setting.key!=='book.simpleNovelties'||user.isSystemAdmin ? <SettingForm
                     settingKey={setting.key}
                     value={String(setting.value)}
                     kind={kindOf(setting.defaultValue)}
-                  />
+                  /> : <p className="text-sm">Sólo Sysadmin puede cambiar esta prueba.</p>}
                 </div>
               </li>
             ))}

@@ -1,28 +1,23 @@
 'use server';
+import {inheritPendingStayContext} from '@/server/services/stay-entry-context';
+import {ensureUnresolvedGuaranteeIncidents} from '@/server/services/stay-guarantee-incidents';
+import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 
 import { revalidatePath } from 'next/cache';
 import {
-  AlertLevel,
-  AlertStatus,
-  AlertType,
   AuditAction,
   EntryStatus,
   EntryType,
-  GuaranteeState,
-  Impact,
   Priority,
   ReservationStatus,
   RoomStayStage,
   RoomStayStatus,
-  Severity,
 } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { ENTRY_OPEN_STATUSES } from '@/domain/labels';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { recordAudit } from '@/server/audit';
-import type { CurrentUser } from '@/server/auth/current-user';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { confirmCheckOut, softDeleteStay } from '@/server/services/rooms';
@@ -32,164 +27,7 @@ import {
 } from '@/server/services/checkout-keys';
 import { moveStayToRoom } from '@/server/services/room-occupancy';
 
-async function inheritPendingStayContext(stayId: string) {
-  const stay = await prisma.roomStay.findUnique({
-    where: { id: stayId },
-    select: {
-      id: true,
-      roomId: true,
-      reservationRefId: true,
-      reservationRef: { select: { guestId: true } },
-    },
-  });
-  if (!stay?.roomId) return;
 
-  await prisma.operationalEntry.updateMany({
-    where: {
-      roomId: stay.roomId,
-      deletedAt: null,
-      status: { in: ENTRY_OPEN_STATUSES },
-      ...(stay.reservationRefId
-        ? { OR: [{ reservationId: stay.reservationRefId }, { reservationId: null }] }
-        : {}),
-    },
-    data: {
-      roomId: null,
-      ...(stay.reservationRefId ? { reservationId: stay.reservationRefId } : {}),
-      ...(stay.reservationRef?.guestId ? { guestId: stay.reservationRef.guestId } : {}),
-    },
-  });
-}
-
-/**
- * Una garantía que sobrevive al check-out ya no es sólo una alerta: es una
- * incidencia económica trazable. Se crea una sola vez y queda inicialmente a
- * cargo de quien confirma la salida. Se liga a reserva/huésped, no a la
- * habitación física, para que nunca contamine al huésped siguiente.
- */
-async function ensureUnresolvedGuaranteeIncidents(
-  user: CurrentUser,
-  reservationRefId: string | null,
-  roomNumber: string | null,
-): Promise<number> {
-  if (!reservationRefId) return 0;
-
-  const guarantees = await prisma.guarantee.findMany({
-    where: {
-      reservationReferenceId: reservationRefId,
-      deletedAt: null,
-      state: {
-        in: [
-          GuaranteeState.PENDIENTE,
-          GuaranteeState.VIGENTE,
-          GuaranteeState.APLICADA_PARCIALMENTE,
-        ],
-      },
-    },
-    include: {
-      reservationReference: {
-        select: {
-          code: true,
-          guestId: true,
-          guest: { select: { fullName: true } },
-        },
-      },
-    },
-  });
-
-  let created = 0;
-  for (const guarantee of guarantees) {
-    const marker = `garantia-post-salida:${guarantee.id}`;
-    const existing = await prisma.operationalEntry.findFirst({
-      where: { deletedAt: null, tags: { has: marker } },
-      select: { id: true },
-    });
-    if (existing) continue;
-
-    // Esta acción es legado PMS: una garantía autónoma de Caja no participa
-    // en el ciclo de check-out ni debe convertirse en incidencia PMS.
-    const reservation = guarantee.reservationReference;
-    if (!reservation) continue;
-
-    await prisma.$transaction(async (tx) => {
-      const guestName = reservation.guest?.fullName ?? 'Huésped';
-      const entry = await tx.operationalEntry.create({
-        data: {
-          type: EntryType.INCIDENCIA,
-          status: EntryStatus.ABIERTO,
-          title: `Garantía sin resolver tras check-out · reserva ${reservation.code}`,
-          description:
-            `La salida fue confirmada con una garantía todavía en estado ${guarantee.state}. ` +
-            `${guestName}${roomNumber ? ` · habitación ${roomNumber}` : ''}. ` +
-            `Monto registrado: ${guarantee.currency} ${guarantee.amount.toString()}. ` +
-            'Debe devolverse, aplicarse o cerrarse con respaldo antes de dar por terminada la incidencia.',
-          category: 'GARANTIA_POST_SALIDA',
-          reservationId: reservationRefId,
-          guestId: reservation.guestId,
-          priority: Priority.CRITICA,
-          severity: Severity.CRITICA,
-          impact: Impact.ECONOMICO,
-          immediateAction: 'Resolver el estado final de la garantía y dejar respaldo de la decisión.',
-          ownerId: user.id,
-          occurredAt: new Date(),
-          tags: ['garantia', 'post-checkout', marker],
-          requiresFollowUp: true,
-          createdById: user.id,
-        },
-      });
-
-      await tx.alert.upsert({
-        where: { dedupeKey: `guarantee-unresolved-checkout:${guarantee.id}` },
-        create: {
-          dedupeKey: `guarantee-unresolved-checkout:${guarantee.id}`,
-          type: AlertType.GARANTIA_SIN_RESOLVER_EN_SALIDA,
-          level: AlertLevel.CRITICA,
-          status: AlertStatus.NUEVA,
-          title: `Garantía sin resolver tras check-out: ${guestName}`,
-          message: `Reserva ${reservation.code}. Incidencia #${entry.humanId} asignada inicialmente a ${user.name}.`,
-          entryId: entry.id,
-          reservationId: reservationRefId,
-          guestId: reservation.guestId,
-          guaranteeId: guarantee.id,
-          auto: true,
-        },
-        update: {
-          level: AlertLevel.CRITICA,
-          status: AlertStatus.NUEVA,
-          title: `Garantía sin resolver tras check-out: ${guestName}`,
-          message: `Reserva ${reservation.code}. Incidencia #${entry.humanId} asignada inicialmente a ${user.name}.`,
-          entryId: entry.id,
-          reservationId: reservationRefId,
-          guestId: reservation.guestId,
-          guaranteeId: guarantee.id,
-          resolvedAt: null,
-          resolvedById: null,
-          resolutionNote: null,
-          deletedAt: null,
-        },
-      });
-
-      await recordAudit(
-        {
-          entity: 'OperationalEntry',
-          entityId: entry.id,
-          action: AuditAction.CREAR,
-          user,
-          summary: `Incidencia automática por garantía ${guarantee.id} abierta después del check-out`,
-          after: {
-            reservationId: reservationRefId,
-            guaranteeId: guarantee.id,
-            ownerId: user.id,
-            state: guarantee.state,
-          },
-        },
-        tx,
-      );
-    });
-    created += 1;
-  }
-  return created;
-}
 
 function refresh(roomNumber?: string | null, reservationRefId?: string | null) {
   revalidatePath('/');
@@ -270,7 +108,7 @@ export async function completeStayCheckoutAction(
       returnedCount: input.returnedKeyCount,
     });
 
-    await inheritPendingStayContext(stay.id);
+    await inheritPendingStayContext(stay.id,user);
     const guaranteeIncidents = await ensureUnresolvedGuaranteeIncidents(
       user,
       stay.reservationRefId,
@@ -394,6 +232,7 @@ export async function modifyStayAction(
     const newText = `IN_HOUSE · salida ${nextDeparture.toLocaleString('es-CL', { timeZone: 'America/Santiago' })}`;
 
     await prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
       await tx.roomStay.update({
         where: { id: stay.id },
         data: {
@@ -420,7 +259,7 @@ export async function modifyStayAction(
         });
       }
 
-      await tx.operationalEntry.create({
+      await createNativeEntry(tx,{
         data: {
           type: EntryType.NOVEDAD,
           status: EntryStatus.RESUELTO,
@@ -486,7 +325,7 @@ export async function deleteStayPreservingPendingAction(
   return runAction(async () => {
     const user = await requirePermission('stay.delete');
     const input = parseOrThrow(deleteSchema, formDataToObject(formData));
-    await inheritPendingStayContext(input.stayId);
+    await inheritPendingStayContext(input.stayId,user);
     const result = await softDeleteStay(user, input);
     const roomNumber = result.stay.room?.number ?? null;
     refresh(roomNumber);

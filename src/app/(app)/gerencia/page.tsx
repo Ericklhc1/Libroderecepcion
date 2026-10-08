@@ -194,7 +194,7 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
         <p className="mt-3 text-xs text-slate-400">
           Fotografía generada {formatDateTime(cockpit.generatedAt)} · del {formatDateTime(cockpit.period.current.from)} al {formatDateTime(cockpit.period.current.to)} · incluye hoy parcial. Comparación con {periodLabel} calendario completos anteriores.
         </p>
-        <p className="mt-2 text-xs text-slate-500">{cockpit.scope} Las alertas de trabajo pendiente son actuales, fuera del corte histórico.</p>
+        <details className="metric-note mt-2 text-xs text-slate-500"><summary title={cockpit.scope} className="cursor-help">Alcance de indicadores ⓘ</summary><p role="tooltip">{cockpit.scope} Las alertas de trabajo pendiente son actuales, fuera del corte histórico.</p></details>
       </header>
       <Link href="/coordinacion" className="inline-block text-sm font-medium underline">Ver responsables, recepción y continuidad entre áreas →</Link>
 
@@ -325,8 +325,8 @@ export default async function ManagementPage({ searchParams }: { searchParams: S
             <div className="grid grid-cols-2 gap-0 md:grid-cols-4">
               <Metric label="Tareas en plazo" value={pct(cockpit.execution.taskOnTimeRate)} hint={`${cockpit.execution.tasksOnTime} de ${cockpit.execution.tasksCompleted} terminadas en el período`} />
               <Metric label="Tareas vencidas" value={cockpit.execution.overdueTasks} hint="Abiertas ahora; sin corte de creación" emphasis={cockpit.execution.overdueTasks > 0} />
-              <Metric label="Entregas recibidas" value={pct(cockpit.execution.handoverComplianceRate)} hint={`${cockpit.execution.handoversReceived} de ${cockpit.execution.handoversSent} enviadas en el período`} />
-              <Metric label="Turnos cerrados" value={pct(cockpit.execution.shiftClosureRate)} hint={`${cockpit.execution.shiftsClosed} de ${cockpit.execution.shiftsTotal} turnos no anulados`} />
+              <Metric label="Entregas recibidas" value={pct(cockpit.execution.handoverComplianceRate)} hint={`${cockpit.execution.handoversReceived} de ${cockpit.execution.handoversSent} enviadas en el período. ${cockpit.scopes.shifts}`} />
+              <Metric label="Turnos cerrados" value={pct(cockpit.execution.shiftClosureRate)} hint={`${cockpit.execution.shiftsClosed} de ${cockpit.execution.shiftsTotal} turnos no anulados. ${cockpit.scopes.shifts}`} />
             </div>
           </div>
 

@@ -26,7 +26,7 @@ describe('Cockpit estratégico de Gerencia', () => {
     const source = readFileSync('src/server/services/management.ts', 'utf8');
 
     expect(source).toContain('prisma.task.');
-    expect(source).toContain('prisma.operationalEntry.');
+    expect(source).toContain('readEntries(prisma, user)');
     expect(source).toContain('prisma.shiftHandover.');
     expect(source).toContain('prisma.cashAudit.');
     expect(source).toContain('getRoomMonitorOverview');

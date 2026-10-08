@@ -1,3 +1,5 @@
+import { SimpleNoveltiesPage } from '@/components/operational/simple-novelties';
+import { simpleNoveltiesEnabled } from '@/server/services/simple-novelties';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Printer } from 'lucide-react';
 import { requirePageUser } from '@/server/auth/guard';
@@ -36,6 +38,7 @@ export default async function BookPage({
   const user = await requirePageUser();
   const params = await searchParams;
   const clase = typeof params.clase === 'string' ? params.clase : 'entry';
+  if(clase==='entry'&&await simpleNoveltiesEnabled())return <SimpleNoveltiesPage user={user} params={params}/>;
   const tipo = typeof params.tipo === 'string' ? params.tipo : undefined;
   const parsedFilters = parseBookFilters(params);
   const receptionDesk = isReceptionDeskRole(user.roleKey);

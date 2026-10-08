@@ -17,6 +17,8 @@ import {
   percentile,
 } from '@/server/services/operational-health';
 
+const observer={id:'system-observability-synthetic',permissions:[],isSystemAdmin:true};
+
 describe('observabilidad operativa P0/P1/P2', () => {
   beforeEach(async () => {
     await resetOperationalData();
@@ -86,7 +88,7 @@ describe('observabilidad operativa P0/P1/P2', () => {
 
   it('devuelve panel vacío sin inventar valores', async () => {
     const health = await getOperationalHealth(
-      operationalHealthRange('today', new Date('2026-09-26T17:00:00.000Z')),
+      operationalHealthRange('today', new Date('2026-09-26T17:00:00.000Z')),observer,
     );
 
     expect(health.shifts.started).toBe(0);
@@ -295,7 +297,7 @@ describe('observabilidad operativa P0/P1/P2', () => {
       ],
     });
 
-    const health = await getOperationalHealth(operationalHealthRange('7d', now));
+    const health = await getOperationalHealth(operationalHealthRange('7d', now),observer);
     expect(health.shifts.started).toBe(1);
     expect(health.shifts.closed).toBe(1);
     expect(health.shifts.medianCloseMs).toBe(300_000);

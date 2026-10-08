@@ -251,6 +251,7 @@ export async function updateGuaranteeAction(
     const user = await requirePermission('cash.guarantee_in');
     const input = parseOrThrow(guaranteeUpdateSchema, formDataToObject(formData));
     await updateGuarantee(user, input, revisionFromForm(formData));
+    revalidatePath(`/caja/garantias/${input.id}`);
     refreshGuarantees();
     return {
       ok: true as const,

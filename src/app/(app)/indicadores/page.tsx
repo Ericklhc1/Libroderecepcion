@@ -40,10 +40,10 @@ export default async function MetricsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePagePermission('metrics.view');
+  const user=await requirePagePermission('metrics.view');
   const params = await searchParams;
   const days = normalizeMetricDays(Number(typeof params.dias === 'string' ? params.dias : '30'));
-  const metrics = await getMetrics(defaultRange(days));
+  const metrics = await getMetrics(defaultRange(days),user);
 
   const maxIncidents = Math.max(1, ...metrics.incidents.byDepartment.map((d) => d.count));
   const maxVolume = Math.max(1, ...metrics.volumeByShift.map((v) => v.count));
@@ -78,7 +78,7 @@ export default async function MetricsPage({
           ))}
         </nav>
       </header>
-      <p className="text-xs text-slate-500">{metrics.scope}</p>
+      <details className="metric-note text-xs text-slate-500"><summary title={metrics.scope} className="cursor-help">Alcance de indicadores ⓘ</summary><p role="tooltip">{metrics.scope}</p></details>
 
       <DisclosureCard title="Tareas" description={metrics.definitions.tasks} defaultOpen contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

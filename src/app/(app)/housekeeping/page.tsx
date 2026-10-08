@@ -1,3 +1,4 @@
+import { SimpleAreaNovelties } from '@/components/operational/simple-novelties';
 import Link from 'next/link';
 import { HK_ROOM_LABELS, type HkRoomState } from '@/domain/housekeeping-room-board';
 import { ContextWorklist, type ContextWorklistRow } from '@/components/operational/context-worklist';
@@ -26,7 +27,7 @@ function Snapshot({value}:{value:Prisma.JsonValue}){
   const work=Array.isArray(value.work)?value.work:[];const loans=Array.isArray(value.loans)?value.loans:[];
   return <div className="space-y-2 text-xs text-slate-600"><p>{work.length} trabajos pendientes · {loans.length} entregas de llaves abiertas al guardar.</p><ul className="space-y-1">{work.map((w,i)=>w&&typeof w==='object'&&!Array.isArray(w)?<li key={i}>#{String(w.humanId)} · {String(w.location??'Sin ubicación')} · {HK_WORK_LABELS[String(w.status)]??String(w.status)} · {typeof w.assignedTo==='object'&&w.assignedTo&&!Array.isArray(w.assignedTo)?String(w.assignedTo.name):'Por asignar'}{w.blockReason?` · Impedimento: ${String(w.blockReason)}`:''}</li>:null)}</ul><ul className="space-y-1">{loans.map((l,i)=>l&&typeof l==='object'&&!Array.isArray(l)?<li key={i}>Entrega #{String(l.humanId)} · {String(l.collaboratorName??'Personal del área')} · {Array.isArray(l.items)?l.items.map(k=>k&&typeof k==='object'&&!Array.isArray(k)?`${String(k.keyCode)} (${String(k.destinationName)})`:'').join(', '):''}</li>:null)}</ul></div>;
 }
-export default async function HousekeepingPage({searchParams}:{searchParams:Promise<{vista?:string;fecha?:string;area?:string;piso?:string;responsable?:string;pagina?:string;aviso?:string;q?:string;estado?:string}>}){
+export default async function HousekeepingPage({searchParams}:{searchParams:Promise<{vista?:string;fecha?:string;area?:string;piso?:string;responsable?:string;pagina?:string;novedadesPagina?:string;aviso?:string;q?:string;estado?:string}>}){
   const user=await requireHousekeepingPageUser();const params=await searchParams;
   const view=params.vista??(user.permissions.includes('housekeeping.work')&&!user.permissions.includes('housekeeping.view')?'mios':'');
   const board=await getHkWorkday(user,{date:params.fecha,departmentId:params.area,view,floor:/^[456]$/.test(params.piso??'')?params.piso:undefined,responsible:params.responsable,page:Number(params.pagina??1),q:params.vista==='vincular'?undefined:params.q,state:params.estado,focusId:params.aviso&&/^\d+$/.test(params.aviso)?Number(params.aviso):undefined});
@@ -81,6 +82,7 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
       </div>,
     };
   });
+  const simpleAreaNovelties=await SimpleAreaNovelties({user,page:Number(params.novedadesPagina)||1,baseHref:operationalListHref('/housekeeping',params),area:board.departmentId,q:typeof params.q==='string'?params.q:undefined});
   return <div className="mx-auto max-w-6xl space-y-4 surface-enter">
     <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-xl font-semibold text-petrol-900">{title}</h1><p className="mt-1 text-sm text-slate-600">{board.areas.find(a=>a.id===board.departmentId)?.name??'Housekeeping'} · {board.date.split('-').reverse().join('/')} · Trabajo, revisión y continuidad del área.</p></div><div className="flex flex-wrap gap-2">{board.canAssign&&<PrepareDayForm departmentId={board.departmentId} date={board.date} count={board.routines.filter(r=>r.active).length}/>} {board.canRequest&&<NewWorkForm key={`${board.departmentId}-${board.date}`} requestKey={randomUUID()} date={board.date} departmentId={board.departmentId} rooms={board.rooms} zones={board.zones} team={board.workload} canAssign={board.canAssign}/>}</div></header>
     <ListFilterBar clearHref="/housekeeping" searchValue={view==='vincular'?'':params.q} searchPlaceholder="Buscar folio, trabajo, habitación o ubicación…">
@@ -90,9 +92,10 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
       <details className="w-full border-t border-slate-100 pt-2"><summary className="cursor-pointer text-sm font-medium">Más filtros</summary><div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="min-w-0 text-xs font-medium text-slate-600">Día operativo<input className="input-base mt-1" name="fecha" type="date" defaultValue={board.date}/></label>
         <label className="text-xs font-medium text-slate-600">Piso<select className="input-base mt-1" name="piso" defaultValue={params.piso??''}><option value="">Todos / zonas comunes</option>{[4,5,6].map(f=><option key={f} value={f}>Piso {f}</option>)}</select></label>
-        {board.teamVisible&&<label className="min-w-0 text-xs font-medium text-slate-600">Responsable<select className="input-base mt-1" name="responsable" defaultValue={params.responsable??''}><option value="">Todo el equipo</option>{board.workload.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+    {board.teamVisible&&<label className="min-w-0 text-xs font-medium text-slate-600">Responsable<select className="input-base mt-1" name="responsable" defaultValue={params.responsable??''}><option value="">Todo el equipo</option>{board.workload.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
       </div></details>
     </ListFilterBar>
+    {simpleAreaNovelties}
     <p className="text-xs text-slate-500">Los indicadores resumen el día y su continuidad dentro de tu acceso; buscar o filtrar sólo cambia la lista de trabajos.</p>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><StatTile label="Por asignar" value={board.counts.unassigned}/><StatTile label="Por revisar" value={board.counts.review}/><StatTile label="Con impedimento" value={board.counts.blocked}/><StatTile label="Terminados del día" value={board.counts.completed}/></div>
     {board.teamVisible&&<section className="card space-y-3 p-4" aria-label="Tablero de habitaciones">

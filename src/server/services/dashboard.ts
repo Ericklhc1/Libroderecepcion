@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import {visibleHandover} from './handover-snapshot';
@@ -105,8 +106,8 @@ export async function getDashboardData(user: CurrentUser) {
     ) SELECT r.id,r."humanId",r.action,r.status,r."displayGroupTotal",totals.total AS "sourceTotal" FROM (SELECT COUNT(*)::integer AS total FROM eligible) totals LEFT JOIN ranked r ON r.position<=20 ORDER BY r.status DESC,r.due ASC,r.action ASC,r.position ASC
   `);return {items:rows.filter(row=>row.id!==null),total:rows[0]?.sourceTotal??0};};
   const entryCandidates=async()=> (await Promise.all([
-    prisma.operationalEntry.findMany({where:{AND:[entryWhere,{dueAt:{lt:now}}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{dueAt:'asc'},{id:'asc'}],take:9}),
-    prisma.operationalEntry.findMany({where:{AND:[entryWhere,{OR:[{dueAt:null},{dueAt:{gte:now}}]}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{id:'asc'}],take:9}),
+    readEntries(prisma,user).findMany({where:{AND:[entryWhere,{dueAt:{lt:now}}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{dueAt:'asc'},{id:'asc'}],take:9}),
+    readEntries(prisma,user).findMany({where:{AND:[entryWhere,{OR:[{dueAt:null},{dueAt:{gte:now}}]}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{id:'asc'}],take:9}),
   ])).flat();
   const [
     incoming,
@@ -148,7 +149,7 @@ export async function getDashboardData(user: CurrentUser) {
       select: { id: true, status: true },
       orderBy: { actualStart: 'asc' },
     }),
-    prisma.operationalEntry.count({where:entryWhere}),
+    readEntries(prisma,user).count({where:entryWhere}),
   ]);
 
   const overdueTasks=taskCandidateData.items;const followUps=followCandidateData.items;
@@ -169,8 +170,8 @@ export async function getDashboardData(user: CurrentUser) {
     // El «turno siguiente» ya no se deduce por adyacencia: es el que esté
     // en curso, que puede ser el propio o ninguno.
     getCurrentShift(),
-    myShift ? getShiftMetrics(myShift.id) : null,
-    prisma.operationalEntry.count({
+    myShift ? getShiftMetrics(myShift.id,user) : null,
+    readEntries(prisma,user).count({
       where: {
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
@@ -184,7 +185,7 @@ export async function getDashboardData(user: CurrentUser) {
     prisma.task.count({
       where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES } },
     }),
-    prisma.operationalEntry.count({
+    readEntries(prisma,user).count({
       where: {
         deletedAt: null,
         type: EntryType.INCIDENCIA,

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import {useSimpleNoveltyPath} from './simple-novelty-access';
 import { usePathname } from 'next/navigation';
 import { CalendarClock, LockKeyhole } from 'lucide-react';
 import type { ReceptionOperationMode } from '@/server/services/reception-operation-gate';
@@ -8,13 +9,19 @@ import type { ReceptionOperationMode } from '@/server/services/reception-operati
 export function ReceptionOperationGate({
   mode,
   handoverId,
+  simpleNovelties=false,
 }: {
   mode: ReceptionOperationMode;
   handoverId?: string | null;
+  simpleNovelties?: boolean;
 }) {
   const pathname = usePathname();
+  const simplePath=useSimpleNoveltyPath();
 
   if (mode === 'ACTIVE') return null;
+  // Only the simple book exposes resolution to an outgoing receptionist;
+  // every server action still applies its own permission and shift barriers.
+  if(simpleNovelties && simplePath===pathname)return null;
   if (
     pathname === '/turno' ||
     pathname.startsWith('/turno/entrega/') ||

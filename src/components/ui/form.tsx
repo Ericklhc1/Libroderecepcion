@@ -252,8 +252,15 @@ export function ActionForm({
   const draftKey = draftScope ? `aroh:form-draft:v1:${draftScope}` : null;
   const draftFieldKey = draftFields.join('|');
   const formId = useId();
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const preparationKey=JSON.stringify([formId,draftKey,draftFieldKey,draftRevision??null]);
+  const [preparedFormKey,setPreparedFormKey]=useState<string|null>(null);
+  const actionFormReady=preparedFormKey===preparationKey;
   const actionWithImmediateDialogClose = useCallback(async (previous: ActionState | null, formData: FormData) => {
     const draft = submittedDraft.current;
+    // Hydration may retain the server DOM id even when React's useId differs.
+    // Capture the actual submitted node before revalidation can replace it.
+    const receiptFormId=formRef.current?.id??formId;
     const result = await action(previous, formData);
     // Revalidation can unmount this form before useActionState commits. Clear
     // only the submitted snapshot here, never a newer edit made while waiting.
@@ -263,9 +270,9 @@ export function ActionForm({
         newerDraft = draft.raw !== undefined && sessionStorage.getItem(draft.key) !== draft.raw;
         if (!newerDraft) sessionStorage.removeItem(draft.key);
       } catch { /* Storage is optional; never turn a confirmed save into an error. */ }
-      if (!newerDraft) window.dispatchEvent(new CustomEvent('aroh:form-draft-saved', { detail: { key: draft.key, formId } }));
+      if (!newerDraft) window.dispatchEvent(new CustomEvent('aroh:form-draft-saved', { detail: { key: draft.key, formId:receiptFormId } }));
     }
-    if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId } }));
+    if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId:receiptFormId } }));
     // Server Actions may persist before React commits useActionState's returned state.
     // Do not refresh from inside the action wrapper: doing so keeps React's action
     // transition pending and delays the committed state that sibling controls need.
@@ -291,7 +298,7 @@ export function ActionForm({
     if (!draftKey) return;
     dirtyDraft.current = false;
     draftBaseRevision.current = draftRevision ?? null;
-    const form = document.getElementById(formId) as HTMLFormElement | null;
+    const form = formRef.current;
     try {
       const raw = sessionStorage.getItem(draftKey);
       const values = decodeFormDraft(raw, draftFieldKey.split('|'));
@@ -311,7 +318,7 @@ export function ActionForm({
       if (!(event instanceof CustomEvent) || event.detail?.key !== draftKey) return;
       // A replacement mounted by revalidation may have recovered the old draft
       // just before its action returned. Its defaults are the new saved record.
-      if (event.detail.formId !== formId) form?.reset();
+      if (event.detail.formId !== form?.id) form?.reset();
       draftBaseRevision.current = draftRevision ?? null;
       cleared();
     };
@@ -327,7 +334,7 @@ export function ActionForm({
 
   useEffect(() => {
     if (!state) return;
-    const form = document.getElementById(formId) as HTMLFormElement | null;
+    const form = formRef.current;
     const laterEdits = submittedDraft.current && submittedDraft.current.edit !== draftEdit.current
       ? latestDraftControls.current : null;
     if (state.ok) {
@@ -364,12 +371,20 @@ export function ActionForm({
     onError,
   ]);
 
+  // Browser journeys must wait for native handlers and draft restoration,
+  // rather than submitting the progressively enhanced HTML before hydration.
+  useEffect(() => {
+    setPreparedFormKey(preparationKey);
+  }, [preparationKey]);
+
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 
   return (
     <FormContext.Provider value={{ errors }}>
       <form
+        ref={formRef}
         id={formId}
+        data-action-form-ready={actionFormReady ? 'true' : undefined}
         action={formAction}
         onChange={(event) => {
           if (!draftKey) return;

@@ -154,7 +154,7 @@ describe('registros del libro operativo', () => {
     expect(corrected.occurredAt).toEqual(date);
     expect(corrected.impact).toBeNull();
     await expect(updateEntry(receptionist, { id: incident.id, severity: null })).rejects.toThrow('gravedad');
-    expect((await getEntry(incident.id)).severity).toBe(Severity.ALTA);
+    expect((await getEntry(incident.id, receptionist)).severity).toBe(Severity.ALTA);
   });
 
   it('avisa a supervisión cuando la incidencia es crítica', async () => {
@@ -294,7 +294,7 @@ describe('registros del libro operativo', () => {
 
     await createFollowUp(receptionist, { entryId: entry.id, action: 'Llamada al proveedor.' });
 
-    const updated = await getEntry(entry.id);
+    const updated = await getEntry(entry.id, receptionist);
     expect(updated.requiresFollowUp).toBe(true);
   });
 

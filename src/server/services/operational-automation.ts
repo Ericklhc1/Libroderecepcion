@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
@@ -242,9 +243,9 @@ export async function runOperationalAutomations(now = new Date(), deadlineAt = D
             const canEscalate=effect.kind==='housekeeping'?await hkCapability(recipient,policy.departmentId,'housekeeping.assign',tx):recipient.permissions.includes(effect.kind==='entry'?'entry.edit':effect.kind==='task'?'task.assign':'supervision.followup.manage');
             if(!canEscalate)throw new ForbiddenError('El destinatario no conserva autoridad de coordinación para este trabajo.');
             const revision=new Date(effect.revision);
-            const unchanged=effect.kind==='entry'?await tx.operationalEntry.count({where:{id:effect.id,updatedAt:revision}}):effect.kind==='task'?await tx.task.count({where:{id:effect.id,updatedAt:revision}}):effect.kind==='housekeeping'?await tx.housekeepingRequest.count({where:{id:effect.id,updatedAt:revision}}):await tx.followUp.count({where:{id:effect.id,updatedAt:revision}});
+            const unchanged=effect.kind==='entry'?await readEntries(tx, {engine:"automation"}).count({where:{id:effect.id,updatedAt:revision}}):effect.kind==='task'?await tx.task.count({where:{id:effect.id,updatedAt:revision}}):effect.kind==='housekeeping'?await tx.housekeepingRequest.count({where:{id:effect.id,updatedAt:revision}}):await tx.followUp.count({where:{id:effect.id,updatedAt:revision}});
             if(!unchanged){await tx.operationalAutomationRun.update({where:{id:run.id},data:{status:'SKIPPED',result:{reason:'El origen cambió; se reevaluará en el próximo barrido.'},completedAt:new Date()}});return;}
-            const visible = effect.kind === 'entry' ? await tx.operationalEntry.count({ where: { id: effect.id, AND: [coordinationEntries(recipient)] } }) : effect.kind === 'task' ? await tx.task.count({ where: { id: effect.id, AND: [coordinationTasks(recipient)] } }) : effect.kind === 'housekeeping' ? await tx.housekeepingRequest.count({ where: { id: effect.id, AND: [await hkWorkVisibility(recipient, tx)] } }) : effect.kind === 'followup' ? await tx.followUp.count({where:{id:effect.id,AND:[coordinationFollowUps(recipient)]}}) : 0;
+            const visible = effect.kind === 'entry' ? await readEntries(tx, recipient).count({ where: { id: effect.id, AND: [coordinationEntries(recipient)] } }) : effect.kind === 'task' ? await tx.task.count({ where: { id: effect.id, AND: [coordinationTasks(recipient)] } }) : effect.kind === 'housekeeping' ? await tx.housekeepingRequest.count({ where: { id: effect.id, AND: [await hkWorkVisibility(recipient, tx)] } }) : effect.kind === 'followup' ? await tx.followUp.count({where:{id:effect.id,AND:[coordinationFollowUps(recipient)]}}) : 0;
             if (!visible) throw new ForbiddenError('Destinatario sin acceso al origen.');
             if(config.trigger==='UNRECEIVED'&&(effect.kind==='entry'||effect.kind==='task')){
               const claim={id:effect.id,updatedAt:revision,workAcknowledgedAt:null,workEscalatedAt:null};

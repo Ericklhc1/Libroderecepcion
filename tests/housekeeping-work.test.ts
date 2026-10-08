@@ -1,12 +1,17 @@
+import {prisma as applicationPrisma} from '@/lib/prisma';
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createShift, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { hotelDateKey } from '@/domain/time';
 import { createHkWork, changeHkWork, getHkWorkday, saveHkRoutine, prepareHkDay, confirmHkAvailability, saveHkHandover, receiveHkHandover, delegateHk, revokeHkDelegation, organizeLegacyHkWork, getHkSources } from '@/server/services/housekeeping-work';
 import { changeHousekeepingRequest } from '@/server/services/housekeeping';
 import { searchOperationalRecords } from '@/server/services/global-search';
+import {createEntry} from '@/server/services/entries';
+import {resolveSimpleNovelty} from '@/server/services/simple-novelties';
+import {getSimpleNoveltyContinuity} from '@/server/services/simple-novelty-continuity';
+import {operationalRecordRevision} from '@/server/security/authorized-revision';
 import { getEntry } from '@/server/services/entries';
 import { hkAllowedActions, hkNextStatus, hkInspectionRequired } from '@/domain/housekeeping-work';
 import { resolveFrontiPageContext } from '@/server/ai/fronti-v2/page-context';
@@ -147,6 +152,30 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     await change(maid,r.id,'RETOMAR');expect(JSON.stringify((await prisma.housekeepingHandover.findUniqueOrThrow({where:{id:hand.id}})).snapshot)).toContain('Falta acceso');
     expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('EN_GESTION');
   });
+  it('filtra sólo los trabajos presentes en fotografías visibles y no consulta históricos sin fotografías',async()=>{
+    const request=await createHkWork(supervisor,input());const spy=vi.spyOn(applicationPrisma.housekeepingRequest,'findMany');
+    try{
+      await getHkWorkday(supervisor,{departmentId:area});expect(spy.mock.calls.filter(([args])=>args?.where?.NOT)).toHaveLength(0);
+      await saveHkHandover(supervisor,{requestKey:randomUUID(),departmentId:area,workDate:date(),note:'Evidencia acotada'});spy.mockClear();
+      await getHkWorkday(supervisor,{departmentId:area});const historical=spy.mock.calls.filter(([args])=>args?.where?.NOT);expect(historical).toHaveLength(1);expect(historical[0]?.[0]?.where?.OR).toEqual([{id:{in:[request.id]}},{humanId:{in:[request.humanId]}}]);
+    }finally{spy.mockRestore();}
+  });
+  for(const type of ['NOVEDAD','INCIDENCIA'] as const)it(`no ofrece ni vincula ${type} como trabajo nuevo con modo simple encendido`,async()=>{
+    const entry=await createEntry(admin,{type,title:'Fuente simple de HK',description:'No introducir asignaciones',priority:'MEDIA',tags:[],requiresFollowUp:false,roomId,departmentId:area,...(type==='INCIDENCIA'?{severity:'ALTA' as const}:{})});
+    expect((await getHkSources(supervisor,area)).map(row=>row.id)).toContain(entry.id);await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:true,category:'pruebas'}});
+    expect((await getHkSources(supervisor,area)).map(row=>row.id)).not.toContain(entry.id);const audits=await prisma.auditLog.count();const notifications=await prisma.notification.count();
+    await expect(createHkWork(supervisor,{...input(),sourceEntryId:entry.id,assignedToId:maid.id})).rejects.toThrow(/novedades simples/);expect(await prisma.housekeepingRequest.count()).toBe(0);expect(await prisma.auditLog.count()).toBe(audits);expect(await prisma.notification.count()).toBe(notifications);
+    await prisma.systemSetting.update({where:{key:'book.simpleNovelties'},data:{value:false}});expect((await createHkWork(supervisor,{...input(),sourceEntryId:entry.id,assignedToId:maid.id})).sourceEntryId).toBe(entry.id);
+  });
+  it('una incidencia de Mantenimiento posterior a la revisión final invalida el borrador sin crear cadenas simples',async()=>{
+    await prisma.systemSetting.upsert({where:{key:'book.simpleNovelties'},create:{key:'book.simpleNovelties',value:true,category:'pruebas'},update:{value:true}});
+    const shift=await createShift({userId:reception.id,type:'DIA'});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:reception.id,finalReviewAt:now,pendingsReviewedAt:now,urgentAcknowledgedAt:now}});
+    const request=await createHkWork(supervisor,{...input(),assignedToId:maid.id});await change(maid,request.id,'COMENZAR');await change(maid,request.id,'IMPEDIMENTO','Fuga de agua');await change(supervisor,request.id,'MANTENIMIENTO','Revisar fuga');
+    const stored=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:request.id}});expect(stored.maintenanceEntryId).not.toBeNull();expect(await prisma.task.count({where:{entryId:stored.maintenanceEntryId}})).toBe(0);expect(await prisma.followUp.count({where:{entryId:stored.maintenanceEntryId}})).toBe(0);
+    expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:1,finalReviewAt:null,pendingsReviewedAt:null,urgentAcknowledgedAt:null});
+    const maintenance=await prisma.operationalEntry.findUniqueOrThrow({where:{id:stored.maintenanceEntryId!}});const continuity=await getSimpleNoveltyContinuity(maintenance.id,admin);expect(continuity.housekeeping).toHaveLength(0);expect(continuity.dependentHousekeeping.map(row=>row.id)).toContain(request.id);
+    expect((await resolveSimpleNovelty(admin,maintenance.id,operationalRecordRevision('entries',maintenance),'Fuga reparada y comprobada')).status).toBe('RESUELTO');await change(maid,request.id,'RETOMAR','Continuar limpieza después de reparación');expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:request.id}})).status).toBe('EN_GESTION');
+  });
   it('vincula una incidencia única a Mantenimiento sin inventar su resolución',async()=>{
     const r=await createHkWork(supervisor,{...input(),assignedToId:maid.id});await change(maid,r.id,'COMENZAR');await change(maid,r.id,'IMPEDIMENTO','Fuga de agua');await change(supervisor,r.id,'MANTENIMIENTO','Revisar fuga bajo lavamanos');
     const stored=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}});expect(stored.status).toBe('BLOQUEADO');expect(stored.maintenanceEntryId).not.toBeNull();await expect(change(supervisor,r.id,'MANTENIMIENTO','Reintento')).rejects.toThrow('Ya existe');
@@ -156,7 +185,7 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     const source=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Atención 512',description:'Instrucción inicial',roomId,createdById:reception.id}});
     const r=await createHkWork(reception,{...input(),sourceEntryId:source.id});await change(supervisor,r.id,'ASIGNAR','Atender',maid.id);await change(maid,r.id,'COMENZAR');await change(maid,r.id,'TERMINAR','Hecho');
     await prisma.operationalEntry.update({where:{id:source.id},data:{description:'Nueva instrucción',updatedAt:new Date(Date.now()+2000)}});await expect(change(supervisor,r.id,'APROBAR')).rejects.toThrow('instrucción cambió');await change(supervisor,r.id,'RECONFIRMAR','Revisada nueva instrucción');
-    expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('PENDIENTE');expect((await getEntry(source.id)).housekeepingRequest?.humanId).toBe(r.humanId);expect((await getEntry(source.id)).status).toBe('ABIERTO');
+    expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('PENDIENTE');expect((await getEntry(source.id, reception)).housekeepingRequest?.humanId).toBe(r.humanId);expect((await getEntry(source.id, reception)).status).toBe('ABIERTO');
   });
   it('sólo una actualización concurrente modifica la misma versión',async()=>{
     const r=await createHkWork(supervisor,{...input(),assignedToId:maid.id});const results=await Promise.allSettled([changeHkWork(maid,{id:r.id,version:1,action:'COMENZAR'}),changeHkWork(maid,{id:r.id,version:1,action:'IMPEDIMENTO',note:'No hay acceso'})]);expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);expect(await prisma.housekeepingEvent.count({where:{requestId:r.id}})).toBe(2);

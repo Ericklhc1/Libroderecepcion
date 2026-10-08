@@ -49,6 +49,24 @@ describe('Fronti proactivo', () => {
     await seedCatalog();
   });
 
+  it('conserva las señales derivadas para Supervisión y SysAdmin aunque su área o recepción estén ocultas',async()=>{
+    const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
+    const recipients=[];
+    for(const roleKey of [ROLE_KEYS.SUPERVISOR,ROLE_KEYS.SYSTEM_ADMIN]){
+      const user=await createUser({roleKey});const dept=await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}});
+      await prisma.user.update({where:{id:user.id},data:{frontiAccessEnabled:true,departmentId:dept.id}});recipients.push(user.id);
+    }
+    const areas=await prisma.department.findMany({where:{key:{in:['ADMINISTRACION','RECEPCION']}}});
+    const entry=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Origen sólo Supervisor',description:'Prueba sintética',createdById:author.id,hiddenFromDepartments:{connect:areas.map(a=>({id:a.id}))}}});
+    const task=await prisma.task.create({data:{entryId:entry.id,title:'Derivado vencido para revisión',createdById:author.id,dueAt:new Date(Date.now()-60000)}});
+    const result=await runFrontiProactiveSweep({trigger:'test-override'});
+    expect(result.notified).toBe(2);
+    const notices=await prisma.notification.findMany({where:{userId:{in:recipients},type:NotificationType.FRONTI_HALLAZGO}});
+    expect(notices.map(n=>n.userId).sort()).toEqual(recipients.sort());
+    expect(notices.every(n=>n.title.includes('Derivado vencido'))).toBe(true);
+    expect(await prisma.task.findUnique({where:{id:task.id}})).not.toBeNull();
+  });
+
   it('no convierte una señal Alert legada en hallazgo proactivo', async () => {
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Supervisión' });
     await createUser({ roleKey: ROLE_KEYS.SYSTEM_ADMIN, name: 'Sistema' });

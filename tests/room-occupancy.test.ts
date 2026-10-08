@@ -1,3 +1,4 @@
+import {buildHandoverSnapshot} from '@/server/services/handover-snapshot';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   GuaranteeKind,
@@ -10,6 +11,7 @@ import {
 import {
   ROLE_KEYS,
   createUser,
+  createShift,
   prisma,
   resetOperationalData,
   resetRoomsAndKeys,
@@ -56,6 +58,13 @@ describe('asignación manual y room move', () => {
     receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
   });
 
+  for(const simple of [true,false])it(`asignación y room move resueltos mantienen atribución e invalidación: simple=${simple}`,async()=>{
+    const shift=await createShift({userId:receptionist.id,type:'DIA',status:'ACTIVO'});await prisma.shiftAssignment.updateMany({where:{shiftId:shift.id},data:{activatedAt:new Date()}});await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:simple,category:'pruebas'}});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:receptionist.id,status:'BORRADOR',finalReviewAt:now,pendingsReviewedAt:now}});const reservation=await createReservation('NATIVE-SHIFT-421','Permanencia sintética');const source=await prisma.room.findUniqueOrThrow({where:{number:'421'}});const target=await prisma.room.findUniqueOrThrow({where:{number:'422'}});
+    const attached=await attachReservationToRoom(receptionist,{roomId:source.id,reservationRefId:reservation.id,status:RoomStayStatus.IN_HOUSE});await moveStayToRoom(receptionist,{stayId:attached.stayId,targetRoomId:target.id,note:'Cambio resuelto bajo turno activo'});const rows=await prisma.operationalEntry.findMany({where:{createdById:receptionist.id,type:'NOVEDAD',status:'RESUELTO'}});expect(rows).toHaveLength(3);expect(rows.every(row=>row.shiftId===(simple?shift.id:null))).toBe(true);expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).receptionSummaryRevision).toBe(simple?3:0);const photo=await buildHandoverSnapshot(receptionist,now,{shiftId:shift.id});expect(photo.filter(item=>rows.some(row=>row.id===item.refId))).toHaveLength(simple?3:0);
+  });
+  for(const simple of [true,false])it(`room move por Sysadmin sin turno invalida el contexto fotografiado: ${simple}`,async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const reservation=await createReservation('MOVE-PHOTO-421','Huésped sintético');const source=await prisma.room.findUniqueOrThrow({where:{number:'421'}});const target=await prisma.room.findUniqueOrThrow({where:{number:'422'}});const attached=await attachReservationToRoom(receptionist,{roomId:source.id,reservationRefId:reservation.id,status:'IN_HOUSE'});const shift=await createShift({userId:receptionist.id,type:'DIA'});await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:simple,category:'pruebas'}});const entry=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Pendiente de la habitación anterior',description:'Cambiar contexto firmado',createdById:receptionist.id,roomId:source.id,reservationId:reservation.id}});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:receptionist.id,status:'BORRADOR',finalReviewAt:now,pendingsReviewedAt:now,items:{create:{refType:'entry',refId:entry.id,section:'novedades',title:entry.title,detail:'HAB: 421',level:'INFORMATIVO'}}}});const moved=await moveStayToRoom(admin,{stayId:attached.stayId,targetRoomId:target.id});expect(moved.movedOpenEntries).toBe(1);expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:entry.id}})).toMatchObject({roomId:target.id});const changed=await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}});expect(changed.receptionSummaryRevision).toBe(simple?1:0);expect(changed.finalReviewAt).toEqual(simple?null:now);if(simple){expect((await buildHandoverSnapshot(receptionist,now,{shiftId:shift.id})).find(item=>item.refId===entry.id)!.detail).toContain('HAB: 422');expect((await prisma.auditLog.findFirstOrThrow({where:{entityId:entry.id,summary:{startsWith:'Contexto de estadía'}}})).after).toMatchObject({invalidatedDrafts:[draft.id]});}
+  });
   it('añade una reserva a una habitación como ocupada sin inventar otra identidad', async () => {
     const reservation = await createReservation('9001001', 'Huésped Manual');
     const room = await prisma.room.findUniqueOrThrow({ where: { number: '421' } });

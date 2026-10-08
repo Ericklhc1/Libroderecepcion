@@ -1,3 +1,6 @@
+import { getSettingBool, lockSimpleNoveltiesMode } from './settings';
+import { readEntries } from '@/server/services/entry-visibility';
+import { entryReadWhere } from './entry-visibility';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import { assertElementActor, lockHandover } from './handover-elements';
 import 'server-only';
@@ -36,7 +39,7 @@ import {
 } from '@/domain/shift';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 import { fromMinor } from '@/domain/cash';
-import { buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
+import { lockReceptionSummary, reloadReceptionReader, receptionSummaryKey, buildHandoverSnapshot, visibleSnapshotItems, visibleHandover, SNAPSHOT_SECTION_ORDER } from './handover-snapshot';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 import {
   cashBlockersForReceiving,
@@ -123,8 +126,8 @@ export type ShiftWithDetail = Prisma.ShiftGetPayload<{ include: typeof shiftIncl
  * Incluye `ENTREGA_ENVIADA` porque quien entregó sigue siendo responsable de su
  * turno hasta que alguien lo reciba: tiene que poder verlo y corregirlo.
  */
-export async function getMyOpenShift(userId: string) {
-  return prisma.shift.findFirst({
+export async function getMyOpenShift(userId: string, client:Prisma.TransactionClient=prisma) {
+  return client.shift.findFirst({
     where: {
       status: { in: [...OCCUPYING_SHIFT_STATUSES, ShiftStatus.ENTREGA_ENVIADA] },
       assignments: {
@@ -140,8 +143,8 @@ export async function getMyOpenShift(userId: string) {
 }
 
 /** Participación operativa real: es la que impide entrar simultáneamente en otro turno. */
-export async function getMyActiveShift(userId: string) {
-  return prisma.shift.findFirst({
+export async function getMyActiveShift(userId: string,client:Prisma.TransactionClient=prisma) {
+  return client.shift.findFirst({
     where: {
       status: { in: [...OCCUPYING_SHIFT_STATUSES, ShiftStatus.ENTREGA_ENVIADA] },
       assignments: {
@@ -242,9 +245,9 @@ export async function releaseIncompleteShiftReception(
       where: { id: currentHandover.id },
       data: {
         toShiftId: null,
-        receiverBriefingReviewedAt: null,
+        receiverBriefingReviewedAt: null, receiverBriefingSummaryKey:null,
         receiverCustodyReviewedAt: null,
-        receiverFinalReviewAt: null,
+        receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
         receiverUrgentAcknowledgedAt: null,
         receiverSessionId: null,
       },
@@ -453,8 +456,8 @@ export async function getShiftBriefing(user: CurrentUser, shift: { id: string; d
   const [incoming, openEntries, overdueTasks, myTasks, alerts, followUps] =
     await Promise.all([
       getPendingHandover(shift.id),
-      prisma.operationalEntry.findMany({
-        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+      readEntries(prisma, user).findMany({
+        where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
         include: {
           owner: { select: { id: true, name: true } },
           department: { select: { name: true } },
@@ -501,6 +504,7 @@ export async function getShiftBriefing(user: CurrentUser, shift: { id: string; d
 
   const comments = await prisma.comment.findMany({
     where: { deletedAt: null,AND:[
+      {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
       {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
       {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
       {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
@@ -1327,9 +1331,9 @@ export async function startReceptionShift(
         },
         data: {
           toShiftId: shift.id,
-          receiverBriefingReviewedAt: null,
+          receiverBriefingReviewedAt: null, receiverBriefingSummaryKey:null,
           receiverCustodyReviewedAt: null,
-          receiverFinalReviewAt: null,
+          receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
           receiverUrgentAcknowledgedAt: null,
         },
       });
@@ -1430,15 +1434,21 @@ export async function confirmReceptionReviewStep(
 
   if (params.step === 'BRIEFING') {
     return prisma.$transaction(async (tx) => {
+      await lockReceptionSummary(tx);
+    await lockSimpleNoveltiesMode(tx);
+
+    const reader=await reloadReceptionReader(tx,user);
       await lockHandover(tx, handover.id);
       await assertElementActor(tx, user, handover.id, 'confirmed');
+      const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
+      const summaryKey=receptionSummaryKey((await visibleHandover(reader,fresh,tx)).items);
       const now = new Date();
       const updated = await tx.shiftHandover.update({
         where: { id: handover.id },
         data: {
-          receiverBriefingReviewedAt: now,
+          receiverBriefingReviewedAt: now, receiverBriefingSummaryKey:summaryKey,
           receiverCustodyReviewedAt: null,
-          receiverFinalReviewAt: null,
+          receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
           receiverUrgentAcknowledgedAt: null,
         },
       });
@@ -1449,7 +1459,7 @@ export async function confirmReceptionReviewStep(
           action: AuditAction.CAMBIO_ESTADO,
           summary: `Entrega revisada por ${user.name} al iniciar la recepción`,
           user,
-          after: { receptionStep: 'BRIEFING', reviewedAt: now },
+          after: { receptionStep: 'BRIEFING', reviewedAt: now, receptionSummaryKey:summaryKey },
         },
         tx,
       );
@@ -1478,8 +1488,15 @@ export async function confirmReceptionReviewStep(
 
   if (params.step === 'CUSTODY') {
     return prisma.$transaction(async (tx) => {
+      await lockReceptionSummary(tx);
+    await lockSimpleNoveltiesMode(tx);
+
+    const reader=await reloadReceptionReader(tx,user);
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
+      const summaryKey=receptionSummaryKey((await visibleHandover(reader,fresh,tx)).items);
+      if(current.receiverBriefingSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
       const now = new Date();
       if (params.step !== 'BRIEFING') {
         if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
@@ -1491,7 +1508,7 @@ export async function confirmReceptionReviewStep(
         where: { id: handover.id },
         data: {
           receiverCustodyReviewedAt: now,
-          receiverFinalReviewAt: null,
+          receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
           receiverUrgentAcknowledgedAt: null,
         },
       });
@@ -1518,17 +1535,24 @@ export async function confirmReceptionReviewStep(
   }
 
   const hasUrgent = (await visibleHandover(user,handover)).items.some((item) => item.level === HandoverLevel.URGENTE);
-  if (hasUrgent && !params.urgentAcknowledged) {
+  const currentSimpleMode = await getSettingBool('book.simpleNovelties',false);
+  if ((currentSimpleMode || hasUrgent) && !params.urgentAcknowledged) {
     throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
   }
 
   return prisma.$transaction(async (tx) => {
+      await lockReceptionSummary(tx);
+    const currentSimpleMode=await lockSimpleNoveltiesMode(tx);
+
+    const reader=await reloadReceptionReader(tx,user);
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
       const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
-      const visible=await visibleHandover(user,fresh,tx);
+      const visible=await visibleHandover(reader,fresh,tx);
+      const summaryKey=receptionSummaryKey(visible.items);
+      if(current.receiverBriefingSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
       const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
-      if(currentHasUrgent&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
+      if((currentSimpleMode||currentHasUrgent)&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
       const now = new Date();
       if (params.step !== 'BRIEFING') {
         if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
@@ -1539,8 +1563,8 @@ export async function confirmReceptionReviewStep(
     const updated = await tx.shiftHandover.update({
       where: { id: handover.id },
       data: {
-        receiverFinalReviewAt: now,
-        receiverUrgentAcknowledgedAt: currentHasUrgent ? now : null,
+        receiverFinalReviewAt: now, receiverFinalSummaryKey:summaryKey,
+        receiverUrgentAcknowledgedAt: currentSimpleMode || currentHasUrgent ? now : null,
       },
     });
     await recordAudit(
@@ -1555,7 +1579,7 @@ export async function confirmReceptionReviewStep(
         after: {
           receptionStep: 'FINAL',
           reviewedAt: now,
-          urgentAcknowledged: currentHasUrgent,
+          urgentAcknowledged: currentHasUrgent, noveltiesAcknowledged:currentSimpleMode, receptionSummaryKey:summaryKey,
         },
       },
       tx,
@@ -2134,7 +2158,7 @@ export async function receiveHandover(
     throw new RuleError('Primero confirma la revisión final de la recepción.');
   }
   const hasUrgentItems = (await visibleHandover(user,incoming)).items.some((item) => item.level === HandoverLevel.URGENTE);
-  if (hasUrgentItems && !incoming.receiverUrgentAcknowledgedAt) {
+  if ((await getSettingBool('book.simpleNovelties',false)||hasUrgentItems) && !incoming.receiverUrgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso en la recepción.');
   }
 
@@ -2154,13 +2178,19 @@ export async function receiveHandover(
   }
 
   await prisma.$transaction(async (tx) => {
+    await lockReceptionSummary(tx);
+    const currentSimpleMode=await lockSimpleNoveltiesMode(tx);
+
+    const reader=await reloadReceptionReader(tx,user);
     await lockHandover(tx, incoming.id);
     const current = await assertElementActor(tx, user, incoming.id, 'confirmed');
     const fresh = await tx.shiftHandover.findUniqueOrThrow({where:{id:incoming.id},include:{items:true}});
-    const visible=await visibleHandover(user,fresh,tx);
+    const visible=await visibleHandover(reader,fresh,tx);
+    const summaryKey=receptionSummaryKey(visible.items);
+    if(current.receiverBriefingSummaryKey!==summaryKey||current.receiverFinalSummaryKey!==summaryKey)throw new RuleError('La entrega visible cambió. Vuelve a revisar la entrega antes de confirmar recepción.');
     const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
     if (!current.receiverBriefingReviewedAt || !current.receiverCustodyReviewedAt || !current.receiverFinalReviewAt ||
-      (currentHasUrgent && !current.receiverUrgentAcknowledgedAt)) {
+      ((currentSimpleMode||currentHasUrgent) && !current.receiverUrgentAcknowledgedAt)) {
       throw new RuleError('La custodia cambió. Revisa de nuevo la recepción antes de continuar.');
     }
     const blockers = await cashBlockersForReceiving(incoming.id, tx);
@@ -2296,10 +2326,13 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
   */
 
   return prisma.$transaction(async (tx) => {
+    await lockReceptionSummary(tx);
+
+    const reader=await reloadReceptionReader(tx,user);
     let existing=shift.handoverOut?await tx.shiftHandover.findUniqueOrThrow({where:{id:shift.handoverOut.id}}):null;
     if(existing){await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${existing.id} FOR UPDATE`;existing=await tx.shiftHandover.findUniqueOrThrow({where:{id:existing.id}});}
     if(existing&&!['BORRADOR','ANULADA'].includes(existing.status))throw new RuleError('Este turno ya envió su entrega.');
-    const snapshot=await buildHandoverSnapshot(user,new Date(),{client:tx,shiftId:shift.id});
+    const snapshot=await buildHandoverSnapshot(reader,new Date(),{client:tx,shiftId:shift.id});
     const handover = existing
       ? existing.status === HandoverStatus.ANULADA
         ? await tx.shiftHandover.update({
@@ -2339,6 +2372,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
         pendingsReviewedAt: null,
         finalReviewAt: null,
         urgentAcknowledgedAt: null,
+        receptionSummaryPreparedRevision:handover.receptionSummaryRevision,
         issuedById:user.id,
       },
     });
@@ -2433,20 +2467,26 @@ export async function confirmHandoverReviewStep(
   if (await isCashEnabled()) await assertShiftCashClosed(handover.fromShiftId);
 
   const now = new Date();
+  const simple = await getSettingBool('book.simpleNovelties',false);
 
-  if (params.step === 'FINAL' && !handover.pendingsReviewedAt) {
+  if (params.step === 'FINAL' && !simple && !handover.pendingsReviewedAt) {
     throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    await lockReceptionSummary(tx);
+    const currentSimpleMode=await lockSimpleNoveltiesMode(tx);
+
+    const reader=await reloadReceptionReader(tx,user);
     await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
     const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
     if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
-    if(fresh.issuedById!==user.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
-    if(params.step==='FINAL'&&!fresh.pendingsReviewedAt)throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
+    if(fresh.issuedById!==reader.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
+    if(fresh.receptionSummaryRevision!==fresh.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de revisarlo.');
+    if(params.step==='FINAL'&&!currentSimpleMode&&!fresh.pendingsReviewedAt)throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
     const freshItems=await tx.handoverItem.findMany({where:{handoverId:handover.id}});
-    const hasUrgent=(await visibleSnapshotItems(user,freshItems,true,tx)).some(i=>i.level===HandoverLevel.URGENTE);
-    if(params.step==='FINAL'&&hasUrgent&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste antes de continuar.');
+    const hasUrgent=(await visibleSnapshotItems(reader,freshItems,true,tx)).some(i=>i.level===HandoverLevel.URGENTE);
+    if(params.step==='FINAL'&&(currentSimpleMode||hasUrgent)&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste antes de continuar.');
 
     const row = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },
@@ -2458,8 +2498,9 @@ export async function confirmHandoverReviewStep(
               urgentAcknowledgedAt: null,
             }
           : {
+              pendingsReviewedAt: currentSimpleMode ? now : fresh.pendingsReviewedAt,
               finalReviewAt: now,
-              urgentAcknowledgedAt: hasUrgent ? now : null,
+              urgentAcknowledgedAt: currentSimpleMode || hasUrgent ? now : null,
             },
     });
 
@@ -2477,11 +2518,12 @@ export async function confirmHandoverReviewStep(
         user,
         after: {
           reviewStep: params.step,
+          noveltiesAcknowledged:params.step==='FINAL'&&currentSimpleMode,
           pendingsReviewedAt:
-            params.step === 'PENDINGS' ? now : handover.pendingsReviewedAt,
+            params.step === 'PENDINGS' || currentSimpleMode ? now : handover.pendingsReviewedAt,
           finalReviewAt: params.step === 'FINAL' ? now : null,
           urgentAcknowledgedAt:
-            params.step === 'FINAL' && hasUrgent ? now : null,
+            params.step === 'FINAL' && (currentSimpleMode || hasUrgent) ? now : null,
         },
       },
       tx,
@@ -2522,6 +2564,7 @@ export async function sendHandover(
     await assertShiftCashClosed(shift.id);
   }
 
+  if(handover.receptionSummaryRevision!==handover.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de enviar.');
   if (!handover.pendingsReviewedAt) {
     throw new RuleError('Antes de enviar, confirma la revisión de los pendientes del turno.');
   }
@@ -2529,15 +2572,20 @@ export async function sendHandover(
     throw new RuleError('Antes de enviar, confirma la revisión final de la entrega.');
   }
   const hasUrgentItems = (await visibleSnapshotItems(user,handover.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
-  if (hasUrgentItems && !handover.urgentAcknowledgedAt) {
+  if ((await getSettingBool('book.simpleNovelties',false)||hasUrgentItems) && !handover.urgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockReceptionSummary(tx);
+    const currentSimpleMode=await lockSimpleNoveltiesMode(tx);
+
+    const reader=await reloadReceptionReader(tx,user);
     await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
     const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
     if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
-    if(fresh.issuedById!==user.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
+    if(fresh.issuedById!==reader.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
+    if(fresh.receptionSummaryRevision!==fresh.receptionSummaryPreparedRevision)throw new RuleError('La selección de novedades cambió. Regenera el resumen de pendientes antes de enviar.');
     if(!fresh.pendingsReviewedAt||!fresh.finalReviewAt)throw new RuleError('Confirma de nuevo la revisión de pendientes y la revisión final antes de enviar.');
 
     // Sanitize old drafts at the shared boundary, preserving original item evidence.
@@ -2545,8 +2593,8 @@ export async function sendHandover(
       where: { handoverId: handover.id },
       orderBy: [{ level: 'asc' }, { order: 'asc' }],
     });
-    const items = await visibleSnapshotItems(user, originalItems, true, tx);
-    if(items.some(item=>item.level===HandoverLevel.URGENTE)&&!fresh.urgentAcknowledgedAt)throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
+    const items = await visibleSnapshotItems(reader, originalItems, true, tx);
+    if((currentSimpleMode||items.some(item=>item.level===HandoverLevel.URGENTE))&&!fresh.urgentAcknowledgedAt)throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
     const now = new Date();
     const sent = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },
@@ -2596,7 +2644,7 @@ export async function sendHandover(
     // Enviar la entrega NO termina la participación. El recepcionista saliente
     // queda bloqueado en el flujo de cierre hasta cerrar formalmente su turno.
     // La participación se libera únicamente en closeShift().
-    
+
     await recordAudit(
       {
         entity: 'ShiftHandover',

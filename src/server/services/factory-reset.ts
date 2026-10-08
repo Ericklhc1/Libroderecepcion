@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -89,7 +90,7 @@ export async function getResetPreview() {
     users,
     assignedKeys,
   ] = await Promise.all([
-    prisma.operationalEntry.count(),
+    readEntries(prisma, {engine:"reset"}).count(),
     prisma.task.count(),
     prisma.followUp.count(),
     prisma.alert.count(),

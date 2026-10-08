@@ -1,16 +1,21 @@
+import {lockSimpleNoveltiesMode} from './settings';
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
+import {assertEntryWorkDestination} from './entry-visibility';
 import { EntryType, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 /**
  * Una incidencia no es sólo una etiqueta: siempre nace con una tarea y un
- * seguimiento. Desde v1.4.0 no resuelve ni hereda contexto PMS.
+ * seguimiento en el modo anterior; la prueba simple no genera cadenas.
+ * Desde v1.4.0 no resuelve ni hereda contexto PMS.
  */
 export async function ensureIncidentWorkflow(entryId: string, client?: Prisma.TransactionClient, options: { leaveUnassigned?: boolean } = {}): Promise<void> {
   if (!client) return prisma.$transaction(tx => ensureIncidentWorkflow(entryId, tx, options));
   const tx = client;
+  if(await lockSimpleNoveltiesMode(tx))return;
   await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${entryId} FOR UPDATE`;
-  const entry = await tx.operationalEntry.findUnique({
+  const entry = await readEntries(tx, {engine:"incident"}).findUnique({
     where: { id: entryId },
     select: {
       id: true,
@@ -34,6 +39,11 @@ export async function ensureIncidentWorkflow(entryId: string, client?: Prisma.Tr
       where: { entryId: entry.id, deletedAt: null },
       select: { id: true },
     });
+    const followUp = await tx.followUp.findFirst({
+      where: { entryId: entry.id, deletedAt: null },
+      select: { id: true },
+    });
+    if(!task||!followUp)await assertEntryWorkDestination(tx,entry.id,entry.departmentId??'',ownerId??entry.createdById);
     const ensuredTask = task ?? await tx.task.create({
       data: {
         title: `Resolver incidencia: ${entry.title}`,
@@ -49,10 +59,6 @@ export async function ensureIncidentWorkflow(entryId: string, client?: Prisma.Tr
       select: { id: true },
     });
 
-    const followUp = await tx.followUp.findFirst({
-      where: { entryId: entry.id, deletedAt: null },
-      select: { id: true },
-    });
     if (!followUp) {
       await tx.followUp.create({
         data: {

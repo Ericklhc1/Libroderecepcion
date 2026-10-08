@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import {taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 
@@ -7,8 +8,7 @@ import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { listGymPasses } from './gym-pass';
 
-import {closureValidationAlertWhere} from './closure-validation-policy';
-import type {CurrentUser} from '@/server/auth/current-user';
+import {closureValidationAlertWhere,entryReadWhere,type EntryReader} from './entry-visibility';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
 
@@ -55,7 +55,7 @@ export function reportDateRange(fromRaw?: string | null, toRaw?: string | null):
 }
 
 export async function buildSupervisorReport(
-  user: Pick<CurrentUser,'id'|'permissions'>,
+  user: EntryReader,
   type: SupervisorReportType,
   range: { from: Date; to: Date },
 ): Promise<SupervisorReport> {
@@ -126,9 +126,9 @@ export async function buildSupervisorReport(
     currentOpenTasks,
     currentOpenAlerts,
   ] = await Promise.all([
-    prisma.operationalEntry.groupBy({
+    readEntries(prisma, user).groupBy({
       by: ['status'],
-      where: { deletedAt: null, occurredAt: { gte: range.from, lte: range.to } },
+      where: { AND:[entryReadWhere(user)], deletedAt: null, occurredAt: { gte: range.from, lte: range.to } },
       _count: { _all: true },
     }),
     prisma.task.groupBy({
@@ -147,8 +147,8 @@ export async function buildSupervisorReport(
       orderBy: { actualStart: 'asc' },
       take: 500,
     }),
-    prisma.operationalEntry.count({
-      where: { deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
+    readEntries(prisma, user).count({
+      where: { AND:[entryReadWhere(user)], deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
     }),
     prisma.task.count({
       where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },

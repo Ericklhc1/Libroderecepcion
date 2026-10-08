@@ -28,6 +28,8 @@ import {
 /** Esquemas de validación de servidor. La interfaz nunca es la única barrera. */
 
 export const entryCreateSchema = z.object({
+  hiddenDepartmentIds: z.preprocess(v => v === undefined ? [] : Array.isArray(v) ? v : [v], z.array(z.string().min(1)).max(100)).default([]),
+  includeInReceptionHandover: z.preprocess(v => v === undefined ? true : v === 'true' ? true : v === 'false' ? false : v, z.boolean()),
   type: z.nativeEnum(EntryType),
   title: zRequiredString(200, 'El título'),
   description: z

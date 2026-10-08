@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import type { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -38,7 +39,7 @@ export async function assertDynamicSteps(user:CurrentUser,policy:DynamicDelegati
       const id=String(step.fields[field]);
       const count=constraint.kind==='task'
         ?await tx.task.count({where:{id,departmentId:constraint.departmentId,status:{in:constraint.statuses as Prisma.EnumTaskStatusFilter['in']},AND:[coordinationTasks(user)]}})
-        :await tx.operationalEntry.count({where:{id,departmentId:constraint.departmentId,status:{in:constraint.statuses as Prisma.EnumEntryStatusFilter['in']},AND:[coordinationEntries(user)]}});
+        :await readEntries(tx, user).count({where:{id,departmentId:constraint.departmentId,status:{in:constraint.statuses as Prisma.EnumEntryStatusFilter['in']},AND:[coordinationEntries(user)]}});
       if(!count)throw new RuleError('El registro no está dentro del área, estado o acceso delegado.');
     }
   }

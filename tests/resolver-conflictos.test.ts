@@ -1,4 +1,6 @@
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {readEntries} from '@/server/services/entry-visibility';
+import * as entryServices from '@/server/services/entries';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   KeyStatus,
   PmsImportStatus,
@@ -8,6 +10,7 @@ import {
 import {
   ROLE_KEYS,
   createUser,
+  createShift,
   prisma,
   resetOperationalData,
   resetRoomsAndKeys,
@@ -28,6 +31,17 @@ describe('resolución global de conflictos', () => {
     await seedCatalog();
   });
 
+  for(const enabled of [true,false])for(const remaining of [true,false])it(`reconciliación invalida el borrador posterior al log bajo el mismo motor: simple=${enabled}/remaining=${remaining}`,async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:enabled,category:'pruebas'}});const shift=await createShift({userId:admin.id,type:'DIA'});const now=new Date();const escalation=await prisma.operationalEntry.create({data:{type:'INCIDENCIA',title:'Decisión humana previa',description:'Fotografía anterior',createdById:admin.id,category:'CONFLICTOS_REQUIEREN_DECISION',priority:'ALTA',severity:'ALTA'}});
+    if(remaining){const room=await prisma.room.findUniqueOrThrow({where:{number:'414'}});for(const reservationId of ['A-414','B-414'])await prisma.roomStay.create({data:{roomId:room.id,reservationId,guestNames:[reservationId],status:'IN_HOUSE',stage:'CONFIRMADO',sourceReport:'ACTIVIDAD',businessDate:new Date('2026-09-18T00:00:00.000Z')}});}
+    let draftId:string|null=null;const original=entryServices.createEntry;const spy=vi.spyOn(entryServices,'createEntry').mockImplementation(async(...args)=>{const entry=await original(...args);if(args[1].category==='RECONCILIACION_CONFLICTOS'){const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:admin.id,status:'BORRADOR',pendingsReviewedAt:now,finalReviewAt:now,urgentAcknowledgedAt:now,items:{create:{refType:'entry',refId:escalation.id,section:'incidencias',title:escalation.title,level:'IMPORTANTE'}}}});draftId=draft.id;}return entry;});
+    try{await resolveAllOperationalConflicts(admin,{now:hotelWallDateTime('2026-09-18',12)});}finally{spy.mockRestore();}
+    expect(draftId).not.toBeNull();const draft=await prisma.shiftHandover.findUniqueOrThrow({where:{id:draftId!}});expect(draft.receptionSummaryRevision).toBe(enabled?1:0);expect(draft.finalReviewAt).toEqual(enabled?null:now);expect(draft.pendingsReviewedAt).toEqual(enabled?null:now);const changed=await prisma.operationalEntry.findUniqueOrThrow({where:{id:escalation.id}});expect(changed.status).toBe(remaining?'ABIERTO':'RESUELTO');if(remaining)expect(changed.description).not.toBe(escalation.description);expect((await prisma.auditLog.findFirstOrThrow({where:{entityId:escalation.id},orderBy:{createdAt:'desc'}})).after).toMatchObject({invalidatedDrafts:enabled?[draftId]:[]});
+  });
+  it('Gerencia repara el singleton oculto sin duplicarlo ni exponer la incidencia',async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const manager=await createUser({roleKey:ROLE_KEYS.MANAGEMENT});const area=await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}});await prisma.user.update({where:{id:manager.id},data:{departmentId:area.id}});manager.departmentId=area.id;await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:true,category:'pruebas'}});const escalation=await entryServices.createEntry(admin,{type:'INCIDENCIA',title:'Incidencia de decisión reservada',description:'No publicar a Gerencia',category:'CONFLICTOS_REQUIEREN_DECISION',severity:'ALTA',priority:'ALTA',tags:[],requiresFollowUp:false});await entryServices.updateEntryVisibility(admin,{id:escalation.id,revision:escalation.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});expect(await readEntries(prisma,manager).count({where:{id:escalation.id}})).toBe(0);
+    const room=await prisma.room.findUniqueOrThrow({where:{number:'414'}});for(const reservationId of ['A-414','B-414'])await prisma.roomStay.create({data:{roomId:room.id,reservationId,guestNames:[reservationId],status:'IN_HOUSE',stage:'CONFIRMADO',sourceReport:'ACTIVIDAD',businessDate:new Date('2026-09-18T00:00:00.000Z')}});const result=await resolveAllOperationalConflicts(manager,{now:hotelWallDateTime('2026-09-18',12)});expect(result.escalationEntryId).toBe(escalation.id);expect(await prisma.operationalEntry.count({where:{category:'CONFLICTOS_REQUIEREN_DECISION',status:'ABIERTO',deletedAt:null}})).toBe(1);expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:escalation.id}})).createdById).toBe(admin.id);expect(await readEntries(prisma,manager).count({where:{id:escalation.id}})).toBe(0);expect(await prisma.notification.count({where:{userId:manager.id,entity:'OperationalEntry',entityId:escalation.id}})).toBe(0);
+  });
   it('resuelve duplicados, checkout vencido e in-house sin llave y notifica a todos', async () => {
     const supervisor = await createUser({ roleKey: ROLE_KEYS.SUPERVISOR, name: 'Supervisor' });
     await createUser({ roleKey: ROLE_KEYS.MANAGEMENT, name: 'Gerencia' });

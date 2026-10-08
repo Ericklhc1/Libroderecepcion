@@ -200,26 +200,29 @@ function gateMessage(mode: ReceptionOperationMode): string {
   return 'Tu turno está en cierre. Completa Caja, entrega y cierre antes de volver a operar.';
 }
 
-export async function assertReceptionOperationPermission(
+export async function authorizeReceptionOperation(
   user: CurrentUser,
   permission: string,
   client: Prisma.TransactionClient = prisma,
-): Promise<void> {
-  if (!isReceptionDeskRole(user.roleKey)) return;
-
+): Promise<ReceptionOperationGate> {
   const gate = await getReceptionOperationGate(user, client);
-  if (gate.mode === 'ACTIVE') return;
+  if (gate.mode === 'ACTIVE') return gate;
 
   if (gate.mode === 'NO_SHIFT') {
-    if (permission === 'shift.start') return;
+    if (permission === 'shift.start') return gate;
     throw new RuleError(gateMessage(gate.mode));
   }
 
   if (gate.mode === 'HANDOVER_PENDING' || gate.mode === 'RECEIVING') {
-    if (RECEIVE_ONLY_PERMISSIONS.has(permission)) return;
+    if (RECEIVE_ONLY_PERMISSIONS.has(permission)) return gate;
     throw new RuleError(gateMessage(gate.mode));
   }
 
-  if (CLOSING_PERMISSIONS.has(permission)) return;
+  if (CLOSING_PERMISSIONS.has(permission)) return gate;
   throw new RuleError(gateMessage(gate.mode));
+}
+
+/** Existing assertion contract delegates to the same authorization snapshot. */
+export async function assertReceptionOperationPermission(user:CurrentUser,permission:string,client:Prisma.TransactionClient=prisma):Promise<void>{
+  await authorizeReceptionOperation(user,permission,client);
 }

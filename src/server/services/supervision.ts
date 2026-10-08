@@ -1,3 +1,5 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { entryReadWhere } from './entry-visibility';
 import { listPendingClosureReviews } from './closure-review';
 import 'server-only';
 import {
@@ -96,8 +98,9 @@ export async function getSupervisionData(
     keyCounts,
     closureReviews,
   ] = await Promise.all([
-    prisma.operationalEntry.findMany({
+    readEntries(prisma, user).findMany({
       where: {
+        AND: [entryReadWhere(user)],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
@@ -146,8 +149,9 @@ export async function getSupervisionData(
       orderBy: { scheduledAt: 'asc' },
       take: take(20),
     }),
-    prisma.operationalEntry.findMany({
+    readEntries(prisma, user).findMany({
       where: {
+        AND: [entryReadWhere(user)],
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
         ownerId: null,

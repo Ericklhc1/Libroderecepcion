@@ -1,3 +1,4 @@
+import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 import 'server-only';
 
 import {
@@ -78,6 +79,7 @@ export async function prepareLaundryShipment(
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestKey}))::text`;
 
     const existing = await tx.laundryShipment.findUnique({
@@ -198,6 +200,7 @@ export async function deliverLaundryShipment(
 ) {
   requireLaundry(user);
   return prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
     await tx.$queryRaw`SELECT "id" FROM "LaundryShipment" WHERE "id"=${input.id} FOR UPDATE`;
     const shipment = await tx.laundryShipment.findUnique({
       where: { id: input.id },
@@ -284,6 +287,7 @@ export async function receiveLaundryShipment(
   if (!input.lines.length) throw new RuleError('Indica al menos una línea recibida.');
 
   return prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestKey}))::text`;
     const prior = await tx.laundryReceipt.findUnique({
       where: { requestKey: input.requestKey },
@@ -439,7 +443,7 @@ export async function receiveLaundryShipment(
             where: { key: 'HOUSEKEEPING', active: true },
             select: { id: true },
           });
-      const entry = await tx.operationalEntry.create({
+      const entry = await createNativeEntry(tx,{
         data: {
           type: EntryType.INCIDENCIA,
           title: `Lavandería folio ${shipment.folio}: diferencias`,
@@ -517,6 +521,7 @@ export async function closeLaundryShipment(
 ) {
   requireLaundry(user);
   return prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
     await tx.$queryRaw`SELECT "id" FROM "LaundryShipment" WHERE "id"=${input.id} FOR UPDATE`;
     const shipment = await tx.laundryShipment.findUnique({
       where: { id: input.id },

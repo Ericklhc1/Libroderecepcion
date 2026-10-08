@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import type { OperationalAutomation, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -38,7 +39,7 @@ export type SubstitutionPreview = Omit<SubstitutionAvailabilityResult, 'state'|'
 /** The persisted work is the pending item. No future owner or synthetic due date is stored. */
 export async function readSubstitutionWork(actor:CurrentUser, kind:SubstitutionWork['kind'], id:string, tx:Tx=prisma):Promise<SubstitutionWork|null> {
   if(kind==='entry'){
-    const row=await tx.operationalEntry.findFirst({where:{id,AND:[coordinationEntries(actor)]}});
+    const row=await readEntries(tx, actor).findFirst({where:{id,AND:[coordinationEntries(actor)]}});
     return row?{id,kind,ownerId:row.ownerId,departmentId:row.departmentId,updatedAt:row.updatedAt,status:row.status,priority:row.priority,receivedAt:row.workAcknowledgedAt,assignedAt:row.workAssignedAt,availableAt:null,dueAt:row.dueAt,startedAt:row.workStartedAt,workDate:null,followUpId:null,alertId:null,sourceChanged:false,version:null}:null;
   }
   if(kind==='task'){

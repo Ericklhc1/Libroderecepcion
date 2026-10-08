@@ -1,3 +1,4 @@
+import { simpleNoveltiesEnabled } from '@/server/services/simple-novelties';
 import { legacyClosureAlertWhere } from '@/server/services/closure-review';
 import { closurePrintValidation } from '@/domain/handover-print';
 import { HandoverPrint } from '@/components/operational/handover-print';
@@ -61,6 +62,7 @@ export default async function HandoverPage({
   searchParams: Promise<{ paso?: string }>;
 }) {
   const user = await requirePageUser();
+  const simpleNovelties = await simpleNoveltiesEnabled();
   if (!canReadReceptionHandover(user)) notFound();
   const { id } = await params;
   const query = await searchParams;
@@ -210,7 +212,7 @@ export default async function HandoverPage({
       : 1;
   const maxAllowedCloseStep = !closeStepOneReady
     ? 1
-    : !handover.pendingsReviewedAt
+    : !handover.pendingsReviewedAt && !simpleNovelties
       ? 2
       : !handover.finalReviewAt
         ? 3
@@ -780,7 +782,7 @@ export default async function HandoverPage({
             <p className="text-sm text-slate-600">
               Confirma sólo después de leer los puntos que continúan al turno entrante.
             </p>
-            <ConfirmReceptionReviewStepForm handoverId={handover.id} step="BRIEFING" />
+            <ConfirmReceptionReviewStepForm handoverId={handover.id} step="BRIEFING" simpleNovelties={simpleNovelties} />
           </div>
         </Card>
       ) : null}
@@ -821,6 +823,7 @@ export default async function HandoverPage({
               handoverId={handover.id}
               step="FINAL"
               urgentCount={counts.urgente}
+              simpleNovelties={simpleNovelties}
             />
           </div>
         </Card>
@@ -837,14 +840,14 @@ export default async function HandoverPage({
             </div>
           </Card>
           <Card className="no-print">
-            <CardHeader title="Confirmar revisión de pendientes" />
+            <CardHeader title={simpleNovelties?"Pendientes del relevo":"Confirmar revisión de pendientes"} />
             <div className="space-y-3 px-4 py-4">
-              <p className="text-sm text-slate-600">
+              {!simpleNovelties&&<p className="text-sm text-slate-600">
                 Confirma sólo después de revisar los asuntos que continuarán al siguiente turno.
                 Esta confirmación queda registrada y se invalida si actualizas el resumen o cambias
                 la nota de entrega.
-              </p>
-              <ConfirmHandoverReviewStepForm handoverId={handover.id} step="PENDINGS" />
+              </p>}
+              {simpleNovelties?<Link href={`/turno/entrega/${handover.id}?paso=3`} className="inline-flex bg-petrol-800 px-3 py-2 text-white">Continuar a revisión final</Link>:<ConfirmHandoverReviewStepForm handoverId={handover.id} step="PENDINGS" />}
             </div>
           </Card>
         </>
@@ -890,6 +893,7 @@ export default async function HandoverPage({
               handoverId={handover.id}
               step="FINAL"
               urgentCount={counts.urgente}
+              simpleNovelties={simpleNovelties}
             />
           </div>
         </Card>

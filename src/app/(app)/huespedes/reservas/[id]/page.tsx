@@ -30,7 +30,7 @@ export default async function ReservationProfilePage({ params }: { params: Promi
   const user = await requirePageAnyPermission(['guest.view', 'guest.manage']);
   const { id } = await params;
   const [reservation, guests] = await Promise.all([
-    getReservationOperationalContext(id),
+    getReservationOperationalContext(id,user),
     prisma.guestReference.findMany({
       where: { deletedAt: null },
       orderBy: { fullName: 'asc' },

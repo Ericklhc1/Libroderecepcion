@@ -30,27 +30,23 @@ export async function ensureUnresolvedGuaranteeIncidents(
         ],
       },
     },
-    include: {
-      reservationReference: {
-        select: {
-          code: true,
-          guestId: true,
-          guest: { select: { fullName: true } },
-        },
-      },
-    },
+    select: { id:true },
   });
 
   let created = 0;
-  for (const guarantee of guarantees) {
-    const marker = `garantia-post-salida:${guarantee.id}`;
-    // Esta acción es legado PMS: una garantía autónoma de Caja no participa
-    // en el ciclo de check-out ni debe convertirse en incidencia PMS.
-    const reservation = guarantee.reservationReference;
-    if (!reservation) continue;
+  for (const candidate of guarantees) {
+    const marker = `garantia-post-salida:${candidate.id}`;
 
     const didCreate=await prisma.$transaction(async (tx) => {
       await lockNativeNoveltyCreation(tx);
+      await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${candidate.id} FOR UPDATE`;
+      const guarantee=await tx.guarantee.findFirst({
+        where:{id:candidate.id,reservationReferenceId:reservationRefId,deletedAt:null,state:{in:[GuaranteeState.PENDIENTE,GuaranteeState.VIGENTE,GuaranteeState.APLICADA_PARCIALMENTE]}},
+        include:{reservationReference:{select:{code:true,guestId:true,guest:{select:{fullName:true}}}}},
+      });
+      // Caja may have resolved, removed or reassociated it after the candidate scan.
+      const reservation=guarantee?.reservationReference;
+      if(!guarantee||!reservation)return false;
       const existing=await readEntries(tx,{engine:'lifecycle'}).findFirst({where:{deletedAt:null,tags:{has:marker}},select:{id:true}});
       if(existing)return false;
       const guestName = reservation.guest?.fullName ?? 'Huésped';

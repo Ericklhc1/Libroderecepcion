@@ -5,6 +5,23 @@ import {readEntries} from '@/server/services/entry-visibility';
 async function setup(){const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const reservation=await prisma.reservationReference.create({data:{code:'GUARANTEE-SYNTHETIC-CHECKOUT'}});const guarantee=await prisma.guarantee.create({data:{kind:'EFECTIVO',state:'PENDIENTE',currency:'CLP',amount:50000,createdById:author.id,reservationReferenceId:reservation.id,guestName:'Huésped sintético'}});return{author,reservation,guarantee};}
 describe('incidencia de garantía del motor existente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
+  for(const enabled of [false,true])for(const mutation of ['return','close','delete','update-open'] as const)it(`relee garantía tras ${mutation} concurrente, modo simple ${enabled}`,async()=>{
+    const {author,reservation,guarantee}=await setup();await prisma.systemSetting.create({data:{key:'book.simpleNovelties',category:'pruebas',value:enabled}});
+    let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});let locked!:()=>void;const ready=new Promise<void>(resolve=>{locked=resolve;});
+    const change=prisma.$transaction(async tx=>{await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${guarantee.id} FOR UPDATE`;await tx.guarantee.update({where:{id:guarantee.id},data:mutation==='delete'?{deletedAt:new Date()}:mutation==='update-open'?{state:'VIGENTE',amount:70000}:{state:mutation==='return'?'DEVUELTA':'CERRADA'}});locked();await gate;});
+    let attempt:Promise<number>|undefined;
+    try{
+      await ready;attempt=ensureUnresolvedGuaranteeIncidents(author,reservation.id,'408');
+      let waiting=false;for(let index=0;index<100&&!waiting;index++){
+        const rows=await prisma.$queryRaw<{count:bigint}[]>`SELECT COUNT(*) AS count FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM "Guarantee"%FOR UPDATE%'`;
+        waiting=Number(rows[0]?.count??0)>0;if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      expect(waiting).toBe(true);release();await change;expect(await attempt).toBe(mutation==='update-open'?1:0);
+      expect(await prisma.operationalEntry.count()).toBe(mutation==='update-open'?1:0);expect(await prisma.alert.count()).toBe(mutation==='update-open'?1:0);
+      if(mutation==='update-open'){const entry=await prisma.operationalEntry.findFirstOrThrow();expect(entry.description).toContain('estado VIGENTE');expect(entry.description).toContain('CLP 70000');expect((await prisma.auditLog.findFirstOrThrow({where:{entityId:entry.id}})).after).toMatchObject({state:'VIGENTE'});}else expect(await prisma.auditLog.count({where:{entity:'OperationalEntry'}})).toBe(0);
+    }finally{release();await change;await attempt;}
+  });
+
   it('la deduplicación no depende de que el recepcionista pueda leer el origen reservado',async()=>{
     const {author,reservation,guarantee}=await setup();const other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});expect(await ensureUnresolvedGuaranteeIncidents(author,reservation.id,'408')).toBe(1);
     const original=await prisma.operationalEntry.findFirstOrThrow({where:{tags:{has:`garantia-post-salida:${guarantee.id}`}}});const area=await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}});

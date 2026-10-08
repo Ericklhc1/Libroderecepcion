@@ -15,6 +15,7 @@ export type OperationalAttentionItem = {
   reason: string;
   action: string;
   href: string;
+  folio?: number;
 };
 
 type AttentionInput = {
@@ -26,12 +27,14 @@ type AttentionInput = {
   }>;
   alerts: Array<{
     id: string;
+    humanId?: number;
     level: 'INFORMATIVA' | 'ATENCION' | 'CRITICA';
     title: string;
     message?: string | null;
   }>;
   overdueTasks: Array<{
     id: string;
+    humanId?: number;
     title: string;
     priority: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
   }>;
@@ -44,6 +47,7 @@ type AttentionInput = {
   }>;
   followUps: Array<{
     id: string;
+    humanId?: number;
     action: string;
     status: 'PENDIENTE' | 'VENCIDO' | string;
   }>;
@@ -121,6 +125,7 @@ export function buildOperationalAttention(
       alert.level === 'CRITICA' ? 98 : alert.level === 'ATENCION' ? 82 : 55;
     items.push({
       id: `alert:${alert.id}`,
+      folio: alert.humanId,
       kind: 'alert',
       tone: toneForScore(score),
       score,
@@ -135,6 +140,7 @@ export function buildOperationalAttention(
     const score = 90 + PRIORITY_BONUS[task.priority];
     items.push({
       id: `task:${task.id}`,
+      folio: task.humanId,
       kind: 'task',
       tone: toneForScore(score),
       score,
@@ -149,6 +155,7 @@ export function buildOperationalAttention(
     const score = (entry.overdue ? 91 : 84) + PRIORITY_BONUS[entry.priority];
     items.push({
       id: `entry:${entry.id}`,
+      folio: entry.humanId,
       kind: 'entry',
       tone: toneForScore(score),
       score,
@@ -166,6 +173,7 @@ export function buildOperationalAttention(
     const score = overdue ? 88 : 62;
     items.push({
       id: `followup:${followUp.id}`,
+      folio: followUp.humanId,
       kind: 'followup',
       tone: toneForScore(score),
       score,

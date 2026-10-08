@@ -1257,3 +1257,9 @@ Base exacta bb5dc117 / #279. Rama feat/aroh-ui-ux-20261008; versión intermedia 
 Sin migraciones ni cambios de reglas/permisos operativos. PostgreSQL 17 instalado exclusivamente bajo work/ en este entorno y base sintética de loopback libro_test. El sandbox impedía sockets; Git, instalación y pruebas requieren ejecución autorizada fuera del sandbox. Base recuperada inicialmente por conector y después completada por git fetch --refetch, con SHA de commit/árbol verificados.
 
 Se mantienen todos los recorridos previos, actualizando sólo el acceso a Más según el ancho; se añade operational-sheet-browser con las 16 rutas a 1280/390 en la Compuerta. Primera suite: 2.325 aprobadas y cinco fallos de contratos visuales anteriores/manifest PDF previo. Contratos actualizados a lo solicitado; empaquetado PDF revalidado con tres pruebas aprobadas contra build regenerado. Verificación final y recorridos en curso. No merge ni despliegue; reservados al propietario.
+
+### Revisión automática del bloque UI (PR #281)
+
+Se corrigen los P2: Avisos reutiliza `groupNotificationItems` (incluye los conteos de llaves por día hotelero), conserva originales y cuenta los no leídos del grupo; Inicio identifica tareas y seguimientos por folio. Coordinación conserva todas las pestañas en escritorio y pliega secundarias en móvil. Housekeeping abre las cuatro columnas sólo en escritorio y mantiene Sin registro cerrado en móvil. Caja muestra el número de filtros activos aun plegados; estados correctos y habitaciones sin pendientes tienen texto accesible. Las notas de Gerencia se despliegan dentro del ancho de la tarjeta para evitar recorte. La agrupación canónica ahora también reúne duplicados exactos sin perder identidad ni estado individual.
+
+Validación de las correcciones: lint, typecheck, build y 16 pruebas focalizadas aprobadas. Se vuelve a ejecutar la batería completa y los recorridos 1280/390 antes de dar la Compuerta por terminada.

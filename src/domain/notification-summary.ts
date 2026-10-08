@@ -87,22 +87,27 @@ export function parseFrontiNotificationSummary(response: string, evidence: strin
   }
 }
 
-export type NotificationDisplayGroup = {
+export type NotificationDisplayGroup<T extends NotificationFeedItem = NotificationFeedItem> = {
   id: string;
-  items: NotificationFeedItem[];
+  items: T[];
   title: string | null;
   body: string | null;
 };
 
 /** Group related key-count notices from one hotel day without merging their identities or read state. */
-export function groupNotificationItems(items: NotificationFeedItem[]): NotificationDisplayGroup[] {
-  const groups: NotificationDisplayGroup[] = [];
-  const keysByDay = new Map<string, NotificationDisplayGroup>();
+export function groupNotificationItems<T extends NotificationFeedItem>(items: T[]): NotificationDisplayGroup<T>[] {
+  const groups: NotificationDisplayGroup<T>[] = [];
+  const keysByDay = new Map<string, NotificationDisplayGroup<T>>();
+  const duplicates = new Map<string, NotificationDisplayGroup<T>>();
   for (const item of items) {
     const date = new Date(item.createdAt);
     const isKeyCount = item.type === 'FRONTI_HALLAZGO' && /Inventario de llaves con diferencias/i.test(item.title);
     if (!isKeyCount || !Number.isFinite(date.getTime())) {
-      groups.push({ id: item.id, items: [item], title: null, body: null });
+      const day = Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(date) : item.createdAt;
+      const key = JSON.stringify([item.type, item.title, item.body, item.entity, item.entityId, item.link, day]);
+      const existing = duplicates.get(key);
+      if (existing) existing.items.push(item);
+      else { const group = { id: item.id, items: [item], title: null, body: null }; duplicates.set(key, group); groups.push(group); }
       continue;
     }
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(date);

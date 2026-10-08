@@ -15,3 +15,13 @@ describe('agrupación visual de duplicados', () => {
     expect(groupDisplayRows(rows, row => JSON.stringify([row.title, row.source]))).toHaveLength(3);
   });
 });
+
+import { groupNotificationItems } from '@/domain/notification-summary';
+it('agrupa los conteos de pisos por día hotelero y conserva los no leídos', () => {
+  const base = { type:'FRONTI_HALLAZGO', body:null, entity:'KeyInventory', createdAt:'2026-10-08T02:00:00.000Z' };
+  const rows = [ {...base,id:'a',title:'Inventario de llaves con diferencias · piso 1',entityId:'one',link:'/llaves?piso=1',readAt:'2026-10-08T02:01:00.000Z'}, {...base,id:'b',title:'Inventario de llaves con diferencias · piso 2',entityId:'two',link:'/llaves?piso=2',readAt:null} ];
+  const groups = groupNotificationItems(rows);
+  expect(groups).toHaveLength(1);
+  expect(groups[0]!.items.filter(item=>item.readAt===null)).toHaveLength(1);
+  expect(groups[0]!.items.map(item=>item.link)).toEqual(['/llaves?piso=1','/llaves?piso=2']);
+});

@@ -37,7 +37,7 @@ try {
         if (await more.count()) assert.equal(await more.isVisible(), width < 1024);
       }
       if (route === '/novedades/habitacion') assert.equal(await page.getByText('Sin contexto abierto', { exact: true }).count(), 0);
-      if (route === '/coordinacion') assert.equal(await page.getByText('Más vistas', { exact: true }).count(), 0);
+      if (route === '/coordinacion') assert.equal(await page.getByText('Más vistas', { exact: true }).isVisible(), width < 1024);
       if (route === '/jornada') assert.equal(await page.getByText('Tres conceptos separados', { exact: true }).count(), 0);
       results.push({ width, route, passed: true });
     }

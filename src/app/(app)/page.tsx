@@ -314,7 +314,7 @@ export default async function DashboardPage() {
                       Siguiente acción: {item.action}
                     </p>
                   </Link>
-                  {items.length>1&&<details className="px-4 pb-2"><summary className="cursor-pointer text-xs">Ver los {items.length} registros</summary><ul>{items.map(original=><li key={original.id}><Link className="text-xs underline" href={original.href}>{original.title}</Link></li>)}</ul></details>}
+                  {items.length>1&&<details className="px-4 pb-2"><summary className="cursor-pointer text-xs">Ver los {items.length} registros</summary><ul>{items.map(original=><li key={original.id}><Link className="text-xs underline" href={original.href}>{original.title}{original.folio ? ` · #${original.folio}` : ` · ${original.kind} ${original.id.split(':').at(-1)}`}</Link></li>)}</ul></details>}
                 </li>
               ))}
             </ul>

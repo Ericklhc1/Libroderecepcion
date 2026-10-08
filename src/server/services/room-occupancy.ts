@@ -1,3 +1,4 @@
+import {updatePhotographedEntryContext} from './stay-entry-context';
 import {createNativeEntry,lockNativeNoveltyCreation,createNativeEntries} from '@/server/services/native-entry-creation';
 import 'server-only';
 
@@ -254,7 +255,7 @@ export async function moveStayToRoom(
   const businessDate = todayBusinessDate(now);
 
   return prisma.$transaction(async (tx) => {
-    await lockNativeNoveltyCreation(tx);
+    const simpleMode=await lockNativeNoveltyCreation(tx);
     const stay = await tx.roomStay.findFirst({
       where: { id: input.stayId, deletedAt: null },
       include: {
@@ -385,15 +386,15 @@ export async function moveStayToRoom(
 
     let movedOpenEntries = 0;
     if (stay.reservationRefId) {
-      const moved = await tx.operationalEntry.updateMany({
-        where: {
+      const moved = await updatePhotographedEntryContext(tx,user,
+        {
           roomId: sourceRoom.id,
           reservationId: stay.reservationRefId,
           deletedAt: null,
           status: { in: ENTRY_OPEN_STATUSES },
         },
-        data: { roomId: target.id },
-      });
+        { roomId: target.id },simpleMode,
+      );
       movedOpenEntries = moved.count;
     }
 

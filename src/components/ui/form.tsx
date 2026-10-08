@@ -252,7 +252,10 @@ export function ActionForm({
   const draftKey = draftScope ? `aroh:form-draft:v1:${draftScope}` : null;
   const draftFieldKey = draftFields.join('|');
   const formId = useId();
-  const [actionFormReady,setActionFormReady]=useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const preparationKey=JSON.stringify([formId,draftKey,draftFieldKey,draftRevision??null]);
+  const [preparedFormKey,setPreparedFormKey]=useState<string|null>(null);
+  const actionFormReady=preparedFormKey===preparationKey;
   const actionWithImmediateDialogClose = useCallback(async (previous: ActionState | null, formData: FormData) => {
     const draft = submittedDraft.current;
     const result = await action(previous, formData);
@@ -292,7 +295,7 @@ export function ActionForm({
     if (!draftKey) return;
     dirtyDraft.current = false;
     draftBaseRevision.current = draftRevision ?? null;
-    const form = document.getElementById(formId) as HTMLFormElement | null;
+    const form = formRef.current;
     try {
       const raw = sessionStorage.getItem(draftKey);
       const values = decodeFormDraft(raw, draftFieldKey.split('|'));
@@ -328,7 +331,7 @@ export function ActionForm({
 
   useEffect(() => {
     if (!state) return;
-    const form = document.getElementById(formId) as HTMLFormElement | null;
+    const form = formRef.current;
     const laterEdits = submittedDraft.current && submittedDraft.current.edit !== draftEdit.current
       ? latestDraftControls.current : null;
     if (state.ok) {
@@ -368,14 +371,15 @@ export function ActionForm({
   // Browser journeys must wait for native handlers and draft restoration,
   // rather than submitting the progressively enhanced HTML before hydration.
   useEffect(() => {
-    setActionFormReady(true);
-  }, [formId, draftKey, draftFieldKey, draftRevision]);
+    setPreparedFormKey(preparationKey);
+  }, [preparationKey]);
 
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 
   return (
     <FormContext.Provider value={{ errors }}>
       <form
+        ref={formRef}
         id={formId}
         data-action-form-ready={actionFormReady ? 'true' : undefined}
         action={formAction}

@@ -308,8 +308,8 @@ export async function getEntry(id: string, reader: EntryReader): Promise<EntryWi
 }
 
 /** Modelo de lectura del asunto: mantiene la reserva histórica antes de proyectar contexto. */
-export async function getSubjectEntry(user: EntryReader, id: string): Promise<EntryWithRelations> {
-  const native = await readEntries(prisma, user).findFirst({ where: { id, AND: [entryReadWhere(user)] }, include: {...entryInclude,housekeepingRequests:{...entryInclude.housekeepingRequests,where:{deletedAt:null,AND:[housekeepingEntryReadWhere(user)]}}} });
+export async function getSubjectEntry(user: EntryReader, id: string): Promise<EntryWithRelations & {reservation:{code:string}|null}> {
+  const native = await readEntries(prisma, user).findFirst({ where: { id, AND: [entryReadWhere(user)] }, include: {...entryInclude,reservation:{select:{code:true}},housekeepingRequests:{...entryInclude.housekeepingRequests,where:{deletedAt:null,AND:[housekeepingEntryReadWhere(user)]}}} });
   if (!native) throw new NotFoundError('El registro no está visible para tu área.');
   const entry = {...native, housekeepingRequest:native.housekeepingRequests[0]??null};
   const housekeepingRequests=entry.housekeepingRequests.filter(work=>!work.isDemo||user.isSystemAdmin);

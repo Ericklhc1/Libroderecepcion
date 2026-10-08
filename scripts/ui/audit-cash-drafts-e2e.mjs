@@ -40,12 +40,12 @@ try {
     page.on('dialog',dialog=>dialog.type()==='beforeunload'?dialog.accept():dialog.dismiss());
     await page.addInitScript(()=>{
       const originalSet=Storage.prototype.setItem;
-      for(const method of ['setItem','removeItem']){const original=Storage.prototype[method];Storage.prototype[method]=function(key,value){
-        if(this===sessionStorage&&key.startsWith('aroh:form-draft')){let trace=[];try{trace=JSON.parse(sessionStorage.getItem('synthetic-draft-trace')??'[]');}catch{}trace.push({method,key,actor:key==='aroh:form-draft-user'?value:undefined,at:Date.now(),source:new Error().stack.split('\n').slice(2,4).join(' ')});originalSet.call(sessionStorage,'synthetic-draft-trace',JSON.stringify(trace.slice(-100)));}
+      for(const method of ['setItem','removeItem','getItem']){const original=Storage.prototype[method];Storage.prototype[method]=function(key,value){
+        if(this===sessionStorage&&key.startsWith('aroh:form-draft')){try{let trace=[];try{trace=JSON.parse(sessionStorage.getItem('synthetic-draft-trace')??'[]');}catch{}let revision;try{if(method==='setItem'&&key.startsWith('aroh:form-draft:v1:'))revision=JSON.parse(value)?.revision;}catch{}trace.push({method,key,actor:key==='aroh:form-draft-user'?value:undefined,revision,at:Date.now(),source:new Error().stack?.split('\n').slice(2,4).join(' ')});originalSet.call(sessionStorage,'synthetic-draft-trace',JSON.stringify(trace.slice(-100)));}catch{}}
         return original.apply(this,arguments);
       };}
     });
-    await page.addInitScript(()=>{window.__shiftUxActionResults=[];window.addEventListener('aroh:action-result',event=>window.__shiftUxActionResults.push(event.detail));});
+    await page.addInitScript(()=>{window.__shiftUxActionResults=[];window.__shiftUxSubmissions=[];document.addEventListener('submit',event=>window.__shiftUxSubmissions.push({formId:event.target.id}),true);window.addEventListener('aroh:action-result',event=>window.__shiftUxActionResults.push(event.detail));});
     const url=`http://localhost:3000/turno/entrega/${handover.id}`;
     const otherUrl=`http://localhost:3000/turno/entrega/${otherHandover.id}`;
     const cashDraftKey=`aroh:form-draft:v1:cash:${f.users.admin.id}:${handover.id}:declarar`;
@@ -61,7 +61,10 @@ try {
     const check=()=>form().locator(`input[name="g_${guarantee.id}"]`);
     async function submit(target,button) {
       const attempt={formId:await target.getAttribute('id'),offset:await page.evaluate(()=>window.__shiftUxActionResults.length)};
-      await target.getByRole('button',{name:button,exact:true}).click();await waitForNativeShiftReceipt(page,attempt,true);
+      const submissionOffset=await page.evaluate(()=>window.__shiftUxSubmissions.length);
+      await target.getByRole('button',{name:button,exact:true}).click();
+      const submitted=await page.evaluate(offset=>window.__shiftUxSubmissions.slice(offset),submissionOffset);assert.equal(submitted.length,1,'One native submit identifies the actual mounted form');attempt.formId=submitted[0].formId;
+      await waitForNativeShiftReceipt(page,attempt,true);
     }
     activeHandoverId=handover.id;await page.goto(url);await fillDraft(quantity(),'5');await fillDraft(form().locator('textarea[name=notes]'),'SYNTHETIC borrador antes de salir');await check().check();
     await page.evaluate(()=>sessionStorage.setItem('synthetic-unrelated-preference','keep'));
@@ -137,6 +140,7 @@ try {
 } catch(error) {
   if(activePage&&!activePage.isClosed()){
     console.error('Synthetic draft trace',await activePage.evaluate(()=>sessionStorage.getItem('synthetic-draft-trace')));
+    const draftMeta=await activePage.evaluate(()=>Object.keys(sessionStorage).filter(key=>key.startsWith('aroh:form-draft:v1:')).map(key=>({key,revision:JSON.parse(sessionStorage.getItem(key)).revision,savedAt:JSON.parse(sessionStorage.getItem(key)).savedAt})));console.error('Synthetic draft revisions',draftMeta);console.error('Synthetic saved revisions',await db.cashCount.findMany({where:{handoverId:{in:[...new Set(draftMeta.map(row=>row.key.split(':')[5]))]}},select:{handoverId:true,countedAt:true,kind:true}}));
     console.error('Synthetic form readiness',await activePage.locator('form').evaluateAll(forms=>forms.slice(0,20).map(form=>({id:form.id,ready:form.getAttribute('data-action-form-ready'),handoverId:form.querySelector('input[name=handoverId]')?.value,button:form.querySelector('button[type=submit]')?.textContent}))));
     console.error('Synthetic cash draft screen',(await activePage.locator('body').innerText()).slice(-12000));
   }

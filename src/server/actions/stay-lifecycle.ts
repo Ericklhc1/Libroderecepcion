@@ -1,4 +1,5 @@
 'use server';
+import {inheritPendingStayContext} from '@/server/services/stay-entry-context';
 import {ensureUnresolvedGuaranteeIncidents} from '@/server/services/stay-guarantee-incidents';
 import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 
@@ -14,7 +15,6 @@ import {
 } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { ENTRY_OPEN_STATUSES } from '@/domain/labels';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { recordAudit } from '@/server/audit';
@@ -27,34 +27,6 @@ import {
 } from '@/server/services/checkout-keys';
 import { moveStayToRoom } from '@/server/services/room-occupancy';
 
-async function inheritPendingStayContext(stayId: string) {
-  const stay = await prisma.roomStay.findUnique({
-    where: { id: stayId },
-    select: {
-      id: true,
-      roomId: true,
-      reservationRefId: true,
-      reservationRef: { select: { guestId: true } },
-    },
-  });
-  if (!stay?.roomId) return;
-
-  await prisma.operationalEntry.updateMany({
-    where: {
-      roomId: stay.roomId,
-      deletedAt: null,
-      status: { in: ENTRY_OPEN_STATUSES },
-      ...(stay.reservationRefId
-        ? { OR: [{ reservationId: stay.reservationRefId }, { reservationId: null }] }
-        : {}),
-    },
-    data: {
-      roomId: null,
-      ...(stay.reservationRefId ? { reservationId: stay.reservationRefId } : {}),
-      ...(stay.reservationRef?.guestId ? { guestId: stay.reservationRef.guestId } : {}),
-    },
-  });
-}
 
 
 function refresh(roomNumber?: string | null, reservationRefId?: string | null) {
@@ -136,7 +108,7 @@ export async function completeStayCheckoutAction(
       returnedCount: input.returnedKeyCount,
     });
 
-    await inheritPendingStayContext(stay.id);
+    await inheritPendingStayContext(stay.id,user);
     const guaranteeIncidents = await ensureUnresolvedGuaranteeIncidents(
       user,
       stay.reservationRefId,
@@ -353,7 +325,7 @@ export async function deleteStayPreservingPendingAction(
   return runAction(async () => {
     const user = await requirePermission('stay.delete');
     const input = parseOrThrow(deleteSchema, formDataToObject(formData));
-    await inheritPendingStayContext(input.stayId);
+    await inheritPendingStayContext(input.stayId,user);
     const result = await softDeleteStay(user, input);
     const roomNumber = result.stay.room?.number ?? null;
     refresh(roomNumber);

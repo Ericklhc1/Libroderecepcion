@@ -29,6 +29,8 @@ export async function simpleNoveltyAreaIds(user: EntryReader): Promise<string[] 
 export async function listSimpleNovelties(user: EntryReader, input: { area?: string; state?: string; q?: string; page?: number } = {}) {
   if (!await simpleNoveltiesEnabled()) throw new RuleError('La prueba de novedades simples está apagada.');
   const areaIds = await simpleNoveltyAreaIds(user);
+  const query=input.q?.trim();
+  const folio=query&&/^#?\d+$/.test(query)?Number(query.replace(/^#/,'')):null;
   const page = Math.max(1, Math.min(100000, Math.floor(input.page || 1)));
   const where: Prisma.OperationalEntryWhereInput = {
     deletedAt: null, isDemo: false, type: { in: ['NOVEDAD', 'INCIDENCIA'] },
@@ -36,7 +38,7 @@ export async function listSimpleNovelties(user: EntryReader, input: { area?: str
       ...(areaIds ? [{ OR:[{departmentId:{in:areaIds}},{createdById:user.id}] }] : []),
       ...(input.area ? [{ departmentId: input.area }] : []),
       ...(input.state === 'resueltas' ? [{ status: { in: ['RESUELTO', 'CERRADO'] as EntryStatus[] } }] : input.state === 'todas' ? [] : [{ status: { notIn: ['RESUELTO', 'CERRADO'] as EntryStatus[] } }]),
-      ...(input.q?.trim() ? [{ OR: [{ title: { contains: input.q.trim(), mode: 'insensitive' as const } }, { description: { contains: input.q.trim(), mode: 'insensitive' as const } }, { workNextAction: { contains: input.q.trim(), mode: 'insensitive' as const } }, { room: { number: { contains: input.q.trim(), mode: 'insensitive' as const } } }, { reservationReference: { contains: input.q.trim(), mode: 'insensitive' as const } }] }] : []),
+      ...(query ? [{ OR: [...(folio!==null&&Number.isSafeInteger(folio)&&folio>0&&folio<=2147483647?[{humanId:folio}]:[]),{ title: { contains: query, mode: 'insensitive' as const } }, { description: { contains: query, mode: 'insensitive' as const } }, { workNextAction: { contains: query, mode: 'insensitive' as const } }, { room: { number: { contains: query, mode: 'insensitive' as const } } }, { reservationReference: { contains: query, mode: 'insensitive' as const } }, {reservation:{code:{contains:query,mode:'insensitive' as const}}}] }] : []),
     ],
   };
   const include = { createdBy: { select: { name: true } }, room: { select: { number: true } }, reservation: { select: { code: true } }, department: { select: { name: true } } };

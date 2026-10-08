@@ -7,7 +7,9 @@ import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { waitForNativeShiftReceipt } from './shift-action-observation.mjs';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE);
-const db = new PrismaClient(), browser = await chromium.launch({headless:true}), results=[];
+// Exercise restoration from session storage on history traversals, rather than
+// reusing a frozen BFCache document with its previous actor and form state.
+const db = new PrismaClient(), browser = await chromium.launch({headless:true,args:['--disable-features=BackForwardCache']}), results=[];
 let activePage;
 try {
   assert.equal(Boolean(process.env.SMTP_HOST),false,'Synthetic saves require no SMTP environment transport');
@@ -41,14 +43,20 @@ try {
     const otherUrl=`http://localhost:3000/turno/entrega/${otherHandover.id}`;
     const cashDraftKey=`aroh:form-draft:v1:cash:${f.users.admin.id}:${handover.id}:declarar`;
     const noteDraftKey=`aroh:form-draft:v1:handover-note:${f.users.admin.id}:${handover.id}`;
-    const form=()=>page.locator('form[data-action-form-ready="true"]').filter({has:page.getByRole('button',{name:'Guardar arqueo declarado',exact:true})});
+    let activeHandoverId=handover.id,activeActorId=f.users.admin.id;
+    async function fillDraft(control,value){
+      await control.fill(value);const name=await control.getAttribute('name');const key=name==='notes'||name.startsWith('d_')?`aroh:form-draft:v1:cash:${activeActorId}:${activeHandoverId}:declarar`:`aroh:form-draft:v1:handover-note:${activeActorId}:${activeHandoverId}`;
+      await page.waitForFunction(({key,name,value})=>{try{return JSON.parse(sessionStorage.getItem(key)).values.some(([field,control])=>field===`${name}#0`&&control.value===value);}catch{return false;}},{key,name,value});
+    }
+    const activeForm=()=>page.locator('form[data-action-form-ready="true"]').filter({has:page.locator(`input[name=handoverId][value="${activeHandoverId}"]`)});
+    const form=()=>activeForm().filter({has:page.getByRole('button',{name:'Guardar arqueo declarado',exact:true})});
     const quantity=()=>form().locator(`input[name="d_${denomination.id}"]`);
     const check=()=>form().locator(`input[name="g_${guarantee.id}"]`);
     async function submit(target,button) {
       const attempt={formId:await target.getAttribute('id'),offset:await page.evaluate(()=>window.__shiftUxActionResults.length)};
       await target.getByRole('button',{name:button,exact:true}).click();await waitForNativeShiftReceipt(page,attempt,true);
     }
-    await page.goto(url);await quantity().fill('5');await form().locator('textarea[name=notes]').fill('SYNTHETIC borrador antes de salir');await check().check();
+    activeHandoverId=handover.id;await page.goto(url);await fillDraft(quantity(),'5');await fillDraft(form().locator('textarea[name=notes]'),'SYNTHETIC borrador antes de salir');await check().check();
     await page.evaluate(()=>sessionStorage.setItem('synthetic-unrelated-preference','keep'));
     await page.getByRole('link',{name:`Devolver garantía #${returnGuarantee.humanId} en Caja`,exact:true}).click();
     await page.waitForURL(url=>url.pathname==='/caja');
@@ -62,36 +70,36 @@ try {
     await page.waitForURL(url=>url.pathname===`/turno/entrega/${handover.id}`&&url.searchParams.get('paso')==='1');
     await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),false,'Returning another guarantee must not restore an unsent physical validation');
-    await page.goto(otherUrl);await quantity().waitFor();
+    activeHandoverId=otherHandover.id;await page.goto(otherUrl);await quantity().waitFor();
     assert.equal(await quantity().inputValue(),'','Another handover must not inherit quantities');
     assert.equal(await form().locator('textarea[name=notes]').inputValue(),'');assert.equal(await check().isChecked(),false);
-    await quantity().fill('4');await form().locator('textarea[name=notes]').fill('SYNTHETIC segundo relevo');
-    await page.goto(url);
+    await fillDraft(quantity(),'4');await fillDraft(form().locator('textarea[name=notes]'),'SYNTHETIC segundo relevo');
+    activeHandoverId=handover.id;await page.goto(url);
     await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),false,'A draft must not restore an unsent physical validation');
-    await page.goBack();await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();assert.equal(await quantity().inputValue(),'4');assert.equal(await check().isChecked(),false);
-    await page.goForward();await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();assert.equal(await quantity().inputValue(),'5');assert.equal(await check().isChecked(),false);
+    activeHandoverId=otherHandover.id;await page.goBack();await page.waitForURL(otherUrl);await form().waitFor();await page.getByText(/Borrador recuperado de esta pestaña/).waitFor();assert.equal(await quantity().inputValue(),'4');assert.equal(await check().isChecked(),false);
+    activeHandoverId=handover.id;await page.goForward();await page.waitForURL(url);await form().waitFor();await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();assert.equal(await quantity().inputValue(),'5');assert.equal(await check().isChecked(),false);
     // Switch between two authenticated synthetic participants in this same tab.
     // The renderer regression separately exercises reuse without a document load.
-    await context.addCookies([{name:'lor_session',value:f.users.worker.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
+    activeActorId=f.users.worker.id;await context.addCookies([{name:'lor_session',value:f.users.worker.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
     await page.reload();await page.waitForFunction(id=>sessionStorage.getItem('aroh:form-draft-user')===id,f.users.worker.id);await quantity().waitFor();
     assert.equal(await quantity().inputValue(),'','Another actor must not recover the first actor draft');assert.equal(await check().isChecked(),false);
     assert.equal(await page.evaluate(()=>Object.keys(sessionStorage).filter(k=>k.startsWith('aroh:form-draft:v1:')).length),0);
-    await quantity().fill('6');await form().locator('textarea[name=notes]').fill('SYNTHETIC segundo actor');await check().check();
-    await context.addCookies([{name:'lor_session',value:f.users.admin.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
+    await fillDraft(quantity(),'6');await fillDraft(form().locator('textarea[name=notes]'),'SYNTHETIC segundo actor');await check().check();
+    activeActorId=f.users.admin.id;await context.addCookies([{name:'lor_session',value:f.users.admin.token,domain:'localhost',path:'/',httpOnly:true,sameSite:'Lax'}]);
     await page.reload();await page.waitForFunction(id=>sessionStorage.getItem('aroh:form-draft-user')===id,f.users.admin.id);await quantity().waitFor();
     assert.equal(await quantity().inputValue(),'');assert.equal(await check().isChecked(),false);
     assert.equal(await page.evaluate(()=>sessionStorage.getItem('synthetic-unrelated-preference')),'keep');
-    await quantity().fill('5');await form().locator('textarea[name=notes]').fill('SYNTHETIC borrador antes de salir');
+    await fillDraft(quantity(),'5');await fillDraft(form().locator('textarea[name=notes]'),'SYNTHETIC borrador antes de salir');
     await check().check();await submit(form(),'Guardar arqueo declarado');
     await page.waitForFunction(key=>sessionStorage.getItem(key)===null,cashDraftKey);
     await page.reload();
     assert.equal(await quantity().inputValue(),'5');assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador antes de salir');assert.equal(await check().isChecked(),true,'The recorded confirmation is shown when its cash revision is unchanged');
-    await form().locator('textarea[name=notes]').fill('SYNTHETIC borrador en conflicto');
+    await fillDraft(form().locator('textarea[name=notes]'),'SYNTHETIC borrador en conflicto');
     await db.cashCount.update({where:{handoverId_kind:{handoverId:handover.id,kind:'DECLARADO'}},data:{notes:'SYNTHETIC revisión guardada por otra ventana',countedAt:new Date()}});
     await page.reload();await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();assert.equal(await form().locator('textarea[name=notes]').inputValue(),'SYNTHETIC borrador en conflicto');
     const originalRevision=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)).revision,cashDraftKey);
-    await form().locator('textarea[name=notes]').fill('SYNTHETIC borrador en conflicto editado');
+    await fillDraft(form().locator('textarea[name=notes]'),'SYNTHETIC borrador en conflicto editado');
     await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
     assert.equal(await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)).revision,cashDraftKey),originalRevision,'Editing does not acknowledge a newer saved revision');
     await page.reload();await page.getByText(/El registro guardado cambió después de este borrador/).waitFor();
@@ -101,16 +109,16 @@ try {
     await page.reload();await page.getByText(/Caja cambió: confirma nuevamente/).waitFor();assert.equal(await check().isChecked(),false);assert.equal(await quantity().inputValue(),'5');
     // In the synthetic configuration without cash requirements, inspect the note step independently.
     await db.cashFund.updateMany({data:{active:false}});
-    await page.goto(`${url}?paso=2`);
-    const note=()=>page.locator('form[data-action-form-ready="true"]').filter({has:page.getByRole('button',{name:'Guardar nota para el turno siguiente',exact:true})});
-    await note().locator('textarea[name=observation]').fill('SYNTHETIC nota persistida');await note().locator('textarea[name=nextAction]').fill('SYNTHETIC verificar respuesta');
+    activeHandoverId=handover.id;await page.goto(`${url}?paso=2`);
+    const note=()=>activeForm().filter({has:page.getByRole('button',{name:'Guardar nota para el turno siguiente',exact:true})});
+    await fillDraft(note().locator('textarea[name=observation]'),'SYNTHETIC nota persistida');await fillDraft(note().locator('textarea[name=nextAction]'),'SYNTHETIC verificar respuesta');
     await submit(note(),'Guardar nota para el turno siguiente');await page.waitForFunction(key=>sessionStorage.getItem(key)===null,noteDraftKey);await page.reload();
     assert.equal(await note().locator('textarea[name=observation]').inputValue(),'SYNTHETIC nota persistida');assert.equal(await note().locator('textarea[name=nextAction]').inputValue(),'SYNTHETIC verificar respuesta');
-    await note().locator('textarea[name=observation]').fill('SYNTHETIC no enviado');
-    await page.goto(`${otherUrl}?paso=2`);await note().waitFor();
+    await fillDraft(note().locator('textarea[name=observation]'),'SYNTHETIC no enviado');
+    activeHandoverId=otherHandover.id;await page.goto(`${otherUrl}?paso=2`);await note().waitFor();
     assert.equal(await note().locator('textarea[name=observation]').inputValue(),'','Another handover must not inherit the note');
     assert.equal(await note().locator('textarea[name=nextAction]').inputValue(),'');
-    await page.goto(`${url}?paso=2`);await note().getByText(/Borrador recuperado de esta pestaña/).waitFor();
+    activeHandoverId=handover.id;await page.goto(`${url}?paso=2`);await note().getByText(/Borrador recuperado de esta pestaña/).waitFor();
     assert.equal(await note().locator('textarea[name=observation]').inputValue(),'SYNTHETIC no enviado');
     await page.goto('http://localhost:3000/perfil');
     await page.getByRole('button',{name:'Cerrar sesión',exact:true}).click();await page.waitForURL('**/login');

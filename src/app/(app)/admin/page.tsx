@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import {auditFollowUpReadWhere} from '@/server/services/followup-access';
 import { scheduleAuditVisibility } from '@/server/services/schedule-access';
@@ -174,7 +175,7 @@ export default async function AdminPage() {
   const [users, activeSessions, deletedEntries, deletedTasks, auditCount] = await Promise.all([
     prisma.user.count({ where: { deletedAt: null } }),
     prisma.session.count({ where: { revokedAt: null, expiresAt: { gt: new Date() } } }),
-    prisma.operationalEntry.count({ where: { NOT: { deletedAt: null } } }),
+    readEntries(prisma, user).count({ where: { NOT: { deletedAt: null } } }),
     prisma.task.count({ where: { AND: [taskFollowUpReadWhere(user)], NOT: { deletedAt: null } } }),
     prisma.auditLog.count({ where: { AND: [housekeepingAuditVisibility(user), await scheduleAuditVisibility(user),auditFollowUpReadWhere(user)] } }),
   ]);

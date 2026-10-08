@@ -43,7 +43,7 @@ export const clearMissingElement = {
 
 async function invalidateCustody(tx: Prisma.TransactionClient, handoverId: string) {
   await tx.shiftHandover.update({ where: { id: handoverId }, data: {
-    receiverCustodyReviewedAt: null, receiverFinalReviewAt: null, receiverUrgentAcknowledgedAt: null,
+    receiverCustodyReviewedAt: null, receiverFinalReviewAt: null, receiverFinalSummaryKey:null, receiverUrgentAcknowledgedAt: null,
   } });
 }
 

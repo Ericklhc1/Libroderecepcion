@@ -719,7 +719,7 @@ export async function confirmHandoverCash(
     where: { id: params.handoverId },
     data: {
       receiverCustodyReviewedAt: null,
-      receiverFinalReviewAt: null,
+      receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
       receiverUrgentAcknowledgedAt: null,
     },
   });
@@ -950,7 +950,7 @@ export async function markHandoverElements(
         where: { id: params.handoverId },
         data: {
           receiverCustodyReviewedAt: null,
-          receiverFinalReviewAt: null,
+          receiverFinalReviewAt: null, receiverFinalSummaryKey:null,
           receiverUrgentAcknowledgedAt: null,
         },
       });

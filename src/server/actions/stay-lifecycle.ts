@@ -1,4 +1,5 @@
 'use server';
+import { readEntries } from '@/server/services/entry-visibility';
 
 import { revalidatePath } from 'next/cache';
 import {
@@ -100,7 +101,7 @@ async function ensureUnresolvedGuaranteeIncidents(
   let created = 0;
   for (const guarantee of guarantees) {
     const marker = `garantia-post-salida:${guarantee.id}`;
-    const existing = await prisma.operationalEntry.findFirst({
+    const existing = await readEntries(prisma, user).findFirst({
       where: { deletedAt: null, tags: { has: marker } },
       select: { id: true },
     });

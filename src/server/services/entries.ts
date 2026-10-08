@@ -1,3 +1,10 @@
+import { getSettingBool, assertSimpleNoveltiesEnabled } from './settings';
+import { isReceptionDeskRole } from '@/lib/permissions';
+import { readEntries } from '@/server/services/entry-visibility';
+import {alertReadWhere,followUpReadWhere} from './followup-access';
+import {LIVE_ALERT_WHERE} from './alert-engine';
+import {lockReceptionSummary} from './handover-snapshot';
+import { receptionHandoverEntryWhere, entryReadWhere, housekeepingEntryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
 import {assertSubjectCanFinish} from './subject-completion';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import 'server-only';
@@ -33,6 +40,7 @@ import {
 import { scheduleFrontiProactiveSweep } from '@/server/ai/fronti-proactive-scheduler';
 
 export const entryInclude = {
+  hiddenFromDepartments: { select: { id: true, name:true, active:true } },
   housekeepingRequests: { where: { deletedAt: null }, orderBy: {createdAt:'desc'}, select: { humanId:true, departmentId:true, status:true, resolution:true, resolvedAt:true, isDemo:true, requiresInspection:true, inspectedAt:true, inspectedBy:{select:{name:true}} } },
   createdBy: { select: { id: true, name: true } },
   owner: { select: { id: true, name: true } },
@@ -47,6 +55,8 @@ type NativeEntryWithRelations = Prisma.OperationalEntryGetPayload<{ include: typ
 export type EntryWithRelations = NativeEntryWithRelations & { housekeepingRequest: NativeEntryWithRelations['housekeepingRequests'][number] | null };
 
 type EntryCreateInput = {
+  hiddenDepartmentIds?: string[];
+  includeInReceptionHandover?: boolean;
   type: EntryType;
   title: string;
   description: string;
@@ -67,6 +77,9 @@ type EntryCreateInput = {
   severity?: Severity | null;
   impact?: Prisma.OperationalEntryCreateInput['impact'];
   immediateAction?: string | null;
+  workNextAction?: string | null;
+  reservationReference?: string | null;
+  receptionInternal?: boolean;
 };
 
 /**
@@ -77,7 +90,9 @@ type EntryCreateInput = {
  * duplicados. Se exige gravedad para que una incidencia nunca quede sin
  * clasificar.
  */
-export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
+export async function createEntry(user: CurrentUser, input: EntryCreateInput, options:{incidentWorkflow?:boolean;simpleNovelty?:boolean}={}) {
+  if (input.receptionInternal && !user.isSystemAdmin && user.roleKey!=='SUPERVISOR' && !isReceptionDeskRole(user.roleKey))throw new RuleError('Las operativas internas corresponden a Recepción.');
+  if(input.ownerId && ['NOVEDAD','INCIDENCIA'].includes(input.type) && await getSettingBool('book.simpleNovelties',false))throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
   if (input.ownerId) await assertAssignable(input.ownerId);
 
   if (input.type === EntryType.INCIDENCIA && !input.severity) {
@@ -95,11 +110,20 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
   const shift = await getMyOpenShift(user.id);
 
   const entry = await prisma.$transaction(async (tx) => {
+    if(options.simpleNovelty)await assertSimpleNoveltiesEnabled(tx);
+    const hiddenIds = [...new Set(input.hiddenDepartmentIds ?? [])];
+    if (hiddenIds.length > 100 || await tx.department.count({ where: { id: { in: hiddenIds }, active: true } }) !== hiddenIds.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
+    await assertEntryOwnerVisibility(tx,{ownerId:input.ownerId,createdById:user.id,hiddenDepartmentIds:hiddenIds,receptionInternal:input.receptionInternal});
     const created = await tx.operationalEntry.create({
       data: {
+        includeInReceptionHandover: input.includeInReceptionHandover ?? true,
+        hiddenFromDepartments: { connect: hiddenIds.map(id => ({ id })) },
         type: input.type,
         title: input.title,
         description: input.description,
+        workNextAction: input.workNextAction ?? null,
+        reservationReference: input.reservationReference ?? null,
+        receptionInternal: input.receptionInternal ?? false,
         category: input.category ?? null,
         departmentId: input.departmentId ?? null,
         roomId: input.roomId ?? null,
@@ -130,6 +154,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
         summary: `${ENTRY_TYPE_LABEL[created.type]} #${created.humanId}: ${created.title}`,
         user,
         after: {
+          includeInReceptionHandover: created.includeInReceptionHandover,
+          hiddenDepartmentIds: created.hiddenFromDepartments.map(d => d.id),
           type: created.type,
           title: created.title,
           priority: created.priority,
@@ -144,6 +170,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput) {
       },
       tx,
     );
+
+    if(options.incidentWorkflow&&created.type===EntryType.INCIDENCIA)await ensureIncidentWorkflow(created.id,tx);
 
     if (created.ownerId && created.ownerId !== user.id) {
       await notify(
@@ -251,13 +279,15 @@ const EDITABLE_FIELDS = [
   'severity',
   'impact',
   'immediateAction',
+  'workNextAction',
+  'reservationReference',
   'rootCause',
   'resolution',
   'tags',
 ] as const;
 
-export async function getEntry(id: string): Promise<EntryWithRelations> {
-  const entry = await prisma.operationalEntry.findUnique({
+export async function getEntry(id: string, reader: EntryReader): Promise<EntryWithRelations> {
+  const entry = await readEntries(prisma, reader).findUnique({
     where: { id },
     include: entryInclude,
   });
@@ -266,8 +296,10 @@ export async function getEntry(id: string): Promise<EntryWithRelations> {
 }
 
 /** Modelo de lectura del asunto: mantiene la reserva histórica antes de proyectar contexto. */
-export async function getSubjectEntry(user: Pick<CurrentUser, 'isSystemAdmin'>, id: string): Promise<EntryWithRelations> {
-  const entry = await getEntry(id);
+export async function getSubjectEntry(user: EntryReader, id: string): Promise<EntryWithRelations> {
+  const native = await readEntries(prisma, user).findFirst({ where: { id, AND: [entryReadWhere(user)] }, include: {...entryInclude,housekeepingRequests:{...entryInclude.housekeepingRequests,where:{deletedAt:null,AND:[housekeepingEntryReadWhere(user)]}}} });
+  if (!native) throw new NotFoundError('El registro no está visible para tu área.');
+  const entry = {...native, housekeepingRequest:native.housekeepingRequests[0]??null};
   const housekeepingRequests=entry.housekeepingRequests.filter(work=>!work.isDemo||user.isSystemAdmin);
   return { ...entry, housekeepingRequests, housekeepingRequest:housekeepingRequests[0]??null };
 }
@@ -279,22 +311,30 @@ export async function updateEntry(
       resolution?: string | null;
     },
   expectedRevision?: string,
+  options:{simpleNovelty?:boolean}={},
 ) {
+  if ('hiddenDepartmentIds' in input || 'includeInReceptionHandover' in input) throw new RuleError('Cambia la visibilidad desde su acción dedicada.');
   return prisma.$transaction(async (tx) => {
+    if(options.simpleNovelty)await assertSimpleNoveltiesEnabled(tx);
     // The snapshot and the incident workflow belong to the same locked mutation.
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
-    const current = await tx.operationalEntry.findFirst({
-      where: { id: input.id, deletedAt: null },
+    const current = await readEntries(tx, user).findFirst({
+      where: { id: input.id, deletedAt: null, AND: [entryReadWhere(user)] },
+      include:{hiddenFromDepartments:{select:{id:true}}},
     });
     if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
     assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
+    if (input.ownerId !== undefined && input.ownerId !== current.ownerId && ['NOVEDAD','INCIDENCIA'].includes(current.type) && await getSettingBool('book.simpleNovelties',false)) throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
     if (current.status === EntryStatus.CERRADO && !user.permissions.includes('entry.reopen')) {
       throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
     }
     if (current.type === EntryType.INCIDENCIA && input.severity === null) {
       throw new RuleError('La incidencia requiere indicar su gravedad.');
     }
-    if (input.ownerId) await assertAssignable(input.ownerId);
+    if (input.ownerId) {
+      await assertAssignable(input.ownerId);
+      await assertEntryOwnerVisibility(tx,{ownerId:input.ownerId,createdById:current.createdById,hiddenDepartmentIds:current.hiddenFromDepartments.map(d=>d.id),receptionInternal:current.receptionInternal});
+    }
     if (input.roomId) {
       const room = await prisma.room.findFirst({
         where: { id: input.roomId, active: true },
@@ -324,7 +364,7 @@ export async function updateEntry(
     if (changes.changed.length === 0) {
       if (current.type !== EntryType.INCIDENCIA) return current;
       await ensureIncidentWorkflow(current.id, tx);
-      return tx.operationalEntry.findUniqueOrThrow({ where: { id: current.id }, include: entryInclude });
+      return readEntries(tx, user).findUniqueOrThrow({ where: { id: current.id }, include: entryInclude });
     }
 
     const updated = await tx.operationalEntry.update({
@@ -371,7 +411,7 @@ export async function updateEntry(
     await publishHkMaintenanceUpdate(tx, user, current, updated);
     if (updated.type === EntryType.INCIDENCIA) {
       await ensureIncidentWorkflow(updated.id, tx);
-      return tx.operationalEntry.findUniqueOrThrow({ where: { id: updated.id }, include: entryInclude });
+      return readEntries(tx, user).findUniqueOrThrow({ where: { id: updated.id }, include: entryInclude });
     }
     return updated;
   });
@@ -387,9 +427,10 @@ export async function changeEntryStatus(
     rootCause?: string | null;
   },
   expectedRevision?: string,
+  options:{simpleNovelty?:boolean}={},
 ) {
-  const current = await prisma.operationalEntry.findFirst({
-    where: { id: input.id, deletedAt: null },
+  const current = await readEntries(prisma, user).findFirst({
+    where: { id: input.id, deletedAt: null, AND: [entryReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
@@ -405,7 +446,8 @@ export async function changeEntryStatus(
   if (closing) {
     const permission =
       current.type === EntryType.INCIDENCIA ? 'incident.close' : 'entry.close';
-    if (!user.permissions.includes(permission) && !user.permissions.includes('entry.close')) {
+    const simpleReceptionClose = input.status===EntryStatus.RESUELTO && ['NOVEDAD','INCIDENCIA'].includes(current.type) && (user.isSystemAdmin || user.roleKey==='SUPERVISOR' || isReceptionDeskRole(user.roleKey)) && await getSettingBool('book.simpleNovelties',false);
+    if (!simpleReceptionClose && !user.permissions.includes(permission) && !user.permissions.includes('entry.close')) {
       throw new RuleError('No tienes permiso para cerrar este registro.');
     }
     if (current.type === EntryType.INCIDENCIA) {
@@ -424,6 +466,7 @@ export async function changeEntryStatus(
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    if(options.simpleNovelty || (closing && !user.permissions.includes('entry.close') && !user.permissions.includes('incident.close')))await assertSimpleNoveltiesEnabled(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.id} FOR UPDATE`;
     if (closing) await assertSubjectCanFinish(tx,current.id);
     const now = new Date();
@@ -536,8 +579,8 @@ export async function softDeleteEntry(
   input: { id: string; reason: string },
   expectedRevision?: string,
 ) {
-  const current = await prisma.operationalEntry.findFirst({
-    where: { id: input.id, deletedAt: null },
+  const current = await readEntries(prisma, user).findFirst({
+    where: { id: input.id, deletedAt: null, AND: [entryReadWhere(user)] },
   });
   if (!current) throw new NotFoundError('El registro no existe o ya fue eliminado.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
@@ -580,7 +623,7 @@ export async function restoreEntry(
   input: { id: string; reason?: string | null },
   expectedRevision?: string,
 ) {
-  const current = await prisma.operationalEntry.findFirst({
+  const current = await readEntries(prisma, user).findFirst({
     where: { id: input.id, NOT: { deletedAt: null } },
   });
   if (!current) throw new NotFoundError('El registro no está eliminado.');
@@ -605,5 +648,52 @@ export async function restoreEntry(
       tx,
     );
     return restored;
+  });
+}
+
+/** Creator or supervisor, independent of content/assignment editing grants. */
+export async function updateEntryVisibility(user: CurrentUser, input: { id: string; revision: string; hiddenDepartmentIds: string[]; includeInReceptionHandover: boolean }) {
+  return prisma.$transaction(async tx => {
+    await lockReceptionSummary(tx);
+    await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
+    const current = await readEntries(tx, user).findFirst({ where: { id: input.id, deletedAt: null }, include: { hiddenFromDepartments: { select: { id: true } } } });
+    if (!current) throw new NotFoundError('La novedad no existe.');
+    if (!canManageEntryVisibility(user, current.createdById)) throw new RuleError('Sólo quien creó la novedad o Supervisión puede cambiar su visibilidad.');
+    if (current.updatedAt.toISOString() !== input.revision) throw new RuleError('La novedad cambió. Actualiza antes de guardar.');
+    const ids = [...new Set(input.hiddenDepartmentIds)];
+    if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, OR:[{active:true},{id:{in:current.hiddenFromDepartments.map(d=>d.id)}}] } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
+    await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
+    await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
+    // All area changes can alter a receiver's actual projection, even when the
+    // reception checkbox stays unchanged (secondary area memberships apply).
+    const selectable=!current.isDemo&&(current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA)&&(ENTRY_OPEN_STATUSES.includes(current.status)||current.status===EntryStatus.RESUELTO||current.status===EntryStatus.CERRADO);
+    const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR'},select:{id:true,fromShiftId:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true,pendingsReviewedAt:true,finalReviewAt:true,urgentAcknowledgedAt:true,issuedBy:{select:{id:true,departmentId:true,role:{select:{key:true}}}}}});
+    const readable=async(d:typeof drafts[number])=>{
+      const reader:EntryReader={id:d.issuedBy.id,departmentId:d.issuedBy.departmentId,roleKey:d.issuedBy.role.key as CurrentUser['roleKey'],isSystemAdmin:d.issuedBy.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]};
+      const direct=selectable&&(ENTRY_OPEN_STATUSES.includes(current.status)||current.shiftId===d.fromShiftId);
+      const now=new Date();
+      const counts=await Promise.all([
+        direct?readEntries(tx, reader).count({where:{id:current.id,AND:[receptionHandoverEntryWhere,entryReadWhere(reader)]}}):Promise.resolve(0),
+        tx.alert.count({where:{...LIVE_ALERT_WHERE(now),taskId:null,sourceEntries:{some:{entryId:current.id}},AND:[alertReadWhere(reader,true)]}}),
+        tx.followUp.count({where:{deletedAt:null,status:{in:['PENDIENTE','VENCIDO']},sourceEntries:{some:{entryId:current.id}},AND:[followUpReadWhere(reader,false,true),{OR:[{scheduledAt:null},{scheduledAt:{lte:new Date(now.getTime()+24*3600_000)}}]}]}}),
+      ]);
+      return counts.some(count=>count>0);
+    };
+    const beforeReadable=await Promise.all(drafts.map(readable));
+    const updated = await tx.operationalEntry.update({ where: { id: input.id }, data: {
+      includeInReceptionHandover: input.includeInReceptionHandover,
+      hiddenFromDepartments: { set: ids.map(id => ({ id })) },
+    }, include: entryInclude });
+    const afterReadable=await Promise.all(drafts.map(readable));
+    const invalidatedDrafts=drafts.filter((_,i)=>!beforeReadable[i]&&afterReadable[i]).map(d=>({id:d.id,receptionSummaryRevision:d.receptionSummaryRevision,receptionSummaryPreparedRevision:d.receptionSummaryPreparedRevision,pendingsReviewedAt:d.pendingsReviewedAt?.toISOString()??null,finalReviewAt:d.finalReviewAt?.toISOString()??null,urgentAcknowledgedAt:d.urgentAcknowledgedAt?.toISOString()??null}));
+    if(invalidatedDrafts.length)await tx.shiftHandover.updateMany({where:{id:{in:invalidatedDrafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
+    await tx.auditLog.create({ data: {
+      entity: 'OperationalEntry', entityId: current.id, action: AuditAction.EDITAR,
+      summary: `Visibilidad de la novedad #${current.humanId} cambiada por ${user.name}`,
+      userId: user.id, sessionId: user.sessionId, isDemo: current.isDemo,
+      before: { hiddenDepartmentIds: current.hiddenFromDepartments.map(d => d.id), includeInReceptionHandover: current.includeInReceptionHandover,...(invalidatedDrafts.length?{receptionDrafts:invalidatedDrafts}:{}) },
+      after: { hiddenDepartmentIds: ids, includeInReceptionHandover: updated.includeInReceptionHandover,...(invalidatedDrafts.length?{receptionDrafts:invalidatedDrafts.map(d=>({...d,receptionSummaryRevision:d.receptionSummaryRevision+1,pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}))}:{}) },
+    } });
+    return updated;
   });
 }

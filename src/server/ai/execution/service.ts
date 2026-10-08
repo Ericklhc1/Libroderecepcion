@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import {getSubjectEntry} from '@/server/services/entries';
 import {coordinationEntries} from '@/server/services/coordination-access';
 import 'server-only';
@@ -124,7 +125,7 @@ export async function executionCard(id: string) {
     const values=JSON.parse(fields) as Record<string,string|string[]>;
     if(s.action==='requestSubjectAttentionAction'){
       const entryId=String(values.entryId);
-      if(!await prisma.operationalEntry.count({where:{id:entryId,AND:[coordinationEntries(user)]}}))throw new NotFoundError();
+      if(!await readEntries(prisma, user).count({where:{id:entryId,AND:[coordinationEntries(user)]}}))throw new NotFoundError();
       const entry=await getSubjectEntry(user,entryId);
       const area=await prisma.department.findUnique({where:{id:String(values.departmentId)},select:{name:true}});
       const assignee=typeof values.assigneeId==='string'&&values.assigneeId?await prisma.user.findFirst({where:{id:values.assigneeId,active:true,deletedAt:null},select:{name:true}}):null;

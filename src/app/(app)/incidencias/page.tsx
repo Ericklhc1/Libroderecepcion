@@ -1,3 +1,5 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { entryReadWhere } from '@/server/services/entry-visibility';
 import Link from 'next/link';
 import { EntryType, Severity } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -37,6 +39,7 @@ export default async function IncidentsPage({
   const gravedad = typeof params.gravedad === 'string' ? params.gravedad : undefined;
 
   const where: Prisma.OperationalEntryWhereInput = {
+    AND:[entryReadWhere(user)],
     deletedAt: null,
     type: EntryType.INCIDENCIA,
     ...(values.estado === 'abiertos'
@@ -69,24 +72,25 @@ export default async function IncidentsPage({
   };
 
   const [incidents, options, bySeverity, openCount] = await Promise.all([
-    prisma.operationalEntry.findMany({
+    readEntries(prisma, user).findMany({
       where,
       include: entryInclude,
       orderBy: [{ severity: 'desc' }, { occurredAt: 'desc' }],
       take: 150,
     }),
     getFormOptions(user),
-    prisma.operationalEntry.groupBy({
+    readEntries(prisma, user).groupBy({
       by: ['severity'],
       where: {
+        AND:[entryReadWhere(user)],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
       },
       _count: { _all: true },
     }),
-    prisma.operationalEntry.count({
-      where: { deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_OPEN_STATUSES } },
+    readEntries(prisma, user).count({
+      where: { AND:[entryReadWhere(user)], deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_OPEN_STATUSES } },
     }),
   ]);
 

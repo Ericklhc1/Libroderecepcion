@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import type {Prisma} from '@prisma/client';
 import type {PermissionKey} from '@/lib/permissions';
@@ -7,7 +8,7 @@ import {notify} from '@/server/notifications';
 
 export async function sourceStakeholders(tx:Prisma.TransactionClient,entryId:string|null|undefined){
   if(!entryId)return [];
-  const entry=await tx.operationalEntry.findUnique({where:{id:entryId},select:{createdById:true,ownerId:true}});
+  const entry=await readEntries(tx, {engine:"stakeholders"}).findUnique({where:{id:entryId},select:{createdById:true,ownerId:true}});
   return entry?[...new Set([entry.createdById,entry.ownerId].filter((id):id is string=>!!id))]:[];
 }
 /** Filter every recipient against the current source, including outgoing responsibility. */
@@ -16,7 +17,7 @@ export async function notifyNativeWork(tx:Prisma.TransactionClient,input:{kind:'
   const recipients:string[]=[];
   for(const person of people){
     const reader={id:person.id,roleKey:person.role.key,permissions:person.role.permissions.map(p=>p.permission.key as PermissionKey)} as CurrentUser;
-    if(input.kind==='task'?await tx.task.count({where:{id:input.id,AND:[coordinationTasks(reader)]}}):await tx.operationalEntry.count({where:{id:input.id,AND:[coordinationEntries(reader)]}}))recipients.push(person.id);
+    if(input.kind==='task'?await tx.task.count({where:{id:input.id,AND:[coordinationTasks(reader)]}}):await readEntries(tx, reader).count({where:{id:input.id,AND:[coordinationEntries(reader)]}}))recipients.push(person.id);
   }
   await notify(recipients.map(userId=>({internalOnly:input.internalOnly??true,userId,type:'ACTUALIZACION_OPERATIVA' as const,title:input.title,body:input.body,link:input.kind==='task'?`/tareas/${input.id}`:`/libro/${input.id}`,entity:input.kind==='task'?'Task':'OperationalEntry',entityId:input.id})),tx);
 }

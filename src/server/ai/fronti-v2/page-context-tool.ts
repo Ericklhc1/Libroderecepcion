@@ -238,7 +238,7 @@ async function detailSnapshot(
 
   if (page.entityType === 'ReservationReference') {
     requireAny(user, ['guest.view', 'guest.manage'], 'No tienes permiso para consultar reservas.');
-    const reservation = await getReservationOperationalContext(page.entityId);
+    const reservation = await getReservationOperationalContext(page.entityId,user);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 
@@ -248,13 +248,13 @@ async function detailSnapshot(
       ['room.view', 'guest.view', 'guest.manage'],
       'No tienes permiso para consultar reservas.',
     );
-    const reservation = await getReservationOperationalContextByCode(page.entityId);
+    const reservation = await getReservationOperationalContextByCode(page.entityId,user);
     return reservation ? compactReservationContext(reservation) : { found: false };
   }
 
   if (page.entityType === 'RoomNumber') {
     requireAny(user, ['room.view'], 'No tienes permiso para consultar habitaciones.');
-    const room = await getRoomDetail(page.entityId).catch(() => null);
+    const room = await getRoomDetail(page.entityId,user).catch(() => null);
     if (!room) return { found: false };
     return {
       found: true,
@@ -345,7 +345,7 @@ async function detailSnapshot(
         issuedAt: true,
         receivedAt: true,
         snapshot: true,
-        receiverBriefingReviewedAt:true,receiverCustodyReviewedAt:true,receiverFinalReviewAt:true,receiverUrgentAcknowledgedAt:true,
+        receiverBriefingReviewedAt:true,receiverBriefingSummaryKey:true,receiverCustodyReviewedAt:true,receiverFinalReviewAt:true,receiverFinalSummaryKey:true,receiverUrgentAcknowledgedAt:true,
         issuedBy: { select: { name: true } },
         receivedBy: { select: { name: true } },
         fromShift: { select: { id: true, type: true, date: true, status: true } },
@@ -438,7 +438,7 @@ async function supervisionSectionSnapshot(
       page.filters.periodo === '7d' || page.filters.periodo === '30d'
         ? page.filters.periodo
         : 'today';
-    return getOperationalHealth(operationalHealthRange(period));
+    return getOperationalHealth(operationalHealthRange(period),user);
   }
 
   if (page.sectionKey === 'rendimiento') {
@@ -989,7 +989,7 @@ export async function executeFrontiPageContextTool(
       requireAny(user, ['metrics.view'], 'No tienes permiso para consultar Indicadores.');
       const requested = Number(page.filters.dias ?? 30);
       const days = [7, 30, 90].includes(requested) ? requested : 30;
-      return { ...base, snapshot: await getMetrics(defaultRange(days)) };
+      return { ...base, snapshot: await getMetrics(defaultRange(days),user) };
     }
     case 'supervision':
       if(page.sectionKey==='documentos-locales'){

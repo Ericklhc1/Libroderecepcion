@@ -1425,6 +1425,8 @@ model OperationalEntry {
   workAcknowledgedById String?
   workStartedAt DateTime?
   workNextAction String?
+  reservationReference String?
+  receptionInternal Boolean @default(false)
   workEscalatedAt DateTime?
   workRequestKey String?
 

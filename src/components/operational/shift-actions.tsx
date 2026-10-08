@@ -510,10 +510,12 @@ export function ConfirmReceptionReviewStepForm({
   handoverId,
   step,
   urgentCount = 0,
+  simpleNovelties = false,
 }: {
   handoverId: string;
   step: 'BRIEFING' | 'CUSTODY' | 'FINAL';
   urgentCount?: number;
+  simpleNovelties?: boolean;
 }) {
   return (
     <ActionForm
@@ -525,8 +527,8 @@ export function ConfirmReceptionReviewStepForm({
       <input type="hidden" name="handoverId" value={handoverId} />
       <input type="hidden" name="step" value={step} />
 
-      {step === 'FINAL' && urgentCount > 0 ? (
-        <label className="flex items-start gap-3 rounded-md bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
+      {step === 'FINAL' && (simpleNovelties || urgentCount > 0) ? (
+        <label className={`flex items-start gap-3 border px-3 py-3 text-sm ${urgentCount>0?'border-red-200 bg-red-50 text-red-950':'border-slate-300 bg-white text-petrol-900'}`}>
           <input
             type="checkbox"
             name="urgentAcknowledged"
@@ -535,8 +537,8 @@ export function ConfirmReceptionReviewStepForm({
             className="mt-0.5 h-4 w-4 shrink-0"
           />
           <span>
-            Revisé expresamente {urgentCount} punto(s) urgente(s) y comprendo que quedan bajo
-            responsabilidad del turno que estoy recibiendo.
+            {simpleNovelties ? 'Estoy al tanto de las novedades.' : <>Revisé expresamente {urgentCount} punto(s) urgente(s) y comprendo que quedan bajo
+            responsabilidad del turno que estoy recibiendo.</>}
           </span>
         </label>
       ) : null}
@@ -625,10 +627,12 @@ export function ConfirmHandoverReviewStepForm({
   handoverId,
   step,
   urgentCount = 0,
+  simpleNovelties = false,
 }: {
   handoverId: string;
   step: 'PENDINGS' | 'FINAL';
   urgentCount?: number;
+  simpleNovelties?: boolean;
 }) {
   const router = useRouter();
   const nextStep = step === 'PENDINGS' ? 3 : 4;
@@ -643,8 +647,8 @@ export function ConfirmHandoverReviewStepForm({
       <input type="hidden" name="handoverId" value={handoverId} />
       <input type="hidden" name="step" value={step} />
 
-      {step === 'FINAL' && urgentCount > 0 ? (
-        <label className="flex items-start gap-3 rounded-md bg-red-50 px-3 py-3 text-sm text-red-950 ring-1 ring-red-200">
+      {step === 'FINAL' && (simpleNovelties || urgentCount > 0) ? (
+        <label className={`flex items-start gap-3 border px-3 py-3 text-sm ${urgentCount>0?'border-red-200 bg-red-50 text-red-950':'border-slate-300 bg-white text-petrol-900'}`}>
           <input
             type="checkbox"
             name="urgentAcknowledged"
@@ -653,8 +657,8 @@ export function ConfirmHandoverReviewStepForm({
             className="mt-0.5 h-4 w-4 shrink-0"
           />
           <span>
-            Revisé expresamente {urgentCount} punto(s) urgente(s) y comprendo que continuarán
-            visibles para el turno entrante hasta su resolución.
+            {simpleNovelties ? 'Estoy al tanto de las novedades.' : <>Revisé expresamente {urgentCount} punto(s) urgente(s) y comprendo que continuarán
+            visibles para el turno entrante hasta su resolución.</>}
           </span>
         </label>
       ) : null}

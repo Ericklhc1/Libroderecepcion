@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import {createHash} from 'node:crypto';
 import {prisma} from '@/lib/prisma';
@@ -33,10 +34,10 @@ export async function prepareSubjectIntent(user:CurrentUser,messages:readonly Fr
   let entryId:string|null=null;
   if(number!==null){
     if(!Number.isSafeInteger(number)||number>2147483647)return {reply:'Indica el folio del asunto que necesitas derivar.',confirmations:[]};
-    entryId=(await prisma.operationalEntry.findFirst({where:{humanId:number,AND:[coordinationEntries(user)]},select:{id:true}}))?.id??null;
+    entryId=(await readEntries(prisma, user).findFirst({where:{humanId:number,AND:[coordinationEntries(user)]},select:{id:true}}))?.id??null;
   }else if(page?.entityType==='OperationalEntry')entryId=page.entityId;
   else if(page?.entityType==='Task'&&page.entityId)entryId=(await getTask(page.entityId,user).catch(()=>null))?.entryId??null;
-  if(!entryId||!await prisma.operationalEntry.count({where:{id:entryId,AND:[coordinationEntries(user)]}}))return {reply:'Abre el asunto que necesitas derivar o indica su folio. Conservaré su contexto y el resultado volverá al mismo asunto.',confirmations:[]};
+  if(!entryId||!await readEntries(prisma, user).count({where:{id:entryId,AND:[coordinationEntries(user)]}}))return {reply:'Abre el asunto que necesitas derivar o indica su folio. Conservaré su contexto y el resultado volverá al mismo asunto.',confirmations:[]};
   const entry=await getSubjectEntry(user,entryId);
   if(['RESUELTO','CERRADO'].includes(entry.status))return {reply:`El asunto #${entry.humanId} está resuelto. Revisa su resultado; para una nueva atención debe reabrirse con el permiso correspondiente.`,confirmations:[]};
   const previous=pendingQuestion===`¿En qué ubicación necesita atención el asunto #${entry.humanId}?`?pendingQuestion:'';

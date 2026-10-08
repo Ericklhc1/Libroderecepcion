@@ -78,7 +78,7 @@ describe('Auditoría: distribución y resultado por área',()=>{
     const hk=rows.find(r=>r.departmentId===f.hk.id)!;const pub=rows.find(r=>r.departmentId===f.publicArea.id)!;
     const first=await decideAreaAttention(f.supervisor,{sourceRevision:f.source.updatedAt.toISOString(),id:hk.id,version:hk.version,action:'ASIGNAR',assigneeId:f.maid.id,note:'Atender la necesidad.'});
     const second=await decideAreaAttention(f.admin,{sourceRevision:f.source.updatedAt.toISOString(),id:pub.id,version:pub.version,action:'ASIGNAR',assigneeId:publicWorker.id,note:'Atender la zona.'});
-    expect(first.housekeepingId).not.toBe(second.housekeepingId);expect((await getEntry(f.source.id)).housekeepingRequests).toHaveLength(2);
+    expect(first.housekeepingId).not.toBe(second.housekeepingId);expect((await getEntry(f.source.id, f.admin)).housekeepingRequests).toHaveLength(2);
     expect(await prisma.housekeepingRequest.count({where:{sourceEntryId:f.source.id,requiresInspection:true}})).toBe(2);expect(await prisma.task.count()).toBe(0);
     await expect(changeEntryStatus(f.admin,{id:f.source.id,status:'RESUELTO'})).rejects.toThrow('Housekeeping');
   });
@@ -94,7 +94,7 @@ describe('Auditoría: distribución y resultado por área',()=>{
   it('no infiere urgencia de importancia ni inventa guardia o plazo',async()=>{
     const f=await fixture();await expect(distributeSubject(f.admin,{...f.input,urgent:true,urgencyReason:'Riesgo real'})).rejects.toThrow('guardia');
     expect(await prisma.subjectAreaAttention.count()).toBe(0);
-    const rows=await distributeSubject(f.admin,f.input);expect(rows.every(r=>!r.urgent)).toBe(true);expect((await getEntry(f.source.id)).dueAt).toBeNull();
+    const rows=await distributeSubject(f.admin,f.input);expect(rows.every(r=>!r.urgent)).toBe(true);expect((await getEntry(f.source.id, f.admin)).dueAt).toBeNull();
   });
   it('rechaza asignación genérica inaccesible en crear, reasignar y coordinar y filtra opciones',async()=>{
     const f=await fixture();const input={title:'Atención',priority:'MEDIA' as const,tags:[],checklist:[],departmentId:f.hk.id};
@@ -163,7 +163,7 @@ describe('Auditoría: distribución y resultado por área',()=>{
   it('cierre concurrente y creación de intervención no pueden ganar ambos',async()=>{
     const f=await fixture();const attempts=await Promise.allSettled([changeEntryStatus(f.admin,{id:f.source.id,status:'CERRADO'}),createTask(f.admin,{title:'Intervención concurrente',entryId:f.source.id,assigneeId:f.admin.id,priority:'MEDIA',tags:[],checklist:[]})]);
     expect(attempts.filter(a=>a.status==='fulfilled')).toHaveLength(1);
-    const source=await getEntry(f.source.id);const pending=await prisma.task.count({where:{entryId:source.id,status:'PENDIENTE'}});
+    const source=await getEntry(f.source.id, f.admin);const pending=await prisma.task.count({where:{entryId:source.id,status:'PENDIENTE'}});
     expect(source.status==='CERRADO'&&pending>0).toBe(false);
   });
 

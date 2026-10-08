@@ -1,5 +1,8 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, type EntryReader } from './entry-visibility';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
+import type {Prisma} from '@prisma/client';
 import { AuditAction, NotificationType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { NotFoundError, RuleError } from '@/server/errors';
@@ -79,8 +82,9 @@ export async function addComment(
   let link = '/';
 
   if (input.entryId) {
-    const entry = await tx.operationalEntry.findFirst({
-      where: { id: input.entryId, deletedAt: null },
+    await assertEntryVisibleForWrite(tx,user,input.entryId);
+    const entry = await readEntries(tx, user).findFirst({
+      where: { id: input.entryId, deletedAt: null, AND:[entryReadWhere(user)] },
       select: { id: true, humanId: true, title: true, createdById: true, ownerId: true },
     });
     if (!entry) throw new NotFoundError('El registro no existe.');
@@ -89,6 +93,7 @@ export async function addComment(
     summaryRef = `registro #${entry.humanId}`;
     link = `/libro/${entry.id}`;
   } else if (input.taskId) {
+    await lockEntrySourcesForRecord(tx,user,'task',input.taskId);
     const task = await tx.task.findFirst({
       where: { id: input.taskId, deletedAt: null, AND:[taskFollowUpReadWhere(user)] },
       select: { id: true, humanId: true, createdById: true, assigneeId: true },
@@ -99,6 +104,7 @@ export async function addComment(
     summaryRef = `tarea #${task.humanId}`;
     link = `/tareas/${task.id}`;
   } else if (input.followUpId) {
+    await lockEntrySourcesForRecord(tx,user,'followup',input.followUpId);
     const followUp = await tx.followUp.findFirst({
       where: { id: input.followUpId, deletedAt: null, AND:[followUpReadWhere(user)] },
       select: { id: true, action: true, ownerId: true, createdById: true, entryId: true },
@@ -109,6 +115,7 @@ export async function addComment(
     summaryRef = `seguimiento "${followUp.action}"`;
     link = followUp.entryId ? `/libro/${followUp.entryId}` : '/seguimientos';
   } else if (input.alertId) {
+    await lockEntrySourcesForRecord(tx,user,'alert',input.alertId);
     const alert = await tx.alert.findFirst({
       where: { id: input.alertId, deletedAt: null, AND:[alertReadWhere(user)] },
       select: { id: true, title: true, createdById: true },
@@ -179,8 +186,8 @@ export async function addComment(
   const candidates=await tx.user.findMany({where:{id:{in:candidateIds},active:true,deletedAt:null},include:{role:{include:{permissions:{include:{permission:true}}}}}});
   const allowedIds=new Set<string>();
   for(const person of candidates){
-    const reader:Pick<CurrentUser,'id'|'permissions'>={id:person.id,permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
-    if(input.taskId && !await tx.task.count({where:{id:input.taskId,AND:[taskFollowUpReadWhere(reader)]}}) || input.followUpId && !await tx.followUp.count({where:{id:input.followUpId,AND:[followUpReadWhere(reader)]}}) || input.alertId && !await tx.alert.count({where:{id:input.alertId,AND:[alertReadWhere(reader)]}})) continue;
+    const reader:CurrentUser={...user,id:person.id,departmentId:person.departmentId,roleKey:person.role.key,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',permissions:person.role.permissions.some(p=>p.permission.key==='supervision.followup.manage')?['supervision.followup.manage']:[]};
+    if(input.entryId && !await readEntries(tx, reader).count({where:{id:input.entryId,AND:[entryReadWhere(reader)]}}) || input.taskId && !await tx.task.count({where:{id:input.taskId,AND:[taskFollowUpReadWhere(reader)]}}) || input.followUpId && !await tx.followUp.count({where:{id:input.followUpId,AND:[followUpReadWhere(reader)]}}) || input.alertId && !await tx.alert.count({where:{id:input.alertId,AND:[alertReadWhere(reader)]}})) continue;
     allowedIds.add(person.id);
   }
   for(const recipient of recipients) if(!allowedIds.has(recipient)) recipients.delete(recipient);
@@ -219,6 +226,7 @@ export async function softDeleteComment(
 ) {
   const comment = await prisma.comment.findFirst({
     where: { id: input.id, deletedAt: null,AND:[
+      {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
       {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
       {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
       {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
@@ -245,14 +253,19 @@ export async function softDeleteComment(
 }
 
 /** Comentarios de un objeto, del más antiguo al más reciente. */
+export function commentReadWhere(user:EntryReader):Prisma.CommentWhereInput {
+  return {AND:[
+    {OR:[{entryId:null},{entry:entryReadWhere(user)}]},
+    {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
+    {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
+    {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
+  ]};
+}
+
 export async function listComments(target: CommentTarget,user:CurrentUser) {
   return prisma.comment.findMany({
     where: {
-      deletedAt: null,AND:[
-        {OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},
-        {OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},
-        {OR:[{alertId:null},{alert:alertReadWhere(user)}]},
-      ],
+      deletedAt: null,AND:[commentReadWhere(user)],
       ...(target.entryId ? { entryId: target.entryId } : {}),
       ...(target.taskId ? { taskId: target.taskId } : {}),
       ...(target.followUpId ? { followUpId: target.followUpId } : {}),

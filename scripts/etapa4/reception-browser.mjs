@@ -28,6 +28,14 @@ try {
     receiver.page.on('pageerror',error=>console.error('Synthetic reception page error',error.message));
     const path = `http://localhost:3000/turno/entrega/${handover.id}`;
     await receiver.page.goto(path);
+    // A legacy timestamp without its visible-photo fingerprint is pending review.
+    // Traverse the real review action before the unchanged custody assertions.
+    await receiver.page.getByRole('button', { name: 'CONFIRMAR ENTREGA REVISADA', exact: true }).click();
+    await receiver.page.getByText('No recibido', { exact: true }).waitFor();
+    const reviewed = await db.shiftHandover.findUniqueOrThrow({ where: { id: handover.id } });
+    assert.match(reviewed.receiverBriefingSummaryKey, /^[a-f0-9]{64}$/);
+    assert.equal(reviewed.receiverFinalReviewAt, null);
+    assert.equal(await db.auditLog.count({ where: { entity: 'ShiftHandover', entityId: handover.id, summary: { startsWith: 'Entrega revisada por' } } }), 1);
     await receiver.page.getByText('No recibido', { exact: true }).click();
     const form = receiver.page.locator('form').filter({ has: receiver.page.locator(`input[name=elementId][value="${element.id}"]`) });
     await form.locator('textarea[name=reason]').fill('PRUEBA AUTOMÁTICO DE IA · llave no recibida; localizar con saliente '+ 'x'.repeat(300));

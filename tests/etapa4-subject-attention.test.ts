@@ -63,7 +63,7 @@ describe('AROH Simple · solicitar atención sin transcripción',()=>{
     expect(work).toMatchObject({sourceEntryId:f.source.id,title:null,description:null,roomId:f.room.id});
     const act=async(action:'RECIBIR'|'COMENZAR'|'TERMINAR',note='Trabajo atendido')=>{const current=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:a.id}});return changeHkWork(worker,{id:a.id,version:current.version,action,note});};
     await act('RECIBIR');await act('COMENZAR');await act('TERMINAR');
-    expect((await getEntry(f.source.id)).housekeepingRequest?.resolution).toContain('Trabajo atendido');
+    expect((await getEntry(f.source.id, f.actor)).housekeepingRequest?.resolution).toContain('Trabajo atendido');
     expect(await prisma.task.count({where:{entryId:f.source.id}})).toBe(0);
   });
   it('incorpora atómicamente un trabajo ordinario a la atención y exige su resultado',async()=>{

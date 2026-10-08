@@ -1,3 +1,5 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { assertEntryVisibleForWrite, lockEntrySourcesForRecord } from './entry-visibility';
 import {alertReadWhere,taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
 import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus } from '@prisma/client';
@@ -45,8 +47,11 @@ export async function createManualAlert(
     departmentId?: string | null;
   },
 ) {
-  if(input.taskId&&!await prisma.task.findFirst({where:{id:input.taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{id:true}}))throw new NotFoundError('La tarea de origen no existe.');
-  const created = await prisma.alert.create({
+  return prisma.$transaction(async tx=>{
+  if(input.entryId)await assertEntryVisibleForWrite(tx,user,input.entryId);
+  if(input.taskId)await lockEntrySourcesForRecord(tx,user,'task',input.taskId);
+  if(input.taskId&&!await tx.task.findFirst({where:{id:input.taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{id:true}}))throw new NotFoundError('La tarea de origen no existe.');
+  const created = await tx.alert.create({
     data: {
       type: input.type,
       level: input.level,
@@ -72,8 +77,9 @@ export async function createManualAlert(
     summary: `Alerta #${created.humanId} manual (${ALERT_TYPE_LABEL[created.type]}): ${created.title}`,
     user,
     after: { type: created.type, level: created.level, title: created.title },
-  });
+  },tx);
   return created;
+  });
 }
 
 async function loadAlert(user: CurrentUser,id: string) {
@@ -103,7 +109,7 @@ function decodeTag(value: string | null): string | null {
  */
 async function applyCashManualApproval(user: CurrentUser, entryId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
-    const entry = await tx.operationalEntry.findFirst({
+    const entry = await readEntries(tx, user).findFirst({
       where: { id: entryId, deletedAt: null, category: 'AJUSTE_CAJA_SOLICITADO' },
       select: {
         id: true,
@@ -141,7 +147,7 @@ async function applyCashManualApproval(user: CurrentUser, entryId: string): Prom
       data: { status: EntryStatus.EN_CURSO },
     });
     if (claimed.count === 0) {
-      const refreshed = await tx.operationalEntry.findUnique({
+      const refreshed = await readEntries(tx, user).findUnique({
         where: { id: entry.id },
         select: { status: true, tags: true },
       });

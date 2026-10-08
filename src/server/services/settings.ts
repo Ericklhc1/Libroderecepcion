@@ -1,8 +1,11 @@
 import 'server-only';
+import type { Prisma } from '@prisma/client';
+import { RuleError } from '@/server/errors';
 import { prisma } from '@/lib/prisma';
 
 /** Parámetros del sistema con valor por defecto en código y sobrescritura en BD. */
 export const DEFAULT_SETTINGS = {
+  'book.simpleNovelties': {value:false,category:'pruebas',description:'Prueba de novedades simples: lista por área y una confirmación de conocimiento al entregar/recibir turno. Sólo Sysadmin puede cambiarla.'},
   'hotel.name': {
     value: 'Hotel Demo',
     category: 'general',
@@ -314,4 +317,10 @@ export async function getAllSettings() {
       updatedAt: row?.updatedAt ?? null,
     };
   });
+}
+
+/** Serializes a simple-mode mutation with the existing audited setting update. */
+export async function assertSimpleNoveltiesEnabled(tx: Prisma.TransactionClient) {
+  const rows=await tx.$queryRaw<{value:unknown}[]>`SELECT value FROM "SystemSetting" WHERE key='book.simpleNovelties' FOR SHARE`;
+  if(rows[0]?.value!==true)throw new RuleError('La prueba de novedades simples está apagada.');
 }

@@ -28,7 +28,7 @@ describe('Recuperación compatible: distribución apagada',()=>{
     // Plain inserts deliberately emulate the old writer, which has no new feature check.
     await prisma.housekeepingRequest.create({data:{sourceEntryId:f.source.id,departmentId:f.hk.id,requestKey:randomUUID(),createdById:f.admin.id}});
     await expect(prisma.housekeepingRequest.create({data:{sourceEntryId:f.source.id,departmentId:f.other.id,requestKey:randomUUID(),createdById:f.admin.id}})).rejects.toMatchObject({code:'P2002'});
-    expect((await getEntry(f.source.id)).housekeepingRequests).toHaveLength(1);expect((await getEntry(f.source.id)).resolvedAt).toBeNull();
+    expect((await getEntry(f.source.id, f.admin)).housekeepingRequests).toHaveLength(1);expect((await getEntry(f.source.id, f.admin)).resolvedAt).toBeNull();
     expect((await getCoordinationBoard(f.admin)).rows.some(r=>r.id===f.source.id)).toBe(true);
   });
   it('rutas nativas y heredadas no habilitan multiplicidad al quitar sólo índice en fixture',async()=>{

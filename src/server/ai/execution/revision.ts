@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import { actionDefinition } from './catalog';
 import { authorizedRevision } from '@/server/security/authorized-revision';
@@ -15,9 +16,9 @@ export async function revisionForStep(step: FrontiStep): Promise<string | null> 
   else if (step.action === 'updateRolePermissionsAction' && field('roleId')) row = await prisma.rolePermission.findMany({ where: { roleId: field('roleId')! }, orderBy: { permissionId: 'asc' } });
   else if (step.action === 'saveSettingAction' && field('key')) row = await prisma.systemSetting.findUnique({ where: { key: field('key')! } });
   else if (step.action === 'changeTaskStatusAction' && field('id')) row = await prisma.task.findUnique({ where: { id: field('id')! }, select: { updatedAt: true, status: true, assigneeId: true, dueAt: true } });
-  else if (step.action === 'changeEntryStatusAction' && field('id')) row = await prisma.operationalEntry.findUnique({ where: { id: field('id')! }, select: { updatedAt: true, status: true, ownerId: true, dueAt: true } });
+  else if (step.action === 'changeEntryStatusAction' && field('id')) row = await readEntries(prisma, {engine:"revision"}).findUnique({ where: { id: field('id')! }, select: { updatedAt: true, status: true, ownerId: true, dueAt: true } });
   else if(field('id')&&actionDefinition(step.action).module==='tasks')row=await prisma.task.findUnique({where:{id:field('id')!},select:{updatedAt:true,status:true,assigneeId:true,dueAt:true}});
-  else if(field('id')&&actionDefinition(step.action).module==='entries')row=await prisma.operationalEntry.findUnique({where:{id:field('id')!},select:{updatedAt:true,status:true,ownerId:true,dueAt:true}});
+  else if(field('id')&&actionDefinition(step.action).module==='entries')row=await readEntries(prisma, {engine:"revision"}).findUnique({where:{id:field('id')!},select:{updatedAt:true,status:true,ownerId:true,dueAt:true}});
   else if(field('id')&&actionDefinition(step.action).module==='followups')row=await prisma.followUp.findUnique({where:{id:field('id')!},select:{updatedAt:true,status:true,ownerId:true,scheduledAt:true}});
   else if(field('id')&&actionDefinition(step.action).module==='references')row=await prisma.guarantee.findUnique({where:{id:field('id')!}});
   else if(field('id')&&['resetUserPasswordAction','deleteUserAction','restoreUserAction'].includes(step.action))row=await prisma.user.findUnique({where:{id:field('id')!},select:{id:true,updatedAt:true,roleId:true,active:true,deletedAt:true}});

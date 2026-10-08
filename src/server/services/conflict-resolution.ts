@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 
 import {
@@ -285,7 +286,7 @@ export async function resolveAllOperationalConflicts(
   });
 
   let escalationEntryId: string | null = null;
-  const existingEscalation = await prisma.operationalEntry.findFirst({
+  const existingEscalation = await readEntries(prisma, user).findFirst({
     where: {
       deletedAt: null,
       category: 'CONFLICTOS_REQUIEREN_DECISION',

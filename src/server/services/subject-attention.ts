@@ -1,3 +1,5 @@
+import { getSettingBool } from './settings';
+import { readEntries } from '@/server/services/entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import 'server-only';
@@ -37,8 +39,9 @@ export async function requestSubjectAttention(user:CurrentUser,input:{entryId:st
   const occurrenceKey=prefix+createHash('sha256').update(JSON.stringify({entryId:input.entryId,departmentId:input.departmentId,revision:input.revision,assigneeId:input.assigneeId??null,location:input.location?.trim()??null})).digest('hex');
   const perform=async(tx:Prisma.TransactionClient)=>{
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
-    const source=await tx.operationalEntry.findFirst({where:{id:input.entryId,deletedAt:null,isDemo:false,OR:[{AND:[coordinationEntries(user)]},...(specialized&&await hkCapability(user,input.departmentId,'housekeeping.assign',tx)?[{areaAttentions:{some:{departmentId:input.departmentId}}}]:[])]}});
+    const source=await readEntries(tx, user).findFirst({where:{id:input.entryId,deletedAt:null,isDemo:false,OR:[{AND:[coordinationEntries(user)]},...(specialized&&await hkCapability(user,input.departmentId,'housekeeping.assign',tx)?[{areaAttentions:{some:{departmentId:input.departmentId}}}]:[])]}});
     if(!source)throw new NotFoundError();
+    if(['NOVEDAD','INCIDENCIA'].includes(source.type)&&await getSettingBool('book.simpleNovelties',false))throw new RuleError('En novedades simples se elige el área relacionada, sin cadenas de asignación.');
     const reopening=await tx.auditLog.findFirst({where:{entity:'SubjectAttention',entityId:{startsWith:prefix},userId:user.id,action:'REABRIR'},select:{entityId:true,after:true}});
     if(reopening && reopening.entityId!==occurrenceKey)throw new RuleError('El reintento pertenece a otra solicitud.');
     if(reopening && reopening.after && typeof reopening.after==='object' && !Array.isArray(reopening.after) && typeof reopening.after.housekeepingId==='string'){

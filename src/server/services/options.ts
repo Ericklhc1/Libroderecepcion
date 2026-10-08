@@ -1,6 +1,7 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { entryReadWhere, type EntryReader } from './entry-visibility';
 import {canReceiveGenericTask} from './task-assignment-access';
 import 'server-only';
-import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere} from './followup-access';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate } from '@/lib/format';
@@ -31,7 +32,7 @@ export type FormOptions = {
  * Habitaciones es sólo catálogo de contexto operativo. No consulta estadías,
  * ocupación, check-in ni check-out del PMS.
  */
-export async function getFormOptions(user:Pick<CurrentUser,'id'|'permissions'|'isSystemAdmin'>): Promise<FormOptions> {
+export async function getFormOptions(user:EntryReader): Promise<FormOptions> {
   const [users, departments, entries, tasks, rooms, activeShifts] = await Promise.all([
     listOperationalUsers(),
     prisma.department.findMany({
@@ -39,8 +40,8 @@ export async function getFormOptions(user:Pick<CurrentUser,'id'|'permissions'|'i
       orderBy: { order: 'asc' },
       select: { id: true, name: true },
     }),
-    prisma.operationalEntry.findMany({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES },...(user.isSystemAdmin?{}:{isDemo:false}) },
+    readEntries(prisma, user).findMany({
+      where: { AND: [entryReadWhere(user)], deletedAt: null, status: { in: ENTRY_OPEN_STATUSES },...(user.isSystemAdmin?{}:{isDemo:false}) },
       orderBy: { occurredAt: 'desc' },
       select: { id: true, humanId: true, title: true, type: true },
       take: 100,

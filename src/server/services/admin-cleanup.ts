@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -72,7 +73,7 @@ export async function cleanupAdminRecord(user: CurrentUser, raw: z.input<typeof 
       if (String(row.version) !== input.revision) throw new RuleError('El trabajo cambió. Recarga antes de eliminar.');
       // Free active lifecycle keys; snapshot linked text to satisfy the native content invariant.
       // Original links/keys remain in the mandatory audit, while the physical row and events survive.
-      const source = row.sourceEntryId ? await tx.operationalEntry.findUnique({ where: { id: row.sourceEntryId }, select: { title: true, description: true } }) : null;
+      const source = row.sourceEntryId ? await readEntries(tx, user).findUnique({ where: { id: row.sourceEntryId }, select: { title: true, description: true } }) : null;
       changed = (await tx.housekeepingRequest.updateMany({ where: { id: row.id, version: row.version, deletedAt: null }, data: { ...data, requestKey: `deleted:${randomUUID()}`, sourceEntryId: null, routineId: null, title: row.title ?? source?.title, description: row.description ?? source?.description, version: { increment: 1 } } })).count;
       before = { humanId: row.humanId, version: row.version, status: row.status, sourceEntryId: row.sourceEntryId, departmentId: row.departmentId, requestKey: row.requestKey, routineId: row.routineId, workDate: row.workDate };
       entity = 'HousekeepingRequest';

@@ -1,6 +1,8 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { entryReadWhere } from './entry-visibility';
 import 'server-only';
 import type {CurrentUser} from '@/server/auth/current-user';
-import { sharedMetricTasks, overdueTasksWhere, criticalIncidentsWhere, criticalFindingsWhere, overdueCorrectivesWhere, cashDifferencesWhere, managementEvidenceHref } from './management-evidence';
+import { managementMetricTasks, overdueTasksWhere, criticalIncidentsWhere, criticalFindingsWhere, overdueCorrectivesWhere, cashDifferencesWhere, managementEvidenceHref } from './management-evidence';
 
 import {
   EntryType,
@@ -70,6 +72,8 @@ export async function getManagementDecisionAdvice(
 }
 
 export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
+  const sharedMetricTasks=managementMetricTasks(user);
+  const visibleEntries=entryReadWhere(user);
   const now = new Date();
   const period = metricPeriod(inputDays, now);
   const days = period.days;
@@ -124,7 +128,7 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       select: { completedAt: true, dueAt: true },
     }),
     prisma.task.findMany({
-      where: overdueTasksWhere(now),
+      where: overdueTasksWhere(now,user),
       select: {
         id: true,
         humanId: true,
@@ -135,8 +139,8 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       orderBy: { dueAt: 'asc' },
       take: 5,
     }),
-    prisma.operationalEntry.findMany({
-      where: {
+    readEntries(prisma, user).findMany({
+      where: { AND:[visibleEntries],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_RESOLVED_STATUSES },
@@ -144,8 +148,8 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       },
       select: { occurredAt: true, resolvedAt: true, closedAt: true },
     }),
-    prisma.operationalEntry.findMany({
-      where: {
+    readEntries(prisma, user).findMany({
+      where: { AND:[visibleEntries],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_RESOLVED_STATUSES },
@@ -153,29 +157,29 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
       },
       select: { occurredAt: true, resolvedAt: true, closedAt: true },
     }),
-    prisma.operationalEntry.count({
-      where: {
+    readEntries(prisma, user).count({
+      where: { AND:[visibleEntries],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         occurredAt: currentRange,
       },
     }),
-    prisma.operationalEntry.count({
-      where: {
+    readEntries(prisma, user).count({
+      where: { AND:[visibleEntries],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         occurredAt: previousRange,
       },
     }),
-    prisma.operationalEntry.count({
-      where: {
+    readEntries(prisma, user).count({
+      where: { AND:[visibleEntries],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
       },
     }),
-    prisma.operationalEntry.findMany({
-      where: criticalIncidentsWhere(),
+    readEntries(prisma, user).findMany({
+      where: criticalIncidentsWhere(user),
       select: {
         id: true,
         humanId: true,
@@ -305,15 +309,15 @@ export async function getManagementCockpit(user: CurrentUser, inputDays = 30) {
         items: { select: { expected: true, found: true, outOfService: true } },
       },
     }),
-    prisma.task.count({ where: overdueTasksWhere(now) }),
-    prisma.operationalEntry.count({ where: criticalIncidentsWhere() }),
+    prisma.task.count({ where: overdueTasksWhere(now,user) }),
+    readEntries(prisma, user).count({ where: criticalIncidentsWhere(user) }),
     prisma.auditFinding.count({ where: criticalFindingsWhere() }),
     prisma.correctiveMeasure.count({ where: overdueCorrectivesWhere(now) }),
     prisma.cashAudit.count({ where: { createdAt: currentRange } }),
     prisma.cashAudit.count({ where: cashDifferencesWhere(period.current) }),
     prisma.cashAudit.groupBy({ by: ['currency'], where: { createdAt: currentRange, difference: { gt: 0 } }, _sum: { difference: true } }),
     prisma.cashAudit.groupBy({ by: ['currency'], where: { createdAt: currentRange, difference: { lt: 0 } }, _sum: { difference: true } }),
-    prisma.operationalEntry.count({ where: { deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_RESOLVED_STATUSES }, resolvedAt: null, closedAt: null } }),
+    readEntries(prisma, user).count({ where: { AND:[visibleEntries], deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_RESOLVED_STATUSES }, resolvedAt: null, closedAt: null } }),
     prisma.task.count({ where: { deletedAt: null, AND: [sharedMetricTasks], status: { in: TASK_COMPLETED_STATUSES }, completedAt: null } }),
   ]);
 

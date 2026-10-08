@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import {
@@ -65,7 +66,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
         select: { id: true, title: true, dueAt: true, departmentId: true },
         take: 200,
       }),
-      prisma.operationalEntry.findMany({
+      readEntries(prisma, {engine:"alerts"}).findMany({
         where: {
           deletedAt: null,
           type: EntryType.INCIDENCIA,
@@ -75,7 +76,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
         select: { id: true, title: true, departmentId: true },
         take: 100,
       }),
-      prisma.operationalEntry.findMany({
+      readEntries(prisma, {engine:"alerts"}).findMany({
         where: {
           deletedAt: null,
           type: EntryType.MANTENIMIENTO,
@@ -87,7 +88,7 @@ export async function collectAlertCandidates(now = new Date()): Promise<Candidat
         select: { id: true, title: true, departmentId: true, occurredAt: true },
         take: 100,
       }),
-      prisma.operationalEntry.findMany({
+      readEntries(prisma, {engine:"alerts"}).findMany({
         where: {
           deletedAt: null,
           requiresFollowUp: true,

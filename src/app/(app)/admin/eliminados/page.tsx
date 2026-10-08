@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from '@/server/services/followup-access';
 import Link from 'next/link';
 import { ArrowLeft, Trash2 } from 'lucide-react';
@@ -32,7 +33,7 @@ export default async function DeletedPage({
   const tipo = typeof params.tipo === 'string' ? params.tipo : '';
 
   const [entries, tasks, followUps, alerts, supervisionNotes, correctiveMeasures] = await Promise.all([
-    prisma.operationalEntry.findMany({
+    readEntries(prisma, user).findMany({
       where: { NOT: { deletedAt: null } },
       orderBy: { deletedAt: 'desc' },
       take: 100,

@@ -87,22 +87,27 @@ export function parseFrontiNotificationSummary(response: string, evidence: strin
   }
 }
 
-export type NotificationDisplayGroup = {
+export type NotificationDisplayGroup<T extends NotificationFeedItem = NotificationFeedItem> = {
   id: string;
-  items: NotificationFeedItem[];
+  items: T[];
   title: string | null;
   body: string | null;
 };
 
 /** Group related key-count notices from one hotel day without merging their identities or read state. */
-export function groupNotificationItems(items: NotificationFeedItem[]): NotificationDisplayGroup[] {
-  const groups: NotificationDisplayGroup[] = [];
-  const keysByDay = new Map<string, NotificationDisplayGroup>();
+export function groupNotificationItems<T extends NotificationFeedItem>(items: T[]): NotificationDisplayGroup<T>[] {
+  const groups: NotificationDisplayGroup<T>[] = [];
+  const keysByDay = new Map<string, NotificationDisplayGroup<T>>();
+  const duplicates = new Map<string, NotificationDisplayGroup<T>>();
   for (const item of items) {
     const date = new Date(item.createdAt);
     const isKeyCount = item.type === 'FRONTI_HALLAZGO' && /Inventario de llaves con diferencias/i.test(item.title);
     if (!isKeyCount || !Number.isFinite(date.getTime())) {
-      groups.push({ id: item.id, items: [item], title: null, body: null });
+      const day = Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(date) : item.createdAt;
+      const key = JSON.stringify([item.type, item.title, item.body, item.entity, item.entityId, item.link, day]);
+      const existing = duplicates.get(key);
+      if (existing) existing.items.push(item);
+      else { const group = { id: item.id, items: [item], title: null, body: null }; duplicates.set(key, group); groups.push(group); }
       continue;
     }
     const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago' }).format(date);
@@ -113,6 +118,9 @@ export function groupNotificationItems(items: NotificationFeedItem[]): Notificat
       groups.push(group);
     }
     group.items.push(item);
+  }
+  for (const group of duplicates.values()) {
+    if(group.items.length>1){group.title=group.items[0]!.title;group.body=group.items[0]!.body;}
   }
   for (const group of keysByDay.values()) {
     if (group.items.length < 2) continue;
@@ -133,7 +141,7 @@ export function notificationDeviceItems(items: NotificationFeedItem[]): Notifica
   return groupNotificationItems(items).map((group) => {
     const newest = group.items.reduce((a, b) => a.createdAt > b.createdAt ? a : b);
     return group.title
-      ? { ...newest, title: group.title, body: group.body, link: '/llaves?piso=todos' }
+      ? { ...newest, title: group.title, body: group.body, link: group.id.startsWith('key-counts:') ? '/llaves?piso=todos' : newest.link }
       : newest;
   }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

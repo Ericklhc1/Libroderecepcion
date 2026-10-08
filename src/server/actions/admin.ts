@@ -1,4 +1,5 @@
 'use server';
+import { lockReceptionSummary } from '@/server/services/handover-snapshot';
 import { assertAuthorizedRevision, revisionFromForm } from '@/server/security/authorized-revision';
 
 import { revalidatePath } from 'next/cache';
@@ -360,6 +361,7 @@ export async function saveSettingAction(
       throw new NotFoundError('El parámetro indicado no existe.');
     }
     const key = input.key as SettingKey;
+    if(key==='book.simpleNovelties'&&!actor.isSystemAdmin)throw new RuleError('Sólo Sysadmin puede cambiar esta prueba.');
     const defaultValue = DEFAULT_SETTINGS[key].value;
 
     let value: unknown = input.value;
@@ -374,9 +376,14 @@ export async function saveSettingAction(
     }
 
     await prisma.$transaction(async tx=>{
+      if(key==='book.simpleNovelties')await lockReceptionSummary(tx);
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'setting:'+key}))::text`;
       const previous=await tx.systemSetting.findUnique({where:{key}});
       assertAuthorizedRevision(revisionFromForm(formData),previous);
+      if(key==='book.simpleNovelties'&&value!==previous?.value){
+        await tx.shiftHandover.updateMany({where:{status:'BORRADOR'},data:{finalReviewAt:null,urgentAcknowledgedAt:null}});
+        await tx.shiftHandover.updateMany({where:{status:'ENVIADA'},data:{receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null,receiverFinalSummaryKey:null}});
+      }
       const data={value:value as never,updatedById:actor.id};
       const setting=previous?await tx.systemSetting.update({where:{key,updatedAt:previous.updatedAt},data}):await tx.systemSetting.create({data:{key,...data,category:DEFAULT_SETTINGS[key].category,description:DEFAULT_SETTINGS[key].description}});
       await recordAudit({entity:'SystemSetting',entityId:setting.id,action:AuditAction.CONFIGURAR,summary:`Parámetro ${key} actualizado`,user:actor,before:{value:previous?.value??defaultValue},after:{value}},tx);

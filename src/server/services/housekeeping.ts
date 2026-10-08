@@ -1,3 +1,5 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { entryReadWhere, housekeepingEntryReadWhere, assertHousekeepingWorkDestination, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import 'server-only';
 import { activeRuleOverrides } from './automation-policy-scope';
@@ -23,7 +25,7 @@ export function housekeepingAuditVisibility(user: Pick<CurrentUser, 'roleKey' | 
 }
 
 function housekeepingVisibility(user: CurrentUser): Prisma.HousekeepingRequestWhereInput {
-  return { deletedAt: null, ...(user.roleKey === 'ADMINISTRADOR_SISTEMA' ? {} : { isDemo: false }) };
+  return { deletedAt: null, AND:[housekeepingEntryReadWhere(user)], ...(user.roleKey === 'ADMINISTRADOR_SISTEMA' ? {} : { isDemo: false }) };
 }
 
 const include = {
@@ -63,7 +65,7 @@ export async function searchHousekeepingRecords(user: CurrentUser, query: string
   if (!text) return [];
   const visible = await hkWorkVisibility(user);
   const legacy = canManageHousekeeping(user) || user.permissions.includes('housekeeping.view');
-  const records = await prisma.housekeepingRequest.findMany({ where: { AND: [{ OR: [{ workflowVersion: 1, AND: [visible] }, ...(legacy ? [{ workflowVersion: 0, ...housekeepingVisibility(user) }] : [{ workflowVersion: 0, createdById: user.id, isDemo: false }])] }, { OR: [...(Number.isSafeInteger(Number(text)) ? [{humanId:Number(text)}] : []), {title:{contains:text,mode:'insensitive'}},{description:{contains:text,mode:'insensitive'}},{location:{contains:text,mode:'insensitive'}},{sourceEntry:{title:{contains:text,mode:'insensitive'}}}] }] }, include:{sourceEntry:{select:{title:true,description:true}},assignedTo:{select:{name:true}}},orderBy:{createdAt:'desc'},take:Math.min(100,Math.max(1,limit)) });
+  const records = await prisma.housekeepingRequest.findMany({ where: { AND: [housekeepingEntryReadWhere(user),{ OR: [{ workflowVersion: 1, AND: [visible] }, ...(legacy ? [{ workflowVersion: 0, ...housekeepingVisibility(user) }] : [{ workflowVersion: 0, createdById: user.id, isDemo: false }])] }, { OR: [...(Number.isSafeInteger(Number(text)) ? [{humanId:Number(text)}] : []), {title:{contains:text,mode:'insensitive'}},{description:{contains:text,mode:'insensitive'}},{location:{contains:text,mode:'insensitive'}},{sourceEntry:{title:{contains:text,mode:'insensitive'}}}] }] }, include:{sourceEntry:{select:{title:true,description:true}},assignedTo:{select:{name:true}}},orderBy:{createdAt:'desc'},take:Math.min(100,Math.max(1,limit)) });
   return records.map(h=>({humanId:h.humanId,entityType:'HousekeepingRequest',entityId:h.id,kind:'Housekeeping',title:h.sourceEntry?.title??h.title??'Trabajo',summary:h.sourceEntry?.description??h.description,status:h.status,roomNumber:h.location,guestName:null,responsible:h.assignedTo?.name??null,category:h.isDemo?'Prueba administrativa':'Operación',createdAt:h.createdAt,href:`/housekeeping?area=${h.departmentId??''}&vista=${isHousekeepingClosed(h.status as HousekeepingStatus)?'historial':'pendientes'}&aviso=${h.humanId}#aviso-${h.humanId}`}));
 }
 
@@ -71,9 +73,9 @@ export async function getHousekeepingSources(user: CurrentUser, query = '') {
   assertHousekeepingAccess(user, true);
   const text = query.trim().slice(0, 100);
   const number = /^#?\d+$/.test(text) ? Number(text.replace('#', '')) : undefined;
-  return prisma.operationalEntry.findMany({
+  return readEntries(prisma, user).findMany({
     where: {
-      deletedAt: null, housekeepingRequests: {none:{deletedAt:null}},
+      deletedAt: null, housekeepingRequests: {none:{deletedAt:null}}, AND:[entryReadWhere(user)],
       status: { notIn: ['CERRADO', 'RESUELTO'] },
       ...(text ? { OR: [{ title: { contains: text, mode: 'insensitive' as const } }, { room: { number: { contains: text } } }, ...(number && Number.isSafeInteger(number) ? [{ humanId: number }] : [])] } : {}),
     },
@@ -99,8 +101,9 @@ export async function createHousekeepingRequest(user: CurrentUser, input: Create
       }
       const departmentId = input.departmentId || (await tx.department.findUnique({ where: { key: 'HOUSEKEEPING' }, select: { id: true } }))?.id;
       await validateDestination(tx, departmentId, input.assignedToId);
-      const source = input.sourceEntryId ? await tx.operationalEntry.findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] } } }) : null;
+      const source = input.sourceEntryId ? await readEntries(tx, user).findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] }, AND:[entryReadWhere(user)] } }) : null;
       if (input.sourceEntryId && !source) throw new NotFoundError('La novedad ya no está disponible para vincular.');
+      if(source)await assertEntryWorkDestination(tx,source.id,departmentId!,input.assignedToId);
       const request = await tx.housekeepingRequest.create({ data: {
         requestKey: input.requestKey, sourceEntryId: source?.id, isDemo: false,
         createdById: user.id, departmentId, assignedToId: input.assignedToId || null,
@@ -132,10 +135,11 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
   return prisma.$transaction(async (tx) => {
     const current = await tx.housekeepingRequest.findUnique({ where: { id: input.id }, include: { sourceEntry: { select: { updatedAt: true, deletedAt: true } } } });
     if (!current || (current.isDemo && user.roleKey !== 'ADMINISTRADOR_SISTEMA')) throw new NotFoundError();
+    if(['REABRIR','DERIVAR'].includes(input.action))await assertHousekeepingWorkDestination(tx,user,input.action==='DERIVAR'?{...current,departmentId:input.departmentId??null,assignedToId:input.assignedToId??null}:current);
     if (current.sourceEntryId) {
       // Freeze the exact source version during acknowledgement/transition.
-      await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${current.sourceEntryId} FOR SHARE`;
-      current.sourceEntry = await tx.operationalEntry.findUnique({ where: { id: current.sourceEntryId }, select: { updatedAt: true, deletedAt: true } });
+      await assertEntryVisibleForWrite(tx,user,current.sourceEntryId,true);
+      current.sourceEntry = await readEntries(tx, user).findUnique({ where: { id: current.sourceEntryId }, select: { updatedAt: true, deletedAt: true } });
     }
     if (current.workflowVersion === 1) throw new RuleError('Gestiona este trabajo desde el tablero diario de Housekeeping.');
     if (current.version !== input.version) throw new RuleError('Este aviso cambió en otra ventana. Actualiza la página antes de continuar.');
@@ -147,9 +151,12 @@ export async function changeHousekeepingRequest(user: CurrentUser, input: Change
     catch (error) { throw new RuleError((error as Error).message); }
     const transfer = input.action === 'DERIVAR';
     if (transfer && !input.departmentId) throw new RuleError('Selecciona el área que recibirá el aviso.');
-    if (transfer) await validateDestination(tx, input.departmentId, input.assignedToId);
+    if (transfer) {
+      await validateDestination(tx, input.departmentId, input.assignedToId);
+    }
     const confirm = input.action === 'CONFIRMAR' || input.action === 'TOMAR';
     const reopen = input.action === 'REABRIR';
+    if(reopen){if(current.departmentId)await validateDestination(tx,current.departmentId,current.assignedToId??undefined);}
     const update = await tx.housekeepingRequest.updateMany({
       where: { id: current.id, version: input.version }, data: {
         status: next, version: { increment: 1 },

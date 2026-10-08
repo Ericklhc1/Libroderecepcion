@@ -1,3 +1,4 @@
+import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import type {Prisma} from '@prisma/client';
 import {RuleError} from '@/server/errors';
@@ -21,6 +22,6 @@ export async function lockOpenSubjectForWork(tx:Prisma.TransactionClient,input:{
   const ids=[...new Set([input.entryId,taskEntry,input.sourceEntity==='OperationalEntry'?input.sourceId:null].filter((id):id is string=>!!id))].sort();
   for(const id of ids){
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${id} FOR UPDATE`;
-    if(!await tx.operationalEntry.count({where:{id,deletedAt:null,status:{notIn:['RESUELTO','CERRADO']}}}))throw new RuleError('Reabre el asunto antes de crear o reactivar una intervención pendiente.');
+    if(!await readEntries(tx, {engine:"lifecycle"}).count({where:{id,deletedAt:null,status:{notIn:['RESUELTO','CERRADO']}}}))throw new RuleError('Reabre el asunto antes de crear o reactivar una intervención pendiente.');
   }
 }

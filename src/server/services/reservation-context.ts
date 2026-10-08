@@ -1,3 +1,6 @@
+import {entryReadWhere,type EntryReader} from './entry-visibility';
+import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
+import {commentReadWhere} from './comments';
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 
@@ -17,7 +20,7 @@ import { prisma } from '@/lib/prisma';
  * reserva, incluidos comentarios y responsables. No se persiste un resumen
  * duplicado: se calcula leyendo las fuentes originales para que no se desincronicen.
  */
-export async function getReservationOperationalContext(id: string) {
+export async function getReservationOperationalContext(id: string,user:EntryReader) {
   return prisma.reservationReference.findFirst({
     where: { id, deletedAt: null },
     include: {
@@ -61,37 +64,37 @@ export async function getReservationOperationalContext(id: string) {
         include: { createdBy: { select: { name: true } } },
       },
       entries: {
-        where: { deletedAt: null },
+        where: { deletedAt: null,AND:[entryReadWhere(user)] },
         orderBy: { occurredAt: 'desc' },
         include: {
           room: { select: { number: true } },
           createdBy: { select: { name: true } },
           owner: { select: { name: true } },
           comments: {
-            where: { deletedAt: null },
+            where: { deletedAt: null,AND:[commentReadWhere(user)] },
             orderBy: { createdAt: 'asc' },
             include: { author: { select: { name: true } } },
           },
           tasks: {
-            where: { deletedAt: null },
+            where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)] },
             orderBy: { createdAt: 'desc' },
             include: {
               assignee: { select: { name: true } },
               comments: {
-                where: { deletedAt: null },
+                where: { deletedAt: null,AND:[commentReadWhere(user)] },
                 orderBy: { createdAt: 'asc' },
                 include: { author: { select: { name: true } } },
               },
             },
           },
           followUps: {
-            where: { deletedAt: null },
+            where: { deletedAt: null,AND:[followUpReadWhere(user)] },
             orderBy: { createdAt: 'desc' },
             include: {
               owner: { select: { name: true } },
               createdBy: { select: { name: true } },
               comments: {
-                where: { deletedAt: null },
+                where: { deletedAt: null,AND:[commentReadWhere(user)] },
                 orderBy: { createdAt: 'asc' },
                 include: { author: { select: { name: true } } },
               },
@@ -100,11 +103,11 @@ export async function getReservationOperationalContext(id: string) {
         },
       },
       alerts: {
-        where: { deletedAt: null },
+        where: { deletedAt: null,AND:[alertReadWhere(user)] },
         orderBy: { createdAt: 'desc' },
         include: {
           comments: {
-            where: { deletedAt: null },
+            where: { deletedAt: null,AND:[commentReadWhere(user)] },
             orderBy: { createdAt: 'asc' },
             include: { author: { select: { name: true } } },
           },
@@ -115,12 +118,12 @@ export async function getReservationOperationalContext(id: string) {
   });
 }
 
-export async function getReservationOperationalContextByCode(code: string) {
+export async function getReservationOperationalContextByCode(code: string,user:EntryReader) {
   const reservation = await prisma.reservationReference.findFirst({
     where: { code, deletedAt: null },
     select: { id: true },
   });
-  return reservation ? getReservationOperationalContext(reservation.id) : null;
+  return reservation ? getReservationOperationalContext(reservation.id,user) : null;
 }
 
 export type ReservationOperationalContext = NonNullable<

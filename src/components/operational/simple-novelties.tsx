@@ -1,0 +1,52 @@
+import Link from 'next/link';
+import { getHistory } from '@/server/services/history';
+import { HistoryTimeline } from './history-timeline';
+import { isHkFocused } from '@/domain/housekeeping-work';
+import type { getSubjectEntry } from '@/server/services/entries';
+import type { CurrentUser } from '@/server/auth/current-user';
+import { listSimpleNovelties, canResolveSimpleNovelty, simpleNoveltiesEnabled } from '@/server/services/simple-novelties';
+import { getFormOptions } from '@/server/services/options';
+import { operationalRecordRevision } from '@/server/security/authorized-revision';
+import { formatCalendarDate } from '@/lib/format';
+import { ENTRY_STATUS_LABEL } from '@/domain/labels';
+import { ActionForm } from '@/components/ui/form';
+import { SubmitButton } from '@/components/ui/button';
+import { createSimpleNoveltyAction, resolveSimpleNoveltyAction } from '@/server/actions/simple-novelties';
+
+type Rows = Awaited<ReturnType<typeof listSimpleNovelties>>['general'];
+export function SimpleNoveltyTable({rows,user}:{rows:Rows;user:CurrentUser}) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-xs"><thead><tr>{['Fecha','Recepcionista','Reserva','HAB','Área relacionada','Novedad','Seguimiento','Estado',''].map((label,index)=><th key={index} className="text-left">{label}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.id} className={`border-b border-slate-300 ${['RESUELTO','CERRADO'].includes(row.status)?'text-slate-500':row.priority==='CRITICA'||row.severity==='CRITICA'||Boolean(row.dueAt&&row.dueAt<new Date())?'text-red-800':''}`}><td className="whitespace-nowrap">{formatCalendarDate(row.occurredAt)}</td><td>{row.createdBy.name}</td><td>{row.reservationReference??row.reservation?.code??'—'}</td><td>{row.room?.number??'—'}</td><td>{row.department?.name??'Recepción'}</td><td className="max-w-xl">{isHkFocused(user)?<strong>#{row.humanId} · {row.title}</strong>:<Link href={`/libro/${row.id}`} className="font-semibold underline">#{row.humanId} · {row.title}</Link>}<p className="whitespace-pre-wrap">{row.description}</p></td><td className="max-w-xs whitespace-pre-wrap">{row.workNextAction??'—'}</td><td className="whitespace-nowrap">{ENTRY_STATUS_LABEL[row.status]}</td><td>{canResolveSimpleNovelty(user)&&!['RESUELTO','CERRADO'].includes(row.status)&&<ActionForm action={resolveSimpleNoveltyAction} refreshOnSuccess><input type="hidden" name="id" value={row.id}/><input type="hidden" name="revision" value={operationalRecordRevision('entries',row)}/>{row.type==='INCIDENCIA'&&<label className="block">Cómo se resolvió<input className="input-base" name="resolution" required/></label>}<SubmitButton pendingLabel="Guardando…">Marcar resuelta</SubmitButton></ActionForm>}</td></tr>)}</tbody></table>{!rows.length&&<p className="p-3 text-sm">Sin novedades en esta selección.</p>}</div>;
+}
+
+export async function SimpleNoveltiesPage({user,params}:{user:CurrentUser;params:Record<string,string|string[]|undefined>}) {
+  const text=(key:string)=>typeof params[key]==='string'?params[key] as string:undefined;
+  const [data,options]=await Promise.all([listSimpleNovelties(user,{area:text('area'),state:text('estado'),q:text('q'),page:Number(text('pagina'))||1}),getFormOptions(user)]);
+  const pagination=(page:number)=>{const p=new URLSearchParams();for(const key of ['area','estado','q']){const value=text(key);if(value)p.set(key,value);}p.set('pagina',String(page));return `/libro?${p}`;};
+  return <div className="space-y-3"><header className="flex flex-wrap items-center justify-between gap-2"><h1 className="text-xl font-semibold">Novedades</h1><span className="text-xs font-semibold">Prueba de novedades simples</span></header>
+    {user.permissions.includes('entry.create')&&<details className="border border-slate-300 bg-white p-2"><summary className="cursor-pointer font-semibold">+ Nueva novedad</summary><ActionForm action={createSimpleNoveltyAction} refreshOnSuccess className="mt-2 grid gap-2 sm:grid-cols-3"><label>Asunto<input name="title" className="input-base" required maxLength={200}/></label><label>Reserva<input name="reservationReference" className="input-base" maxLength={100}/></label><label>HAB<select name="roomId" className="input-base"><option value="">Sin habitación</option>{options.rooms.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label>Área relacionada<select name="departmentId" className="input-base"><option value="">Recepción</option>{data.departments.map(area=><option key={area.id} value={area.id}>{area.name}</option>)}</select></label><label className="sm:col-span-2">Novedad<textarea name="description" className="input-base" required maxLength={10000}/></label><label className="sm:col-span-3">Seguimiento<textarea name="workNextAction" className="input-base" maxLength={2000}/></label>{canResolveSimpleNovelty(user)&&<label className="sm:col-span-2"><input type="checkbox" name="internal" value="true"/> Operativa interna de Recepción</label>}<SubmitButton pendingLabel="Guardando…">Guardar novedad</SubmitButton></ActionForm></details>}
+    <form method="get" className="flex flex-wrap items-end gap-2 border border-slate-300 bg-white p-2"><label className="flex-1">Buscar<input name="q" defaultValue={text('q')} className="input-base"/></label><label>Área<select name="area" className="input-base" defaultValue={text('area')??''}><option value="">Todas</option>{data.departments.map(area=><option key={area.id} value={area.id}>{area.name}</option>)}</select></label><label>Estado<select name="estado" className="input-base" defaultValue={text('estado')??'abiertas'}><option value="abiertas">Abiertas</option><option value="resueltas">Resueltas</option><option value="todas">Todas</option></select></label><button className="bg-petrol-800 px-3 py-2 text-white">Aplicar</button><Link href="/libro" className="underline">Limpiar</Link></form>
+    <section className="border border-slate-300 bg-white"><h2 className="p-2 font-semibold">Novedades generales · {data.total}</h2><SimpleNoveltyTable rows={data.general} user={user}/></section>
+    {canResolveSimpleNovelty(user)&&<section className="border border-slate-300 bg-white"><h2 className="p-2 font-semibold">Operativas internas de Recepción · {data.internalTotal}</h2><SimpleNoveltyTable rows={data.internal} user={user}/></section>}
+    <nav className="flex justify-between" aria-label="Páginas de novedades">{data.page>1?<Link href={pagination(data.page-1)}>← Anterior</Link>:<span/>}{Math.max(data.total,data.internalTotal)>data.page*40&&<Link href={pagination(data.page+1)}>Siguiente →</Link>}</nav>
+  </div>;
+}
+export async function SimpleAreaNovelties({user}:{user:CurrentUser}) {
+  if(!await simpleNoveltiesEnabled())return null;
+  const data=await listSimpleNovelties(user);
+  return <section className="border border-slate-300 bg-white"><h2 className="p-2 font-semibold">Novedades del área · {data.total}</h2><SimpleNoveltyTable rows={data.general} user={user}/></section>;
+}
+
+export async function SimpleNoveltyDetail({user,entry}:{user:CurrentUser;entry:Awaited<ReturnType<typeof getSubjectEntry>>}) {
+  const [options,history]=await Promise.all([getFormOptions(user),getHistory({entity:'OperationalEntry',entityId:entry.id},user)]);
+  const revision=operationalRecordRevision('entries',entry);
+  const {updateSimpleNoveltyAction}=await import('@/server/actions/simple-novelties');
+  const {EntryVisibilityDialog}=await import('./entry-visibility');
+  const {canManageEntryVisibility}=await import('@/server/services/entry-visibility');
+  return <div className="space-y-3"><header className="flex flex-wrap items-center justify-between gap-2"><h1 className="text-xl font-semibold">Novedad #{entry.humanId} · {entry.title}</h1><Link href="/libro" className="underline">Volver a novedades</Link></header><p className="text-sm">{formatCalendarDate(entry.occurredAt)} · {entry.createdBy.name} · {ENTRY_STATUS_LABEL[entry.status]}</p><p className="whitespace-pre-wrap border border-slate-300 bg-white p-3">{entry.description}</p><p className="whitespace-pre-wrap">Seguimiento: {entry.workNextAction??'—'}</p>
+    {user.permissions.includes('entry.edit')&&<details className="border border-slate-300 bg-white p-2"><summary>Editar novedad y seguimiento</summary><ActionForm action={updateSimpleNoveltyAction} refreshOnSuccess className="mt-2 space-y-2"><input type="hidden" name="id" value={entry.id}/><input type="hidden" name="revision" value={revision}/><label className="block">Asunto<input name="title" className="input-base" defaultValue={entry.title} required maxLength={200}/></label><label className="block">Área relacionada<select name="departmentId" className="input-base" defaultValue={entry.departmentId??''}><option value="">Recepción</option>{options.departments.map(area=><option key={area.value} value={area.value}>{area.label}</option>)}</select></label><label className="block">Novedad<textarea name="description" className="input-base" defaultValue={entry.description} required maxLength={10000}/></label><label className="block">Seguimiento<textarea name="workNextAction" className="input-base" defaultValue={entry.workNextAction??''} maxLength={2000}/></label><SubmitButton pendingLabel="Guardando…">Guardar cambios</SubmitButton></ActionForm></details>}
+    {canResolveSimpleNovelty(user)&&!['RESUELTO','CERRADO'].includes(entry.status)&&<ActionForm action={resolveSimpleNoveltyAction} refreshOnSuccess><input type="hidden" name="id" value={entry.id}/><input type="hidden" name="revision" value={revision}/>{entry.type==='INCIDENCIA'&&<label>Cómo se resolvió<textarea name="resolution" className="input-base" required/></label>}<SubmitButton pendingLabel="Guardando…">Marcar resuelta</SubmitButton></ActionForm>}
+<p className="text-sm">Reserva: {entry.reservationReference??'—'} · HAB: {entry.room?.number??'—'} · Área relacionada: {entry.department?.name??'Recepción'}</p>
+    <details className="border border-slate-300 bg-white p-2"><summary className="cursor-pointer font-semibold">Historial</summary><HistoryTimeline events={history}/></details>
+    {canManageEntryVisibility(user,entry.createdById)&&<EntryVisibilityDialog entryId={entry.id} revision={entry.updatedAt.toISOString()} departments={options.departments} hiddenAreas={entry.hiddenFromDepartments.map(area=>({value:area.id,label:area.name}))} hiddenDepartmentIds={entry.hiddenFromDepartments.map(area=>area.id)} includeInHandover={entry.includeInReceptionHandover}/>}
+  </div>;
+}

@@ -1,3 +1,5 @@
+import { readEntries } from '@/server/services/entry-visibility';
+import { lockEntrySourcesForRecord, type EntryReader } from './entry-visibility';
 import 'server-only';
 
 import {
@@ -18,9 +20,9 @@ import { operationalAlarmReadWhere } from './followup-access';
 import { isOperationalRoomNumber } from '@/domain/room-catalog';
 
 
-async function alarmReader(userId: string, db: Prisma.TransactionClient=prisma): Promise<Pick<CurrentUser,'id'|'permissions'> | null> {
-  const user=await db.user.findFirst({where:{id:userId,active:true,deletedAt:null},select:{id:true,role:{select:{permissions:{select:{permission:{select:{key:true}}}}}}}});
-  return user ? {id:user.id,permissions:user.role.permissions.map(p=>p.permission.key) as CurrentUser['permissions']} : null;
+async function alarmReader(userId: string, db: Prisma.TransactionClient=prisma): Promise<EntryReader | null> {
+  const user=await db.user.findFirst({where:{id:userId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
+  return user ? {id:user.id,departmentId:user.departmentId,roleKey:user.role.key,isSystemAdmin:user.role.key==='ADMINISTRADOR_SISTEMA',permissions:user.role.permissions.map(p=>p.permission.key) as CurrentUser['permissions']} : null;
 }
 
 const MAX_ACTIVE_PER_CREATOR = 100;
@@ -121,7 +123,7 @@ async function resolveAlarmRoomNumber(input: AlarmCreateInput): Promise<string |
   if (!input.sourceEntity || !input.sourceId) return null;
 
   if (input.sourceEntity === 'OperationalEntry') {
-    const source = await prisma.operationalEntry.findUnique({
+    const source = await readEntries(prisma, {engine:"alarm"}).findUnique({
       where: { id: input.sourceId },
       select: { room: { select: { number: true } } },
     });
@@ -227,6 +229,7 @@ export async function createOperationalAlarm(user: CurrentUser, input: AlarmCrea
       },
     });
 
+    await lockEntrySourcesForRecord(tx,user,'operationalalarm',created.id);
     // Validate the source for every recipient before commit, audit or notifications.
     for (const id of new Set([user.id,...recipientIds])) {
       const reader=await alarmReader(id,tx);
@@ -300,6 +303,7 @@ export async function updateOperationalAlarm(
   }
 
   return prisma.$transaction(async (tx) => {
+    await lockEntrySourcesForRecord(tx,user,'operationalalarm',alarm.id);
     const updated = await tx.operationalAlarm.update({
       where: { id: alarm.id, AND:[operationalAlarmReadWhere(user)] },
       data: {
@@ -453,6 +457,8 @@ export async function dispatchDueAlarmsForUser(userId: string, now = new Date())
   let dispatched = 0;
   for (const recipient of eligible.slice(0, 10)) {
     await prisma.$transaction(async (tx) => {
+      try { await lockEntrySourcesForRecord(tx,reader,'operationalalarm',recipient.alarmId); }
+      catch(error) { if(error instanceof NotFoundError)return; throw error; }
       const claimed = await tx.operationalAlarmRecipient.updateMany({
         where: {
           id: recipient.id,

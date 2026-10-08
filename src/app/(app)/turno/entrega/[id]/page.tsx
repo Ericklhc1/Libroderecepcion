@@ -1,3 +1,4 @@
+import { simpleNoveltiesEnabled } from '@/server/services/simple-novelties';
 import { legacyClosureAlertWhere } from '@/server/services/closure-review';
 import { closurePrintValidation } from '@/domain/handover-print';
 import { HandoverPrint } from '@/components/operational/handover-print';
@@ -61,6 +62,7 @@ export default async function HandoverPage({
   searchParams: Promise<{ paso?: string }>;
 }) {
   const user = await requirePageUser();
+  const simpleNovelties = await simpleNoveltiesEnabled();
   if (!canReadReceptionHandover(user)) notFound();
   const { id } = await params;
   const query = await searchParams;
@@ -821,6 +823,7 @@ export default async function HandoverPage({
               handoverId={handover.id}
               step="FINAL"
               urgentCount={counts.urgente}
+              simpleNovelties={simpleNovelties}
             />
           </div>
         </Card>
@@ -890,6 +893,7 @@ export default async function HandoverPage({
               handoverId={handover.id}
               step="FINAL"
               urgentCount={counts.urgente}
+              simpleNovelties={simpleNovelties}
             />
           </div>
         </Card>

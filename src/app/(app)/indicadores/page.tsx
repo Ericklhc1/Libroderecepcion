@@ -40,10 +40,10 @@ export default async function MetricsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  await requirePagePermission('metrics.view');
+  const user=await requirePagePermission('metrics.view');
   const params = await searchParams;
   const days = normalizeMetricDays(Number(typeof params.dias === 'string' ? params.dias : '30'));
-  const metrics = await getMetrics(defaultRange(days));
+  const metrics = await getMetrics(defaultRange(days),user);
 
   const maxIncidents = Math.max(1, ...metrics.incidents.byDepartment.map((d) => d.count));
   const maxVolume = Math.max(1, ...metrics.volumeByShift.map((v) => v.count));

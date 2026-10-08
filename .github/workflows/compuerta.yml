@@ -332,6 +332,7 @@ jobs:
             sleep 1
           done
           PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/operational-sheet-browser.mjs
+          PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/simple-novelties-browser.mjs
 
       - name: Custodia y consulta con contexto
         if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
@@ -440,6 +441,7 @@ jobs:
             etapa3-typecheck.log
             appearance-browser-results.json
             operational-sheet-browser-results.json
+            simple-novelties-browser-results.json
             /tmp/list-context-browser-results.json
             substitution-candidates-browser-results.json
             module-navigation-browser-results.json

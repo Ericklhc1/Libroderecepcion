@@ -92,7 +92,7 @@ type EntryCreateInput = {
  * duplicados. Se exige gravedad para que una incidencia nunca quede sin
  * clasificar.
  */
-export async function createEntry(user: CurrentUser, input: EntryCreateInput, options:{incidentWorkflow?:boolean;simpleNovelty?:boolean}={}) {
+export async function createEntry(user: CurrentUser, input: EntryCreateInput, options:{incidentWorkflow?:boolean;simpleNovelty?:boolean;client?:Prisma.TransactionClient}={}) {
   if (input.receptionInternal && !user.isSystemAdmin && user.roleKey!=='SUPERVISOR' && !isReceptionDeskRole(user.roleKey))throw new RuleError('Las operativas internas corresponden a Recepción.');
   if(input.ownerId && ['NOVEDAD','INCIDENCIA'].includes(input.type) && await getSettingBool('book.simpleNovelties',false))throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
   if (input.ownerId) await assertAssignable(input.ownerId);
@@ -109,9 +109,9 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
     if (!room) throw new RuleError('La habitación seleccionada no existe en el catálogo operativo.');
   }
 
-  const shift = await getMyOpenShift(user.id);
+  const shift = await getMyOpenShift(user.id,options.client);
 
-  const entry = await prisma.$transaction(async (tx) => {
+  const write = async (tx:Prisma.TransactionClient) => {
     const novelty=['NOVEDAD','INCIDENCIA'].includes(input.type);
     if(novelty)await lockReceptionSummary(tx);
     const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
@@ -250,7 +250,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
     }
 
     return created;
-  });
+  };
+  const entry=options.client?await write(options.client):await prisma.$transaction(write);
 
   recordOperationalEvent({
     eventType: 'ENTRY_CREATED',

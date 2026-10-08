@@ -1,3 +1,5 @@
+import {lockNativeNoveltyCreation} from './native-entry-creation';
+import {invalidateSimpleNoveltyDrafts} from './simple-novelty-drafts';
 import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 
@@ -286,77 +288,83 @@ export async function resolveAllOperationalConflicts(
   });
 
   let escalationEntryId: string | null = null;
-  const existingEscalation = await readEntries(prisma, user).findFirst({
-    where: {
-      deletedAt: null,
-      category: 'CONFLICTOS_REQUIEREN_DECISION',
-      status: { in: ENTRY_OPEN_STATUSES },
-    },
-    select: { id: true, humanId: true, status: true },
-    orderBy: { occurredAt: 'desc' },
-  });
+  await prisma.$transaction(async tx=>{
+    const simpleMode=await lockNativeNoveltyCreation(tx);
+    const existingEscalation = await readEntries(tx, user).findFirst({
+      where: {
+        deletedAt: null,
+        category: 'CONFLICTOS_REQUIEREN_DECISION',
+        status: { in: ENTRY_OPEN_STATUSES },
+      },
+      select: { id: true, humanId: true, status: true },
+      orderBy: { occurredAt: 'desc' },
+    });
 
-  if (remainingConflicts.length > 0) {
-    if (existingEscalation) {
-      escalationEntryId = existingEscalation.id;
-      await prisma.operationalEntry.update({
+    if (remainingConflicts.length > 0) {
+      if (existingEscalation) {
+        escalationEntryId = existingEscalation.id;
+        const updated=await tx.operationalEntry.update({
+          where: { id: existingEscalation.id },
+          data: {
+            description: remainingConflicts.slice(0, 30).map(conflictLine).join('\n'),
+            occurredAt: now,
+            priority: Priority.CRITICA,
+            severity: Severity.CRITICA,
+            requiresFollowUp: true,
+            status: EntryStatus.ABIERTO,
+            resolution: null,
+            closedAt: null,
+            closedById: null,
+          },
+        });
+        const invalidatedDrafts=simpleMode?await invalidateSimpleNoveltyDrafts(tx,updated):[];
+        await recordAudit({
+          entity: 'OperationalEntry',
+          entityId: existingEscalation.id,
+          action: AuditAction.CAMBIO_ESTADO,
+          user,
+          summary: `Incidencia #${existingEscalation.humanId} actualizada con ${remainingConflicts.length} conflicto(s) restante(s)`,
+          after: { remainingConflicts: remainingConflicts.length,invalidatedDrafts },
+        },tx);
+      } else {
+        const escalation = await createEntry(user, {
+          type: EntryType.INCIDENCIA,
+          title: 'Conflictos que requieren decisión humana',
+          description: remainingConflicts.slice(0, 30).map(conflictLine).join('\n'),
+          category: 'CONFLICTOS_REQUIEREN_DECISION',
+          priority: Priority.CRITICA,
+          tags: ['reconciliacion-conflictos', 'decision-humana'],
+          requiresFollowUp: true,
+          severity: Severity.CRITICA,
+          immediateAction:
+            'Revisar Supervisión/Habitaciones. No se inventaron datos para resolver contradicciones ambiguas.',
+        },{client:tx});
+        escalationEntryId = escalation.id;
+      }
+    } else if (existingEscalation) {
+      const updated=await tx.operationalEntry.update({
         where: { id: existingEscalation.id },
         data: {
-          description: remainingConflicts.slice(0, 30).map(conflictLine).join('\n'),
-          occurredAt: now,
-          priority: Priority.CRITICA,
-          severity: Severity.CRITICA,
-          requiresFollowUp: true,
-          status: EntryStatus.ABIERTO,
-          resolution: null,
-          closedAt: null,
-          closedById: null,
+          status: EntryStatus.RESUELTO,
+          resolution: 'La reconciliación global dejó el estado operativo sin conflictos vivos.',
+          requiresFollowUp: false,
+          closedAt: now,
+          closedById: user.id,
         },
       });
+      const invalidatedDrafts=simpleMode?await invalidateSimpleNoveltyDrafts(tx,updated):[];
       await recordAudit({
         entity: 'OperationalEntry',
         entityId: existingEscalation.id,
-        action: AuditAction.CAMBIO_ESTADO,
+        action: AuditAction.CERRAR,
         user,
-        summary: `Incidencia #${existingEscalation.humanId} actualizada con ${remainingConflicts.length} conflicto(s) restante(s)`,
-        after: { remainingConflicts: remainingConflicts.length },
-      });
-    } else {
-      const escalation = await createEntry(user, {
-        type: EntryType.INCIDENCIA,
-        title: 'Conflictos que requieren decisión humana',
-        description: remainingConflicts.slice(0, 30).map(conflictLine).join('\n'),
-        category: 'CONFLICTOS_REQUIEREN_DECISION',
-        priority: Priority.CRITICA,
-        tags: ['reconciliacion-conflictos', 'decision-humana'],
-        requiresFollowUp: true,
-        severity: Severity.CRITICA,
-        immediateAction:
-          'Revisar Supervisión/Habitaciones. No se inventaron datos para resolver contradicciones ambiguas.',
-      });
-      escalationEntryId = escalation.id;
+        summary: `Incidencia #${existingEscalation.humanId} resuelta por reconciliación global`,
+        before: { status: existingEscalation.status },
+        after: { status: EntryStatus.RESUELTO,invalidatedDrafts },
+      },tx);
     }
-  } else if (existingEscalation) {
-    await prisma.operationalEntry.update({
-      where: { id: existingEscalation.id },
-      data: {
-        status: EntryStatus.RESUELTO,
-        resolution: 'La reconciliación global dejó el estado operativo sin conflictos vivos.',
-        requiresFollowUp: false,
-        closedAt: now,
-        closedById: user.id,
-      },
-    });
-    await recordAudit({
-      entity: 'OperationalEntry',
-      entityId: existingEscalation.id,
-      action: AuditAction.CERRAR,
-      user,
-      summary: `Incidencia #${existingEscalation.humanId} resuelta por reconciliación global`,
-      before: { status: existingEscalation.status },
-      after: { status: EntryStatus.RESUELTO },
-    });
-  }
+
+  });
 
   const recipients = await prisma.user.findMany({
     where: { deletedAt: null, active: true },

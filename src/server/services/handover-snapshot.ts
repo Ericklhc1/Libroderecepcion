@@ -180,6 +180,7 @@ export async function buildHandoverSnapshot(
   options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
   const db=options.client??prisma;
+  const simpleMode=(await db.systemSetting.findUnique({where:{key:'book.simpleNovelties'},select:{value:true}}))?.value===true;
   const soon = new Date(now.getTime() + 24 * 3600_000);
   const items: SnapshotItem[] = [];
 
@@ -226,7 +227,7 @@ export async function buildHandoverSnapshot(
         department: { select: { name: true } },
       },
       orderBy: [{ priority: 'desc' }, { occurredAt: 'desc' }],
-      take: 200,
+      ...(simpleMode?{}:{take:200}),
     }),
     db.alert.findMany({
       where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]},{OR:[{entryId:null},{entry:receptionHandoverEntryWhere}]}], taskId:null} ,
@@ -282,7 +283,7 @@ export async function buildHandoverSnapshot(
             _count: { select: { tasks: {where:taskFollowUpReadWhere(user,true)}, followUps: {where:followUpReadWhere(user,false,true)} } },
           },
           orderBy: [{ closedAt: 'asc' }, { updatedAt: 'asc' }],
-          take: 150,
+          ...(simpleMode?{}:{take:150}),
         })
       : Promise.resolve([]),
   ]);

@@ -149,6 +149,12 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
     await prisma.handoverItem.create({data:{handoverId:draft.id,refType:'entry',section:'novedades',refId:entry.id,title:entry.title,level:'INFORMATIVO'}});await prisma.shiftHandover.update({where:{id:draft.id},data:{finalReviewAt:now}});await softDeleteEntry(admin,{id:entry.id,reason:'Retirar evidencia sintética'});expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:2,finalReviewAt:null});
     expect((await prisma.auditLog.findFirstOrThrow({where:{entityId:entry.id,action:'RESTAURAR'}})).after).toMatchObject({invalidatedDrafts:[draft.id]});
   });
+  it('cambiar el modo obliga a regenerar un borrador legado con contenido nuevo',async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});auth.user=admin;const shift=await createShift({userId:admin.id,type:'DIA',status:'PREPARANDO_ENTREGA'});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:admin.id,status:'BORRADOR',pendingsReviewedAt:now,finalReviewAt:now,urgentAcknowledgedAt:now}});
+    const entry=await createEntry(admin,{type:'NOVEDAD',title:'Añadida tras preparar en modo legado',description:'Debe fotografiarse al encender',priority:'MEDIA',tags:[],requiresFollowUp:false});expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).receptionSummaryRevision).toBe(0);
+    const form=new FormData();form.set('key','book.simpleNovelties');form.set('value','true');expect((await saveSettingAction(null,form)).ok).toBe(true);expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:1,receptionSummaryPreparedRevision:0,pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null});
+    await expect(shiftServices.confirmHandoverReviewStep(admin,{handoverId:draft.id,step:'FINAL'})).rejects.toThrow(/Regenera/);await shiftServices.prepareHandover(admin,shift.id);expect(await prisma.handoverItem.count({where:{handoverId:draft.id,refId:entry.id}})).toBe(1);expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).receptionSummaryPreparedRevision).toBe(1);
+  });
   it('guardar apagado por primera vez conserva las revisiones de borradores y entregas enviadas',async()=>{
     const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});auth.user=admin;const now=new Date();
     const handovers=[];

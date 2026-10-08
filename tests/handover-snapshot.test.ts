@@ -49,6 +49,11 @@ describe('resumen automático de la entrega', () => {
     user = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
   });
 
+  for(const simpleMode of [true,false])it(`fotografía todas las novedades simples sin truncar y conserva límites legados: ${simpleMode}`,async()=>{
+    const shift=await createShift({userId:user.id,type:'DIA'});await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:simpleMode,category:'pruebas'}});
+    await prisma.operationalEntry.createMany({data:[...Array.from({length:201},(_,index)=>({type:'NOVEDAD' as const,title:`Abierta completa ${index}`,description:'Todas disponibles para revisión',createdById:user.id,status:'ABIERTO' as const})),...Array.from({length:151},(_,index)=>({type:'NOVEDAD' as const,title:`Resuelta completa ${index}`,description:'Todas disponibles para revisión',createdById:user.id,status:'RESUELTO' as const,shiftId:shift.id,closedAt:new Date()}))]});
+    const snapshot=await buildHandoverSnapshot(user,new Date(),{shiftId:shift.id});const rows=snapshot.filter(row=>row.refType==='entry');expect(rows.filter(row=>row.title.includes('Abierta completa'))).toHaveLength(simpleMode?201:200);expect(rows.filter(row=>row.title.includes('Resuelta completa'))).toHaveLength(simpleMode?151:150);
+  });
   it('agrupa cada asunto en su sección y lo clasifica por urgencia', async () => {
     await createEntry(user, {
       type: EntryType.INCIDENCIA,

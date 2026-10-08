@@ -381,7 +381,7 @@ export async function saveSettingAction(
       const previous=await tx.systemSetting.findUnique({where:{key}});
       assertAuthorizedRevision(revisionFromForm(formData),previous);
       if(key==='book.simpleNovelties'&&value!==(previous?.value??defaultValue)){
-        await tx.shiftHandover.updateMany({where:{status:'BORRADOR'},data:{finalReviewAt:null,urgentAcknowledgedAt:null}});
+        await tx.shiftHandover.updateMany({where:{status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
         await tx.shiftHandover.updateMany({where:{status:'ENVIADA'},data:{receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null,receiverFinalSummaryKey:null}});
       }
       const data={value:value as never,updatedById:actor.id};

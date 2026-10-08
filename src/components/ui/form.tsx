@@ -258,6 +258,9 @@ export function ActionForm({
   const actionFormReady=preparedFormKey===preparationKey;
   const actionWithImmediateDialogClose = useCallback(async (previous: ActionState | null, formData: FormData) => {
     const draft = submittedDraft.current;
+    // Hydration may retain the server DOM id even when React's useId differs.
+    // Capture the actual submitted node before revalidation can replace it.
+    const receiptFormId=formRef.current?.id??formId;
     const result = await action(previous, formData);
     // Revalidation can unmount this form before useActionState commits. Clear
     // only the submitted snapshot here, never a newer edit made while waiting.
@@ -267,9 +270,9 @@ export function ActionForm({
         newerDraft = draft.raw !== undefined && sessionStorage.getItem(draft.key) !== draft.raw;
         if (!newerDraft) sessionStorage.removeItem(draft.key);
       } catch { /* Storage is optional; never turn a confirmed save into an error. */ }
-      if (!newerDraft) window.dispatchEvent(new CustomEvent('aroh:form-draft-saved', { detail: { key: draft.key, formId } }));
+      if (!newerDraft) window.dispatchEvent(new CustomEvent('aroh:form-draft-saved', { detail: { key: draft.key, formId:receiptFormId } }));
     }
-    if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId } }));
+    if (!('credentials' in result)) window.dispatchEvent(new CustomEvent('aroh:action-result', { detail: { ok: result.ok, formId:receiptFormId } }));
     // Server Actions may persist before React commits useActionState's returned state.
     // Do not refresh from inside the action wrapper: doing so keeps React's action
     // transition pending and delays the committed state that sibling controls need.
@@ -315,7 +318,7 @@ export function ActionForm({
       if (!(event instanceof CustomEvent) || event.detail?.key !== draftKey) return;
       // A replacement mounted by revalidation may have recovered the old draft
       // just before its action returned. Its defaults are the new saved record.
-      if (event.detail.formId !== formId) form?.reset();
+      if (event.detail.formId !== form?.id) form?.reset();
       draftBaseRevision.current = draftRevision ?? null;
       cleared();
     };

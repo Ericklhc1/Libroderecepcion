@@ -1383,3 +1383,11 @@ getSubjectEntry carga sólo el código de la reserva vinculada y el detalle simp
 Compuerta c600c0d aprobó la planilla/simple en ambos tamaños y falló después en el recibo nativo de Caja. La evidencia muestra cambio de identidad de formulario SSR a cliente: el observador ahora toma el id del único evento submit real antes de comprobar el recibo original, sin eventos simulados, otro plazo ni sólo HTTP/estado de base. ActionForm restaura y reconcilia con la referencia del formulario montado; su señal de preparación depende de alcance/campos/revisión actuales y no habilita una versión nueva con una señal anterior. Tres regresiones de ciclo de vida prueban restaurado/conflicto sin búsqueda global de id, confirmación física no recuperada y preparación caducada.
 
 Aprobaron 81 pruebas focales de seis archivos y tipos. Se repiten verify, seis recorridos, auditoría completa, Compuerta y Codex sobre el nuevo commit. El diagnóstico sigue acotado a operaciones/revisiones sintéticas, tolera almacenamiento rechazado y no altera sus resultados. Sin migraciones nuevas, datos reales ni infraestructura alojada.
+
+### 2026-10-08 — correlación nativa: causa confirmada tras fa2cec7
+
+Verify de fa2cec7 aprobó 2.551 pruebas/236 archivos, build y renderer; los seis recorridos locales aprobaron. La auditoría seguía fallando en el recibo. El diagnóstico adicional confirma un único submit DOM con id _R_17… y un único resultado decodificado exitoso con useId _R_9…: el HTML montado retenía un id diferente del hook de React. Esto precisa la hipótesis previa de reemplazo y también explica la restauración por búsqueda global que no encontraba el nodo.
+
+ActionForm captura formRef.current.id antes de esperar la acción y usa esa identidad para ambos recibos; la limpieza compara con la identidad DOM montada. Una nueva regresión ejecuta el wrapper, separa id DOM/useId, reemplaza el nodo durante la espera y exige que el único recibo siga perteneciendo al nodo original. No se relaja el observador: sigue exigiendo un submit, un resultado nativo exitoso y los mismos 12 segundos.
+
+Aprobaron las 15 pruebas focales de tres archivos y tipos. Se repiten validación completa y navegador del nuevo commit, con especial atención a auditoría. El diagnóstico sólo imprime identidades/resultados sintéticos; no hay migración ni cambio de flujo.

@@ -141,6 +141,7 @@ try {
   if(activePage&&!activePage.isClosed()){
     console.error('Synthetic draft trace',await activePage.evaluate(()=>sessionStorage.getItem('synthetic-draft-trace')));
     const draftMeta=await activePage.evaluate(()=>Object.keys(sessionStorage).filter(key=>key.startsWith('aroh:form-draft:v1:')).map(key=>({key,revision:JSON.parse(sessionStorage.getItem(key)).revision,savedAt:JSON.parse(sessionStorage.getItem(key)).savedAt})));console.error('Synthetic draft revisions',draftMeta);console.error('Synthetic saved revisions',await db.cashCount.findMany({where:{handoverId:{in:[...new Set(draftMeta.map(row=>row.key.split(':')[5]))]}},select:{handoverId:true,countedAt:true,kind:true}}));
+    console.error('Synthetic native outcomes',await activePage.evaluate(()=>({submissions:window.__shiftUxSubmissions,results:window.__shiftUxActionResults})));
     console.error('Synthetic form readiness',await activePage.locator('form').evaluateAll(forms=>forms.slice(0,20).map(form=>({id:form.id,ready:form.getAttribute('data-action-form-ready'),handoverId:form.querySelector('input[name=handoverId]')?.value,button:form.querySelector('button[type=submit]')?.textContent}))));
     console.error('Synthetic cash draft screen',(await activePage.locator('body').innerText()).slice(-12000));
   }

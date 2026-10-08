@@ -15,6 +15,7 @@ import {
 import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import type { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { runAlertEngine } from './alert-engine';
 import {
@@ -76,6 +77,29 @@ export async function getDashboardData(user: CurrentUser) {
   const businessDate = myShift?.date ?? await resolveOperationalBusinessDate(now);
   const receptionEntriesOnly = isReceptionDeskRole(user.roleKey);
 
+  const entryWhere:Prisma.OperationalEntryWhereInput={deletedAt:null,status:{in:ENTRY_OPEN_STATUSES},...(receptionEntriesOnly?{type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}}:{}),OR:[{priority:{in:[Priority.CRITICA,Priority.ALTA]}},{dueAt:{lt:now}}]};
+  const taskWhere:Prisma.TaskWhereInput={deletedAt:null,AND:[taskFollowUpReadWhere(user)],status:{in:TASK_OPEN_STATUSES},dueAt:{lt:now}};
+  const followWhere:Prisma.FollowUpWhereInput={deletedAt:null,AND:[followUpReadWhere(user)],status:{in:[FollowUpStatus.PENDIENTE,FollowUpStatus.VENCIDO]}};
+  // Nine distinct keys per source leave room for eight displayed groups and overflow.
+  // Only twenty original links per duplicate group travel to the dashboard.
+  const taskCandidates=async()=>{
+    const titles:string[]=[];
+    for(const priority of [Priority.CRITICA,Priority.ALTA,Priority.MEDIA,Priority.BAJA]){
+      const groups=await prisma.task.groupBy({by:['title'],where:{AND:[taskWhere,{priority},{title:{notIn:titles}}]},_min:{dueAt:true},orderBy:[{_min:{dueAt:'asc'}},{title:'asc'}],take:9-titles.length});
+      titles.push(...groups.map(group=>group.title));if(titles.length===9)break;
+    }
+    const counts=await prisma.task.groupBy({by:['title'],where:{AND:[taskWhere,{title:{in:titles}}]},_count:{_all:true}});
+    const totals=new Map(counts.map(group=>[group.title,group._count._all]));
+    return (await Promise.all(titles.map(async title=>(await prisma.task.findMany({where:{AND:[taskWhere,{title}]},select:{id:true,humanId:true,title:true,priority:true},orderBy:[{priority:'desc'},{dueAt:'asc'},{id:'asc'}],take:20})).map(row=>({...row,displayGroupTotal:totals.get(title)??0}))))).flat();
+  };
+  const followCandidates=async()=>{
+    const groups=await prisma.followUp.groupBy({by:['action','status'],where:followWhere,_count:{_all:true},_min:{scheduledAt:true},orderBy:[{status:'desc'},{_min:{scheduledAt:'asc'}},{action:'asc'}],take:9});
+    return (await Promise.all(groups.map(async group=>(await prisma.followUp.findMany({where:{AND:[followWhere,{action:group.action,status:group.status}]},select:{id:true,humanId:true,action:true,status:true},orderBy:[{scheduledAt:'asc'},{id:'asc'}],take:20})).map(row=>({...row,displayGroupTotal:group._count._all}))))).flat();
+  };
+  const entryCandidates=async()=> (await Promise.all([
+    prisma.operationalEntry.findMany({where:{AND:[entryWhere,{dueAt:{lt:now}}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{dueAt:'asc'},{id:'asc'}],take:9}),
+    prisma.operationalEntry.findMany({where:{AND:[entryWhere,{OR:[{dueAt:null},{dueAt:{gte:now}}]}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{id:'asc'}],take:9}),
+  ])).flat();
   const [
     incoming,
     criticalEntries,
@@ -83,55 +107,20 @@ export async function getDashboardData(user: CurrentUser) {
     myTasks,
     followUps,
     blockingOutgoing,
+    entryTotal,
+    taskTotal,
+    followTotal,
   ] = await Promise.all([
     getPendingHandover(myShift?.id ?? null),
-    prisma.operationalEntry.findMany({
-      where: {
-        deletedAt: null,
-        status: { in: ENTRY_OPEN_STATUSES },
-        ...(receptionEntriesOnly
-          ? {
-              type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
-            }
-          : {}),
-        OR: [
-          { priority: { in: [Priority.CRITICA, Priority.ALTA] } },
-          { dueAt: { lt: now } },
-        ],
-      },
-      select: {
-        id: true,
-        humanId: true,
-        title: true,
-        priority: true,
-        dueAt: true,
-      },
-      orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }],
-    }),
-    prisma.task.findMany({
-      where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
-      select: { id: true, humanId: true, title: true, priority: true },
-      orderBy: { dueAt: 'asc' },
-    }),
+    entryCandidates(),
+    taskCandidates(),
     prisma.task.findMany({
       where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
       select: { id: true, dueAt: true },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
       take: 8,
     }),
-    prisma.followUp.findMany({
-      where: {
-        deletedAt: null,AND:[followUpReadWhere(user)],
-        status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
-      },
-      select: {
-        id: true,
-        humanId: true,
-        action: true,
-        status: true,
-      },
-      orderBy: [{ scheduledAt: 'asc' }],
-    }),
+    followCandidates(),
     prisma.shift.findFirst({
       where: {
         archivedAt: null,
@@ -153,6 +142,9 @@ export async function getDashboardData(user: CurrentUser) {
       select: { id: true, status: true },
       orderBy: { actualStart: 'asc' },
     }),
+    prisma.operationalEntry.count({where:entryWhere}),
+    prisma.task.count({where:taskWhere}),
+    prisma.followUp.count({where:followWhere}),
   ]);
 
   /*
@@ -229,6 +221,7 @@ export async function getDashboardData(user: CurrentUser) {
       humanId: task.humanId,
       title: task.title,
       priority: task.priority,
+      displayGroupTotal:task.displayGroupTotal,
     })),
     criticalEntries: criticalEntries.map((entry) => ({
       id: entry.id,
@@ -242,11 +235,13 @@ export async function getDashboardData(user: CurrentUser) {
       humanId: followUp.humanId,
       action: followUp.action,
       status: followUp.status,
+      displayGroupTotal:followUp.displayGroupTotal,
     })),
-  }, Number.POSITIVE_INFINITY);
+  }, 9*20*2+18);
 
   return {
     now,
+    attentionTotal:entryTotal+taskTotal+followTotal,
     myShift,
     incoming: incoming ? await visibleHandover(user,incoming) : null,
     nextShift,

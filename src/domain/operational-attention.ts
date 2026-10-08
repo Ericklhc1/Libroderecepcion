@@ -16,6 +16,7 @@ export type OperationalAttentionItem = {
   action: string;
   href: string;
   folio?: number;
+  duplicateCount?: number;
 };
 
 type AttentionInput = {
@@ -28,6 +29,7 @@ type AttentionInput = {
   alerts: Array<{
     id: string;
     humanId?: number;
+    displayGroupTotal?: number;
     level: 'INFORMATIVA' | 'ATENCION' | 'CRITICA';
     title: string;
     message?: string | null;
@@ -35,6 +37,7 @@ type AttentionInput = {
   overdueTasks: Array<{
     id: string;
     humanId?: number;
+    displayGroupTotal?: number;
     title: string;
     priority: 'BAJA' | 'MEDIA' | 'ALTA' | 'CRITICA';
   }>;
@@ -48,6 +51,7 @@ type AttentionInput = {
   followUps: Array<{
     id: string;
     humanId?: number;
+    displayGroupTotal?: number;
     action: string;
     status: 'PENDIENTE' | 'VENCIDO' | string;
   }>;
@@ -141,6 +145,7 @@ export function buildOperationalAttention(
     items.push({
       id: `task:${task.id}`,
       folio: task.humanId,
+      duplicateCount: task.displayGroupTotal,
       kind: 'task',
       tone: toneForScore(score),
       score,
@@ -174,6 +179,7 @@ export function buildOperationalAttention(
     items.push({
       id: `followup:${followUp.id}`,
       folio: followUp.humanId,
+      duplicateCount:followUp.displayGroupTotal,
       kind: 'followup',
       tone: toneForScore(score),
       score,

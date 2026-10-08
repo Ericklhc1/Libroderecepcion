@@ -38,3 +38,10 @@ it('agrupa todas las prioridades antes de elegir ocho grupos y conserva original
   const groups=groupDisplayRows(items,item=>JSON.stringify([item.kind,item.tone,item.title,item.reason,item.action]));
   expect(groups).toHaveLength(2);expect(groups[0]!.items).toHaveLength(12);expect(groups.flatMap(group=>group.items).some(item=>item.id==='entry:distinct')).toBe(true);
 });
+
+it('los grupos presentan cuerpos compactos y mantienen identidades distintas para push',()=>{
+  const base={type:'FRONTI_HALLAZGO',title:'Fronti · Tarea vencida',body:'x'.repeat(500),entity:'Task',entityId:'one',createdAt:'2026-10-08T02:00:00Z',link:'/coordinacion',readAt:null};
+  const rows=[{...base,id:'a'},{...base,id:'b'}];
+  const groups=groupNotificationItems(rows);expect(groups[0]!.body!.length).toBeLessThanOrEqual(240);
+  expect(notificationDeviceItems([...rows,{...base,id:'c',entityId:'two'}])).toHaveLength(2);
+});

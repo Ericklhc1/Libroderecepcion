@@ -78,7 +78,7 @@ export default async function MetricsPage({
           ))}
         </nav>
       </header>
-      <p className="text-xs text-slate-500">{metrics.scope}</p>
+      <details className="metric-note text-xs text-slate-500"><summary title={metrics.scope} className="cursor-help">Alcance de indicadores ⓘ</summary><p role="tooltip">{metrics.scope}</p></details>
 
       <DisclosureCard title="Tareas" description={metrics.definitions.tasks} defaultOpen contentClassName="p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

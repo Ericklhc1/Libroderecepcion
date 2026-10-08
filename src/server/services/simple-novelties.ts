@@ -71,7 +71,7 @@ export async function resolveSimpleNovelty(user: CurrentUser, id: string, revisi
   return changeEntryStatus(user, { id, status: 'RESUELTO', resolution: resolution?.trim() || entry.resolution }, revision, {simpleNovelty:true});
 }
 
-export async function updateSimpleNovelty(user: CurrentUser, input: { id: string; title: string; description: string; departmentId: string | null; workNextAction: string | null }, revision: string) {
+export async function updateSimpleNovelty(user: CurrentUser, input: { id: string; title: string; description: string; departmentId: string | null; workNextAction: string | null;roomId?:string|null;reservationReference?:string|null }, revision: string) {
   if (!await simpleNoveltiesEnabled()) throw new RuleError('La prueba de novedades simples está apagada.');
   if (!user.permissions.includes('entry.edit')) throw new ForbiddenError();
   if (input.departmentId && !await prisma.department.count({ where: { id: input.departmentId, active: true } })) throw new RuleError('Selecciona un área relacionada vigente.');

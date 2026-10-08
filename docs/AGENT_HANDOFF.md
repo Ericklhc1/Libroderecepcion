@@ -1391,3 +1391,11 @@ Verify de fa2cec7 aprobó 2.551 pruebas/236 archivos, build y renderer; los seis
 ActionForm captura formRef.current.id antes de esperar la acción y usa esa identidad para ambos recibos; la limpieza compara con la identidad DOM montada. Una nueva regresión ejecuta el wrapper, separa id DOM/useId, reemplaza el nodo durante la espera y exige que el único recibo siga perteneciendo al nodo original. No se relaja el observador: sigue exigiendo un submit, un resultado nativo exitoso y los mismos 12 segundos.
 
 Aprobaron las 15 pruebas focales de tres archivos y tipos. Se repiten validación completa y navegador del nuevo commit, con especial atención a auditoría. El diagnóstico sólo imprime identidades/resultados sintéticos; no hay migración ni cambio de flujo.
+
+### 2026-10-08 — P2 de 1736963: contexto editable y alcance de indicadores
+
+La edición simple permite corregir Reserva y HAB a través de updateEntry, con catálogo vigente, revisión optimista, permisos y los mismos candados/invalidador de fotografía. Los campos omitidos por clientes anteriores preservan su valor; vacíos explícitos limpian el contexto. El código de reserva nativo sigue como referencia visual sin copiarlo al campo libre al editar otro dato. Una prueba de la acción real verifica corrección, limpieza, habitación inválida y descarte de la confirmación de otra entrega. El navegador corrige ambos campos en 1280 y 390.
+
+Indicadores y Gerencia declaran en tooltip qué numeradores dependen del acceso vigente y cuáles son totales del hotel: tareas/incidencias/alarmas/volumen frente a turnos/entregas. Una regresión compara dos lectores con visibilidad distinta: sus numeradores cambian y los totales de turnos/entregas permanecen iguales. Se agrega Indicadores al recorrido de planilla: 17 pantallas, 34 combinaciones de anchura.
+
+Aprobaron 101 pruebas focales de cuatro archivos y tipos. La Compuerta de 1736963 aprobó; localmente también habían aprobado las 2.552 pruebas y seis recorridos, más dos auditorías completas consecutivas con la correlación DOM corregida. Para estas dos correcciones se repiten verify completo, navegador, Compuerta y Codex en el nuevo commit. No hay migraciones nuevas ni acceso a datos reales.

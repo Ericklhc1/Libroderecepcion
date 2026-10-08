@@ -28,7 +28,7 @@ export async function resolveSimpleNoveltyAction(_state: ActionState | null, for
 export async function updateSimpleNoveltyAction(_state: ActionState | null, form: FormData): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('entry.edit');
-    const input = parseOrThrow(content.extend({ id: z.string().min(1), revision }), formDataToObject(form));
+    const input = parseOrThrow(content.extend({ id: z.string().min(1), revision, roomId:z.string().max(100).optional().transform(v=>v===undefined?undefined:v||null),reservationReference:z.string().trim().max(100).optional().transform(v=>v===undefined?undefined:v||null) }), formDataToObject(form));
     const row = await updateSimpleNovelty(user, input, input.revision); refresh(); revalidatePath(`/libro/${row.id}`);
     return { ok: true as const, message: 'Novedad actualizada.', id: row.id };
   });

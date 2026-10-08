@@ -34,7 +34,8 @@ export function incidentResolutionAt(row: { resolvedAt: Date | null; closedAt: D
   return row.resolvedAt ?? row.closedAt;
 }
 
-export const SHARED_METRIC_SCOPE = 'Tareas: universo de operación compartida, excluye las vinculadas a seguimientos privados o reservados. Coordinación usa tus permisos y puede mostrar otro universo.';
+export const ACCESS_FILTERED_METRIC_SCOPE = 'Tareas, incidencias, alarmas y volumen: registros visibles según el acceso vigente del lector. Las tareas excluyen fuentes privadas o reservadas; Coordinación puede mostrar otro alcance según tus permisos.';
+export const GLOBAL_SHIFT_METRIC_SCOPE = 'Turnos y entregas: totales del hotel, independientes de la visibilidad de novedades.';
 export const TASK_COMPLETION_DEFINITION = 'COMPLETADA o VALIDADA, por fecha de ejecución (completedAt). REALIZADA espera validación y no cuenta como terminada. Sin plazo se considera en plazo.';
 export const INCIDENT_RESOLUTION_DEFINITION = 'Desde el hecho hasta resolvedAt; sin esa fecha, se usa el cierre histórico closedAt y se informa aparte. Reabrir retira el resultado vigente. No se imputan fechas faltantes.';
 

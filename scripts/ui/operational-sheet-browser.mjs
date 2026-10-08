@@ -8,7 +8,7 @@ const fixture = JSON.parse(readFileSync('/tmp/etapa1-fixture.json', 'utf8'));
 const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}) });
 const results = [];
 const db=new PrismaClient();
-const routes = ['/', '/caja', '/coordinacion', '/libro', '/novedades/habitacion', '/llaves', '/inventario', '/housekeeping', '/jornada', '/turno', '/supervision', '/gerencia', '/equipo', '/admin', '/admin/auditoria', '/notificaciones'];
+const routes = ['/', '/caja', '/coordinacion', '/libro', '/novedades/habitacion', '/llaves', '/inventario', '/housekeeping', '/jornada', '/turno', '/supervision', '/gerencia', '/indicadores', '/equipo', '/admin', '/admin/auditoria', '/notificaciones'];
 try {
   for (const width of [1280, 390]) {
     const context = await browser.newContext({ viewport: { width, height: 900 } });

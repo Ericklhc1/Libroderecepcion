@@ -10,7 +10,7 @@ import {
   ShiftStatus,
 } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { ENTRY_RESOLVED_STATUSES, TASK_COMPLETED_STATUSES, metricPeriod, metricCalendarRange, incidentResolutionAt, SHARED_METRIC_SCOPE, TASK_COMPLETION_DEFINITION, INCIDENT_RESOLUTION_DEFINITION } from '@/domain/operational-metrics';
+import { ENTRY_RESOLVED_STATUSES, TASK_COMPLETED_STATUSES, metricPeriod, metricCalendarRange, incidentResolutionAt, ACCESS_FILTERED_METRIC_SCOPE, GLOBAL_SHIFT_METRIC_SCOPE, TASK_COMPLETION_DEFINITION, INCIDENT_RESOLUTION_DEFINITION } from '@/domain/operational-metrics';
 import { formatCalendarDate } from '@/lib/format';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 
@@ -162,7 +162,8 @@ export async function getMetrics(range: MetricsRange, user?:EntryReader) {
 
   return {
     range,
-    scope: SHARED_METRIC_SCOPE,
+    scope: `${ACCESS_FILTERED_METRIC_SCOPE} ${GLOBAL_SHIFT_METRIC_SCOPE}`,
+    scopes:{operational:ACCESS_FILTERED_METRIC_SCOPE,shifts:GLOBAL_SHIFT_METRIC_SCOPE},
     definitions: { tasks: TASK_COMPLETION_DEFINITION, incidents: INCIDENT_RESOLUTION_DEFINITION },
     tasks: {
       completed: tasksClosed.length,

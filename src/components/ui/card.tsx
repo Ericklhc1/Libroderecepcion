@@ -164,7 +164,7 @@ export function StatTile({
           : 'border-slate-300',
       )}
     >
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}</p>
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}{tone==='good'&&<span className="ml-1" aria-label="Estado correcto">✓</span>}</p>
       <p
         className={cn(
           'mt-1 text-2xl font-semibold tabular',

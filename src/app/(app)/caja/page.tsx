@@ -279,6 +279,7 @@ export default async function LiveCashPage({
         searchPlaceholder="Buscar concepto, referencia, responsable o garantía…"
         clearHref="/caja"
         collapseChildren
+        activeFilterCount={[moneda,seccion,params.desde,params.hasta].filter(Boolean).length}
       >
         <label className="min-w-[10rem]">
           <span className="mb-1 block text-xs font-medium text-slate-500">Moneda</span>

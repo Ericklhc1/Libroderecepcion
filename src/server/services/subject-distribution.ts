@@ -1,4 +1,4 @@
-import { getSettingBool } from './settings';
+import { lockSimpleNoveltiesMode } from './settings';
 import { readEntries } from '@/server/services/entry-visibility';
 import {entryReadWhere,assertEntryWorkDestination} from './entry-visibility';
 import {assertSubjectDistributionEnabled} from './subject-distribution-gate';
@@ -88,10 +88,11 @@ export async function distributeSubject(user:CurrentUser,input:{entryId:string;r
   await assertReceptionOperationPermission(user,user.permissions.includes('task.create')?'task.create':'housekeeping.manage');
   const hash=createHash('sha256').update(JSON.stringify({...input,departmentIds:ids})).digest('hex');
   return prisma.$transaction(async tx=>{
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
     const entry=await readEntries(tx, user).findFirst({where:{id:input.entryId,AND:[coordinationEntries(user)]}});
     if(!entry)throw new NotFoundError();
-    if(['NOVEDAD','INCIDENCIA'].includes(entry.type)&&await getSettingBool('book.simpleNovelties',false))throw new RuleError('En novedades simples se elige el área relacionada, sin cadenas de asignación.');
+    if(['NOVEDAD','INCIDENCIA'].includes(entry.type)&&simpleMode)throw new RuleError('En novedades simples se elige el área relacionada, sin cadenas de asignación.');
     const prefix=`distribution:${user.id}:${input.requestKey}:`;
     const receipt=await tx.auditLog.findFirst({where:{entity:'SubjectDistribution',entityId:{startsWith:prefix},userId:user.id},select:{entityId:true,after:true}});
     if(receipt){

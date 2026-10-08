@@ -1,4 +1,4 @@
-import { groupDisplayRows } from '@/domain/display-groups';
+import { groupNotificationItems } from '@/domain/notification-summary';
 import {NoticeNavigation} from '@/components/operational/notice-navigation';
 import Link from 'next/link';
 import { Bell, Search } from 'lucide-react';
@@ -50,7 +50,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
     orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
     take: 150,
   });
-  const groups = groupDisplayRows(notifications, item => JSON.stringify([item.type,item.title,item.body,item.entity,item.entityId,item.link,formatDateTime(item.createdAt).split(' ')[0]]));
+  const groups = groupNotificationItems(notifications.map(item => ({...item, createdAt:item.createdAt.toISOString(), readAt:item.readAt?.toISOString()??null})));
   const unread = notifications.filter((item) => item.readAt === null);
 
   return (
@@ -108,11 +108,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         ) : (
           <CardScroll>
             <ul className="divide-y divide-slate-100">
-              {groups.map(({row: notification, items}) => (
+              {groups.map(({items, title, body}) => { const notification = items[0]!; const unreadCount = items.filter(item=>item.readAt===null).length; return (
                 <li
                   key={notification.id}
                   className={`flex flex-wrap items-start gap-3 px-4 py-3 ${
-                    notification.readAt === null ? 'bg-gold-50/40' : ''
+                    unreadCount > 0 ? 'bg-gold-50/40' : ''
                   }`}
                 >
                   <div className="min-w-0 flex-1">
@@ -121,15 +121,15 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                       <time className="text-xs tabular text-slate-400">
                         {formatDateTime(notification.createdAt)}
                       </time>
-                      {notification.readAt === null ? (
+                      {unreadCount > 0 ? (
                         <span className="rounded bg-gold-500 px-1.5 py-0.5 text-[0.6rem] font-semibold text-petrol-950">
-                          Nueva
+                          {unreadCount} sin leer
                         </span>
                       ) : null}
                     </div>
-                    <NotificationMessage notification={notification} />
-                    {items.length>1&&<details className="mt-1"><summary className="cursor-pointer text-xs font-semibold">×{items.length} avisos · ver originales</summary><ul>{items.map(original=><li key={original.id} className="flex flex-wrap items-center gap-2 py-1 text-xs"><time>{formatDateTime(original.createdAt)}</time>{original.link?<OpenNotificationButton id={original.id} href={original.link} unread={original.readAt===null}/>:original.readAt===null?<MarkOneReadForm id={original.id}/>:<span>Leído</span>}</li>)}</ul></details>}
-                    {notification.link ? (
+                    <NotificationMessage notification={{...notification,title:title??notification.title,body:body??notification.body}} />
+                    {items.length>1&&<details className="mt-1"><summary className="cursor-pointer text-xs font-semibold">×{items.length} avisos · ver originales</summary><ul>{items.map(original=><li key={original.id} data-notification-id={original.id} className="flex flex-wrap items-center gap-2 py-1 text-xs"><NotificationMessage notification={original}/><time>{formatDateTime(original.createdAt)}</time>{original.link?<OpenNotificationButton id={original.id} href={original.link} unread={original.readAt===null}/>:original.readAt===null?<MarkOneReadForm id={original.id}/>:<span>Leído</span>}</li>)}</ul></details>}
+                    {items.length===1&&notification.link ? (
                       <OpenNotificationButton
                         id={notification.id}
                         href={notification.link}
@@ -137,11 +137,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                       />
                     ) : null}
                   </div>
-                  {notification.readAt === null && !notification.link ? (
+                  {items.length===1&&notification.readAt === null && !notification.link ? (
                     <MarkOneReadForm id={notification.id} />
                   ) : null}
                 </li>
-              ))}
+              ); })}
             </ul>
           </CardScroll>
         )}

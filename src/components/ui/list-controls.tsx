@@ -9,6 +9,7 @@ export function ListFilterBar({
   clearHref,
   className,
   collapseChildren = false,
+  activeFilterCount = 0,
 }: {
   children?: React.ReactNode;
   searchValue?: string;
@@ -16,6 +17,7 @@ export function ListFilterBar({
   clearHref: string;
   className?: string;
   collapseChildren?: boolean;
+  activeFilterCount?: number;
 }) {
   return (
     <form
@@ -44,7 +46,7 @@ export function ListFilterBar({
         <details className="responsive-disclosure filter-disclosure">
           <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-medium text-petrol-700">
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
-            Más filtros
+            Más filtros{activeFilterCount>0 ? ` · ${activeFilterCount} activos` : ''}
           </summary>
           <div className="responsive-disclosure-content flex-wrap items-end gap-2">{children}</div>
         </details>

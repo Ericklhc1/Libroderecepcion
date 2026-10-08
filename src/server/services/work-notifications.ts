@@ -13,10 +13,10 @@ export async function sourceStakeholders(tx:Prisma.TransactionClient,entryId:str
 }
 /** Filter every recipient against the current source, including outgoing responsibility. */
 export async function notifyNativeWork(tx:Prisma.TransactionClient,input:{kind:'task'|'entry';id:string;actorId:string;ids:(string|null|undefined)[];title:string;body?:string;internalOnly?:boolean}){
-  const people=await tx.user.findMany({where:{id:{in:[...new Set(input.ids.filter((id):id is string=>!!id&&id!==input.actorId))]},active:true,deletedAt:null},select:{id:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
+  const people=await tx.user.findMany({where:{id:{in:[...new Set(input.ids.filter((id):id is string=>!!id&&id!==input.actorId))]},active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
   const recipients:string[]=[];
   for(const person of people){
-    const reader={id:person.id,roleKey:person.role.key,permissions:person.role.permissions.map(p=>p.permission.key as PermissionKey)} as CurrentUser;
+    const reader={id:person.id,departmentId:person.departmentId,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',roleKey:person.role.key,permissions:person.role.permissions.map(p=>p.permission.key as PermissionKey)} as CurrentUser;
     if(input.kind==='task'?await tx.task.count({where:{id:input.id,AND:[coordinationTasks(reader)]}}):await readEntries(tx, reader).count({where:{id:input.id,AND:[coordinationEntries(reader)]}}))recipients.push(person.id);
   }
   await notify(recipients.map(userId=>({internalOnly:input.internalOnly??true,userId,type:'ACTUALIZACION_OPERATIVA' as const,title:input.title,body:input.body,link:input.kind==='task'?`/tareas/${input.id}`:`/libro/${input.id}`,entity:input.kind==='task'?'Task':'OperationalEntry',entityId:input.id})),tx);

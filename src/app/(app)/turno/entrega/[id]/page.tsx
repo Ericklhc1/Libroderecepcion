@@ -212,7 +212,7 @@ export default async function HandoverPage({
       : 1;
   const maxAllowedCloseStep = !closeStepOneReady
     ? 1
-    : !handover.pendingsReviewedAt
+    : !handover.pendingsReviewedAt && !simpleNovelties
       ? 2
       : !handover.finalReviewAt
         ? 3
@@ -782,7 +782,7 @@ export default async function HandoverPage({
             <p className="text-sm text-slate-600">
               Confirma sólo después de leer los puntos que continúan al turno entrante.
             </p>
-            <ConfirmReceptionReviewStepForm handoverId={handover.id} step="BRIEFING" />
+            <ConfirmReceptionReviewStepForm handoverId={handover.id} step="BRIEFING" simpleNovelties={simpleNovelties} />
           </div>
         </Card>
       ) : null}
@@ -840,14 +840,14 @@ export default async function HandoverPage({
             </div>
           </Card>
           <Card className="no-print">
-            <CardHeader title="Confirmar revisión de pendientes" />
+            <CardHeader title={simpleNovelties?"Pendientes del relevo":"Confirmar revisión de pendientes"} />
             <div className="space-y-3 px-4 py-4">
-              <p className="text-sm text-slate-600">
+              {!simpleNovelties&&<p className="text-sm text-slate-600">
                 Confirma sólo después de revisar los asuntos que continuarán al siguiente turno.
                 Esta confirmación queda registrada y se invalida si actualizas el resumen o cambias
                 la nota de entrega.
-              </p>
-              <ConfirmHandoverReviewStepForm handoverId={handover.id} step="PENDINGS" />
+              </p>}
+              {simpleNovelties?<Link href={`/turno/entrega/${handover.id}?paso=3`} className="inline-flex bg-petrol-800 px-3 py-2 text-white">Continuar a revisión final</Link>:<ConfirmHandoverReviewStepForm handoverId={handover.id} step="PENDINGS" />}
             </div>
           </Card>
         </>

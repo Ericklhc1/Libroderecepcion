@@ -420,6 +420,8 @@ export async function getWebPushPayload(input: {
         title: true,
         body: true,
         link: true,
+        entity: true,
+        entityId: true,
         createdAt: true,
       },
     }),
@@ -438,8 +440,6 @@ export async function getWebPushPayload(input: {
 
   const visible = notificationDeviceItems(rows.map((row) => ({
     ...row,
-    entity: null,
-    entityId: null,
     readAt: null,
     createdAt: row.createdAt.toISOString(),
   }))).slice(0, 3).map((row) => ({

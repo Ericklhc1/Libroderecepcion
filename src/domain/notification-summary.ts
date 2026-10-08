@@ -120,7 +120,7 @@ export function groupNotificationItems<T extends NotificationFeedItem>(items: T[
     group.items.push(item);
   }
   for (const group of duplicates.values()) {
-    if(group.items.length>1){group.title=group.items[0]!.title;group.body=group.items[0]!.body;}
+    if(group.items.length>1){const presentation=notificationPresentation(group.items[0]!);group.title=presentation.title;group.body=presentation.body;}
   }
   for (const group of keysByDay.values()) {
     if (group.items.length < 2) continue;

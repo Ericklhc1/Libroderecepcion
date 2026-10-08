@@ -57,14 +57,14 @@ export function directFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permission
 }
 
 export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted=false) {
-  return Prisma.sql`(${directFollowUpReadSql(user,includeDeleted)}) AND NOT EXISTS (
+  return Prisma.sql`(${directFollowUpReadSql(user,includeDeleted)}) AND NOT EXISTS (SELECT 1 FROM "Task" t WHERE t.id=f."taskId" AND NOT (${taskFollowUpReadSql(user)})) AND NOT EXISTS (
     SELECT 1 FROM "FollowUpSourceFollowUp" inherited WHERE inherited."descendantId"=f.id
     AND inherited."followUpId" IN (SELECT f.id FROM "FollowUp" f WHERE NOT (${directFollowUpReadSql(user,true)}))
   )`;
 }
 
 export function taskFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>) {
-  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"('task',t.id) origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "Alert" a WHERE a.id=t."alertId" AND a."dedupeKey" LIKE 'shift-validation:%') AND NOT EXISTS (SELECT 1 FROM "complete_native_entry_origin_ids"('task',t.id) origin JOIN "OperationalEntry" e ON e.id=origin."entryId" WHERE NOT (${entryReadSql({...user,isSystemAdmin:user.isSystemAdmin??false})})) AND NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."taskId"=t.id AND NOT (${directFollowUpReadSql(user,true)}))`;
 }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks=vi.hoisted(()=>({user:{id:'mucama',roleKey:'MUCAMA',permissions:['housekeeping.work'] as string[]},board:vi.fn(),sources:vi.fn()}));
 vi.mock('@/server/auth/housekeeping',()=>({requireHousekeepingPageUser:async()=>mocks.user}));
 vi.mock('@/server/services/housekeeping-work',()=>({getHkWorkday:mocks.board,getHkSources:mocks.sources}));
+vi.mock('@/server/services/simple-novelties',()=>({simpleNoveltiesEnabled:async()=>false}));
 vi.mock('next/link',()=>({default:'a'}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 import HousekeepingPage from '@/app/(app)/housekeeping/page';

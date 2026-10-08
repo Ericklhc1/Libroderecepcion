@@ -389,6 +389,7 @@ export async function saveSettingAction(
       await recordAudit({entity:'SystemSetting',entityId:setting.id,action:AuditAction.CONFIGURAR,summary:`Parámetro ${key} actualizado`,user:actor,before:{value:previous?.value??defaultValue},after:{value}},tx);
     });
 
+    if(key==='book.simpleNovelties')for(const path of ['/libro','/housekeeping','/coordinacion','/turno'])revalidatePath(path);
     revalidatePath('/admin/parametros');
     revalidatePath('/');
     return { ok: true as const, message: 'Parámetro actualizado.' };

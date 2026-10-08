@@ -545,7 +545,7 @@ export function ConfirmReceptionReviewStepForm({
 
       <SubmitButton variant="gold" pendingLabel="Confirmando…">
         {step === 'BRIEFING'
-          ? 'CONFIRMAR ENTREGA REVISADA'
+          ? simpleNovelties ? 'Continuar a Caja y custodia' : 'CONFIRMAR ENTREGA REVISADA'
           : step === 'CUSTODY'
             ? 'CONFIRMAR CAJA Y CUSTODIA'
             : 'CONFIRMAR REVISIÓN FINAL'}

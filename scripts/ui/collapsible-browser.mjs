@@ -22,15 +22,13 @@ try{
     assert.ok(await summaries.count()>=4,'Administración debe exponer grupos plegables');
     const peopleSummary=summaries.filter({hasText:'Personas y acceso'}).first();
     const peopleDetails=peopleSummary.locator('xpath=..');
-    assert.equal(await peopleDetails.evaluate(el=>el.open),false,'Los grupos secundarios no deben iniciar todos abiertos');
-    const closedHeight=(await peopleDetails.boundingBox())?.height??0;
-    await peopleSummary.click();
-    assert.equal(await peopleDetails.evaluate(el=>el.open),true);
+    assert.equal(await peopleDetails.evaluate(el=>el.open),true,'Administración inicia su grilla abierta');
     await peopleDetails.locator('a[href="/admin/usuarios"]').waitFor();
     const openHeight=(await peopleDetails.boundingBox())?.height??0;
-    assert.ok(openHeight>closedHeight+20,'Abrir una sección debe revelar contenido real');
-    await peopleSummary.click();
-    assert.equal(await peopleDetails.evaluate(el=>el.open),false);
+    await peopleSummary.click();assert.equal(await peopleDetails.evaluate(el=>el.open),false);
+    const closedHeight=(await peopleDetails.boundingBox())?.height??0;
+    assert.ok(openHeight>closedHeight+20,'Plegar una sección conserva contenido real');
+    await peopleSummary.click();assert.equal(await peopleDetails.evaluate(el=>el.open),true);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Administración no debe generar overflow horizontal');
 
     await page.goto('http://localhost:3000/admin/fronti');

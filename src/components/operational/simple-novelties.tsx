@@ -30,10 +30,11 @@ export async function SimpleNoveltiesPage({user,params}:{user:CurrentUser;params
     <nav className="flex justify-between" aria-label="Páginas de novedades">{data.page>1?<Link href={pagination(data.page-1)}>← Anterior</Link>:<span/>}{Math.max(data.total,data.internalTotal)>data.page*40&&<Link href={pagination(data.page+1)}>Siguiente →</Link>}</nav>
   </div>;
 }
-export async function SimpleAreaNovelties({user}:{user:CurrentUser}) {
+export async function SimpleAreaNovelties({user,page=1,baseHref='/coordinacion',area,q,state}:{user:CurrentUser;page?:number;baseHref?:string;area?:string;q?:string;state?:string}) {
   if(!await simpleNoveltiesEnabled())return null;
-  const data=await listSimpleNovelties(user);
-  return <section className="border border-slate-300 bg-white"><h2 className="p-2 font-semibold">Novedades del área · {data.total}</h2><SimpleNoveltyTable rows={data.general} user={user}/></section>;
+  const data=await listSimpleNovelties(user,{page,area,q,state});
+  const href=(number:number)=>{const [path,query]=baseHref.split('?');const search=new URLSearchParams(query);search.set('novedadesPagina',String(number));return `${path}?${search}#novedades-area`;};
+  return <section id="novedades-area" className="border border-slate-300 bg-white"><h2 className="p-2 font-semibold">Novedades del área · {data.total}</h2><SimpleNoveltyTable rows={data.general} user={user}/><nav className="flex items-center justify-between gap-2 border-t border-slate-300 p-2 text-sm" aria-label="Páginas de novedades del área">{data.page>1?<Link href={href(data.page-1)}>← Novedades anteriores</Link>:<span/>}<span>Página {data.page} · {data.total} novedades</span>{data.page*40<data.total&&<Link href={href(data.page+1)}>Más novedades →</Link>}</nav></section>;
 }
 
 export async function SimpleNoveltyDetail({user,entry}:{user:CurrentUser;entry:Awaited<ReturnType<typeof getSubjectEntry>>}) {

@@ -15,7 +15,7 @@ import { ContextWorklist } from '@/components/operational/context-worklist';
 import { detailHrefWithListContext, listRowAnchor, operationalListHref } from '@/lib/list-navigation';
 export const dynamic='force-dynamic';
 export const metadata={title:'Coordinación · Pendientes y continuidad'};
-export default async function CoordinationPage({searchParams}:{searchParams:Promise<{area?:string;mios?:string;pagina?:string;historial?:string;vista?:string;q?:string;estado?:string;responsable?:string;fecha?:string}>}){
+export default async function CoordinationPage({searchParams}:{searchParams:Promise<{area?:string;mios?:string;pagina?:string;novedadesPagina?:string;historial?:string;vista?:string;q?:string;estado?:string;responsable?:string;fecha?:string}>}){
   const user=await requirePageUser({allowAreaOperation:true});const p=await searchParams;
   const area=user.departmentId?await prisma.department.findUnique({where:{id:user.departmentId},select:{key:true}}):null;
   const maintenance=area?.key==='MANTENIMIENTO' && !user.isSystemAdmin;
@@ -34,11 +34,12 @@ export default async function CoordinationPage({searchParams}:{searchParams:Prom
   const href=(page:number)=>`/coordinacion?${query({pagina:String(page)})}`;
   const shortcuts=maintenance?[['Por revisar',{vista:'all',mios:'',historial:'',estado:''}],['Mi trabajo',{vista:'all',mios:'1',historial:'',estado:''}],['Impedimentos',{vista:'blocked',mios:'',historial:'',estado:''}],['Aclaraciones',{vista:'clarification',mios:'',historial:'',estado:''}],['Resultados por devolver',{vista:'all',mios:'1',historial:'1',estado:''}]] as const:[['Coordinar pendientes',{vista:'all',mios:'',historial:'',estado:''}],['Mis responsabilidades',{vista:'all',mios:'1',historial:'',estado:''}],['Resultados recibidos',{vista:'all',mios:'',historial:'1',estado:''}],['Sin responsable',{vista:'unassigned',mios:'',historial:'',estado:''}],['Continuidad',{vista:'carryover',mios:'',historial:'',estado:''}]] as const;
   const labels:Record<string,string>={...ENTRY_STATUS_LABEL,...TASK_STATUS_LABEL,...HK_WORK_LABELS,...FOLLOWUP_STATUS_LABEL};
+  const simpleAreaNovelties=await SimpleAreaNovelties({user,page:Number(p.novedadesPagina)||1,baseHref:operationalListHref('/coordinacion',p),area:departmentId,q:p.q,state:history?'resueltas':'abiertas'});
   return <div className="mx-auto max-w-6xl space-y-4 surface-enter">
     <header><h1 className="text-xl font-semibold text-petrol-900">{maintenance?'Mi trabajo · Mantenimiento':'Coordinación y continuidad'}</h1><p className="mt-1 text-sm text-slate-600">Qué sigue, quién lo recibe y dónde registrar el resultado. Los pendientes permanecen aquí entre turnos.</p></header>
 
     <nav aria-label="Vistas de coordinación" className="flex flex-wrap gap-2 text-sm">{shortcuts.slice(0,3).map(([label,changes])=><Link key={label} href={'/coordinacion?'+query({...changes,pagina:'1',responsable:''})} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-petrol-800">{label}</Link>)}<details className="responsive-disclosure"><summary className="cursor-pointer px-3 py-2">Más vistas</summary><div className="responsive-disclosure-content flex-wrap gap-2">{shortcuts.slice(3).map(([label,changes])=><Link key={label} href={'/coordinacion?'+query({...changes,pagina:'1',responsable:''})} className="border border-slate-300 bg-white px-3 py-2">{label}</Link>)}{([['reception','Solicitudes de Recepción'],['unassigned','Sin responsable'],['unreceived','Sin confirmar'],['blocked','Impedimentos'],['clarification','Aclaraciones'],['carryover','Turnos anteriores']] as Array<[CoordinationView,string]>).map(([key,label])=><Link key={key} className="border border-slate-300 bg-white px-3 py-2" aria-current={view===key?'page':undefined} href={'/coordinacion?'+query({vista:key,pagina:'1',historial:'',estado:''})}>{label}</Link>)}</div></details></nav>
-    <SimpleAreaNovelties user={user}/>
+    {simpleAreaNovelties}
     <ListFilterBar clearHref="/coordinacion?area=&vista=all" searchValue={p.q} searchPlaceholder="Buscar folio, asunto o habitación…">
       <input type="hidden" name="vista" value={view}/>
       <label className="min-w-0 text-sm">Área<select className="input-base mt-1" name="area" defaultValue={departmentId??''}><option value="">Todas las áreas accesibles</option>{board.departments.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select></label>

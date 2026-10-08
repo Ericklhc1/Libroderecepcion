@@ -217,6 +217,8 @@ export default async function SupervisionCenterPage({
     }))
     .filter((block) => block.rows.length > 0);
   const {critical,pendingClosures}=supervisionAttentionCounts(review.blocks);
+  const criticalSample=review.blocks.some(block=>block.tone==='critico'&&block.rows.length>=20);
+  const overdueSample=review.blocks.some(block=>['tareas','seguimientos'].includes(block.key)&&block.rows.length>=20);
   const continuityOpen = center.counts.myTasks + center.counts.myFollowUps;
   const auditPendingCount = center.auditImports.reduce((sum, auditImport) => {
     const checks = Array.isArray(auditImport.checks)
@@ -271,8 +273,8 @@ export default async function SupervisionCenterPage({
       <section id="senales" aria-label="Excepciones que requieren intervención" className="space-y-3 scroll-mt-28">
         <h2 className="font-semibold text-petrol-900">Intervenir donde hace falta</h2>
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
-          <Link href="/supervision?seccion=senales&excepcion=criticos#detalle-senales"><StatTile label="Críticos" value={critical + pendingClosures} tone={critical + pendingClosures?'alert':'neutral'}/></Link>
-          <Link href="/supervision?seccion=senales&excepcion=vencidos#detalle-senales"><StatTile label="Vencidos" value={overdue} tone={overdue?'alert':'neutral'}/></Link>
+          <Link href="/supervision?seccion=senales&excepcion=criticos#detalle-senales"><StatTile label={criticalSample?'Críticos · muestra':'Críticos'} value={critical + pendingClosures} tone={critical + pendingClosures?'alert':'neutral'}/></Link>
+          <Link href="/supervision?seccion=senales&excepcion=vencidos#detalle-senales"><StatTile label={overdueSample?'Vencidos · muestra':'Vencidos'} value={overdue} tone={overdue?'alert':'neutral'}/></Link>
           <Link href={`/coordinacion?vista=blocked&q=${encodeURIComponent(q)}`}><StatTile label="Impedimentos" value={blockedBoard.total} tone={blockedBoard.total?'alert':'good'}/></Link>
           <Link href={`/coordinacion?vista=unassigned&q=${encodeURIComponent(q)}`}><StatTile label="Sin responsable" value={unassignedBoard.total}/></Link>
           <Link href={`/coordinacion?estado=revision&q=${encodeURIComponent(q)}`}><StatTile label="Por validar" value={reviewBoard.total}/></Link>

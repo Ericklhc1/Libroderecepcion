@@ -1,4 +1,4 @@
-import { getSettingBool, assertSimpleNoveltiesEnabled } from './settings';
+import { getSettingBool, assertSimpleNoveltiesEnabled, lockSimpleNoveltiesMode } from './settings';
 import { isReceptionDeskRole } from '@/lib/permissions';
 import { readEntries } from '@/server/services/entry-visibility';
 import {alertReadWhere,followUpReadWhere} from './followup-access';
@@ -110,9 +110,14 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
   const shift = await getMyOpenShift(user.id);
 
   const entry = await prisma.$transaction(async (tx) => {
-    if(options.simpleNovelty)await assertSimpleNoveltiesEnabled(tx);
+    const novelty=['NOVEDAD','INCIDENCIA'].includes(input.type);
+    if(novelty)await lockReceptionSummary(tx);
+    const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
+    if(options.simpleNovelty&&!simpleMode)throw new RuleError('La prueba de novedades simples está apagada.');
+    if(simpleMode&&input.ownerId&&['NOVEDAD','INCIDENCIA'].includes(input.type))throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
     const hiddenIds = [...new Set(input.hiddenDepartmentIds ?? [])];
     if (hiddenIds.length > 100 || await tx.department.count({ where: { id: { in: hiddenIds }, active: true } }) !== hiddenIds.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
+    if(simpleMode&&!input.receptionInternal&&await tx.department.count({where:{AND:[{id:{in:hiddenIds}},input.departmentId?{id:input.departmentId}:{key:'RECEPCION'}]}}))throw new RuleError('El área relacionada está oculta. Cambia su visibilidad antes de seleccionarla.');
     await assertEntryOwnerVisibility(tx,{ownerId:input.ownerId,createdById:user.id,hiddenDepartmentIds:hiddenIds,receptionInternal:input.receptionInternal});
     const created = await tx.operationalEntry.create({
       data: {
@@ -146,6 +151,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
       include: entryInclude,
     });
 
+    const invalidatedDrafts=simpleMode?await invalidateSimpleNoveltyDrafts(tx,created):[];
     await recordAudit(
       {
         entity: 'OperationalEntry',
@@ -166,6 +172,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
           category: created.category,
           roomId: created.roomId,
           roomNumber: created.room?.number ?? null,
+          invalidatedDrafts,
         },
       },
       tx,
@@ -314,8 +321,12 @@ export async function updateEntry(
   options:{simpleNovelty?:boolean}={},
 ) {
   if ('hiddenDepartmentIds' in input || 'includeInReceptionHandover' in input) throw new RuleError('Cambia la visibilidad desde su acción dedicada.');
+  const kind=await readEntries(prisma,user).findFirst({where:{id:input.id},select:{type:true}});
+  const novelty=Boolean(kind&&['NOVEDAD','INCIDENCIA'].includes(kind.type));
   return prisma.$transaction(async (tx) => {
-    if(options.simpleNovelty)await assertSimpleNoveltiesEnabled(tx);
+    if(novelty)await lockReceptionSummary(tx);
+    const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
+    if(options.simpleNovelty&&!simpleMode)throw new RuleError('La prueba de novedades simples está apagada.');
     // The snapshot and the incident workflow belong to the same locked mutation.
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
     const current = await readEntries(tx, user).findFirst({
@@ -324,7 +335,8 @@ export async function updateEntry(
     });
     if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
     assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
-    if (input.ownerId !== undefined && input.ownerId !== current.ownerId && ['NOVEDAD','INCIDENCIA'].includes(current.type) && await getSettingBool('book.simpleNovelties',false)) throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
+    if (input.ownerId !== undefined && input.ownerId !== current.ownerId && ['NOVEDAD','INCIDENCIA'].includes(current.type) && simpleMode) throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
+    if(simpleMode&&['NOVEDAD','INCIDENCIA'].includes(current.type)&&'departmentId' in input&&input.departmentId!==current.departmentId&&!current.receptionInternal&&await tx.department.count({where:{AND:[{id:{in:current.hiddenFromDepartments.map(area=>area.id)}},input.departmentId?{id:input.departmentId}:{key:'RECEPCION'}]}}))throw new RuleError('El área relacionada está oculta. Cambia su visibilidad antes de seleccionarla.');
     if (current.status === EntryStatus.CERRADO && !user.permissions.includes('entry.reopen')) {
       throw new RuleError('El registro está cerrado. Reábrelo para poder editarlo.');
     }
@@ -376,6 +388,8 @@ export async function updateEntry(
     const ownerChanged = changes.changed.includes('ownerId');
     const priorityChanged = changes.changed.includes('priority');
 
+    const invalidatedDrafts=simpleMode?await invalidateSimpleNoveltyDrafts(tx,updated):[];
+
     await recordAudit(
       {
         entity: 'OperationalEntry',
@@ -388,7 +402,7 @@ export async function updateEntry(
         summary: `Registro #${updated.humanId} actualizado (${changes.changed.join(', ')})`,
         user,
         before: changes.before,
-        after: changes.after,
+        after: {...changes.after,...(invalidatedDrafts.length?{invalidatedDrafts}:{})},
       },
       tx,
     );
@@ -466,6 +480,9 @@ export async function changeEntryStatus(
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    const novelty=['NOVEDAD','INCIDENCIA'].includes(current.type);
+    if(novelty)await lockReceptionSummary(tx);
+    const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
     if(options.simpleNovelty || (closing && !user.permissions.includes('entry.close') && !user.permissions.includes('incident.close')))await assertSimpleNoveltiesEnabled(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.id} FOR UPDATE`;
     if (closing) await assertSubjectCanFinish(tx,current.id);
@@ -486,6 +503,8 @@ export async function changeEntryStatus(
       include: entryInclude,
     });
 
+    const invalidatedDrafts=simpleMode?await invalidateSimpleNoveltyDrafts(tx,updated):[];
+
     await recordAudit(
       {
         entity: 'OperationalEntry',
@@ -499,7 +518,7 @@ export async function changeEntryStatus(
         summary: `Registro #${updated.humanId}: ${ENTRY_STATUS_LABEL[current.status]} → ${ENTRY_STATUS_LABEL[input.status]}`,
         user,
         before: { status: current.status },
-        after: { status: input.status, resolution: updated.resolution },
+        after: { status: input.status, resolution: updated.resolution,...(invalidatedDrafts.length?{invalidatedDrafts}:{}) },
         reason: input.reason ?? null,
       },
       tx,
@@ -696,4 +715,20 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     } });
     return updated;
   });
+}
+
+
+/** Mode-on content changes invalidate the same native handover summary, under its lock. */
+async function invalidateSimpleNoveltyDrafts(tx:Prisma.TransactionClient,entry:{id:string;type:EntryType;isDemo:boolean;status:EntryStatus;shiftId:string|null}) {
+  if(entry.isDemo||!['NOVEDAD','INCIDENCIA'].includes(entry.type))return [];
+  const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR'},select:{id:true,fromShiftId:true,issuedBy:{select:{id:true,departmentId:true,role:{select:{key:true}}}},items:{where:{refId:entry.id},select:{id:true}}}});
+  const ids:string[]=[];
+  for(const draft of drafts){
+    if(draft.items.length){ids.push(draft.id);continue;}
+    if(!ENTRY_OPEN_STATUSES.includes(entry.status)&&entry.shiftId!==draft.fromShiftId)continue;
+    const reader:EntryReader={id:draft.issuedBy.id,departmentId:draft.issuedBy.departmentId,roleKey:draft.issuedBy.role.key,isSystemAdmin:draft.issuedBy.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]};
+    if(await readEntries(tx,reader).count({where:{id:entry.id,AND:[receptionHandoverEntryWhere]}}))ids.push(draft.id);
+  }
+  if(ids.length)await tx.shiftHandover.updateMany({where:{id:{in:ids},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
+  return ids;
 }

@@ -1,9 +1,8 @@
 import { readEntries } from '@/server/services/entry-visibility';
-import { entryReadWhere } from './entry-visibility';
 import 'server-only';
 import { maintenanceBlocksBackground } from '@/server/services/system-maintenance';
 import {visibleHandover} from './handover-snapshot';
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {taskFollowUpReadWhere,followUpReadSql,taskFollowUpReadSql} from './followup-access';
 import {
   AlertLevel,
   AlertStatus,
@@ -17,6 +16,7 @@ import {
 import { after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
+import { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { runAlertEngine } from './alert-engine';
 import {
@@ -78,63 +78,56 @@ export async function getDashboardData(user: CurrentUser) {
   const businessDate = myShift?.date ?? await resolveOperationalBusinessDate(now);
   const receptionEntriesOnly = isReceptionDeskRole(user.roleKey);
 
+  const entryWhere:Prisma.OperationalEntryWhereInput={deletedAt:null,status:{in:ENTRY_OPEN_STATUSES},...(receptionEntriesOnly?{type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}}:{}),OR:[{priority:{in:[Priority.CRITICA,Priority.ALTA]}},{dueAt:{lt:now}}]};
+  // Nine distinct keys per source leave room for eight displayed groups and overflow.
+  // Only twenty original links per duplicate group travel to the dashboard.
+  const taskCandidates=async()=>{const rows=await prisma.$queryRaw<Array<{id:string;humanId:number;title:string;priority:Priority;displayGroupTotal:number;sourceTotal:number}>>(Prisma.sql`
+    WITH eligible AS MATERIALIZED (
+      SELECT t.id,t."humanId",t.title,t.priority,t."dueAt"
+      FROM "Task" t WHERE t."deletedAt" IS NULL AND t.status IN (${Prisma.join(TASK_OPEN_STATUSES.map(status=>Prisma.sql`${status}::"TaskStatus"`))}) AND t."dueAt"<${now} AND (${taskFollowUpReadSql(user)})
+    ), keys AS (
+      SELECT title,COUNT(*)::integer AS total,MAX(CASE priority WHEN 'CRITICA' THEN 4 WHEN 'ALTA' THEN 3 WHEN 'MEDIA' THEN 2 ELSE 1 END) AS score,MIN("dueAt") AS due
+      FROM eligible GROUP BY title ORDER BY score DESC,due ASC,title ASC LIMIT 9
+    ), ranked AS (
+      SELECT e.*,k.total AS "displayGroupTotal",k.score,k.due,ROW_NUMBER() OVER(PARTITION BY e.title ORDER BY e.priority DESC,e."dueAt" ASC,e.id ASC) AS position
+      FROM eligible e JOIN keys k ON k.title=e.title
+    ) SELECT r.id,r."humanId",r.title,r.priority,r."displayGroupTotal",totals.total AS "sourceTotal" FROM (SELECT COUNT(*)::integer AS total FROM eligible) totals LEFT JOIN ranked r ON r.position<=20 ORDER BY r.score DESC,r.due ASC,r.title ASC,r.position ASC
+  `);return {items:rows.filter(row=>row.id!==null),total:rows[0]?.sourceTotal??0};};
+  const followCandidates=async()=>{const rows=await prisma.$queryRaw<Array<{id:string;humanId:number;action:string;status:FollowUpStatus;displayGroupTotal:number;sourceTotal:number}>>(Prisma.sql`
+    WITH eligible AS MATERIALIZED (
+      SELECT f.id,f."humanId",f.action,f.status,f."scheduledAt"
+      FROM "FollowUp" f WHERE f."deletedAt" IS NULL AND f.status IN ('PENDIENTE','VENCIDO') AND (${followUpReadSql(user)})
+    ), keys AS (
+      SELECT action,status,COUNT(*)::integer AS total,MIN("scheduledAt") AS due
+      FROM eligible GROUP BY action,status ORDER BY status DESC,due ASC,action ASC LIMIT 9
+    ), ranked AS (
+      SELECT e.*,k.total AS "displayGroupTotal",k.due,ROW_NUMBER() OVER(PARTITION BY e.action,e.status ORDER BY e."scheduledAt" ASC,e.id ASC) AS position
+      FROM eligible e JOIN keys k ON k.action=e.action AND k.status=e.status
+    ) SELECT r.id,r."humanId",r.action,r.status,r."displayGroupTotal",totals.total AS "sourceTotal" FROM (SELECT COUNT(*)::integer AS total FROM eligible) totals LEFT JOIN ranked r ON r.position<=20 ORDER BY r.status DESC,r.due ASC,r.action ASC,r.position ASC
+  `);return {items:rows.filter(row=>row.id!==null),total:rows[0]?.sourceTotal??0};};
+  const entryCandidates=async()=> (await Promise.all([
+    readEntries(prisma,user).findMany({where:{AND:[entryWhere,{dueAt:{lt:now}}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{dueAt:'asc'},{id:'asc'}],take:9}),
+    readEntries(prisma,user).findMany({where:{AND:[entryWhere,{OR:[{dueAt:null},{dueAt:{gte:now}}]}]},select:{id:true,humanId:true,title:true,priority:true,dueAt:true},orderBy:[{priority:'desc'},{id:'asc'}],take:9}),
+  ])).flat();
   const [
     incoming,
     criticalEntries,
-    overdueTasks,
+    taskCandidateData,
     myTasks,
-    followUps,
+    followCandidateData,
     blockingOutgoing,
+    entryTotal,
   ] = await Promise.all([
     getPendingHandover(myShift?.id ?? null),
-    readEntries(prisma, user).findMany({
-      where: {
-        AND: [entryReadWhere(user)],
-        deletedAt: null,
-        status: { in: ENTRY_OPEN_STATUSES },
-        ...(receptionEntriesOnly
-          ? {
-              type: { in: [EntryType.NOVEDAD, EntryType.INCIDENCIA] },
-            }
-          : {}),
-        OR: [
-          { priority: { in: [Priority.CRITICA, Priority.ALTA] } },
-          { dueAt: { lt: now } },
-        ],
-      },
-      select: {
-        id: true,
-        humanId: true,
-        title: true,
-        priority: true,
-        dueAt: true,
-      },
-      orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }],
-    }),
-    prisma.task.findMany({
-      where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
-      select: { id: true, humanId: true, title: true, priority: true },
-      orderBy: { dueAt: 'asc' },
-    }),
+    entryCandidates(),
+    taskCandidates(),
     prisma.task.findMany({
       where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
       select: { id: true, dueAt: true },
       orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
       take: 8,
     }),
-    prisma.followUp.findMany({
-      where: {
-        deletedAt: null,AND:[followUpReadWhere(user)],
-        status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
-      },
-      select: {
-        id: true,
-        humanId: true,
-        action: true,
-        status: true,
-      },
-      orderBy: [{ scheduledAt: 'asc' }],
-    }),
+    followCandidates(),
     prisma.shift.findFirst({
       where: {
         archivedAt: null,
@@ -156,7 +149,10 @@ export async function getDashboardData(user: CurrentUser) {
       select: { id: true, status: true },
       orderBy: { actualStart: 'asc' },
     }),
+    readEntries(prisma,user).count({where:entryWhere}),
   ]);
+
+  const overdueTasks=taskCandidateData.items;const followUps=followCandidateData.items;
 
   /*
     Los contadores y el resumen del turno no dependen entre sí. Encadenarlos
@@ -175,9 +171,8 @@ export async function getDashboardData(user: CurrentUser) {
     // en curso, que puede ser el propio o ninguno.
     getCurrentShift(),
     myShift ? getShiftMetrics(myShift.id,user) : null,
-    readEntries(prisma, user).count({
+    readEntries(prisma,user).count({
       where: {
-        AND: [entryReadWhere(user)],
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
         ...(receptionEntriesOnly
@@ -190,9 +185,8 @@ export async function getDashboardData(user: CurrentUser) {
     prisma.task.count({
       where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES } },
     }),
-    readEntries(prisma, user).count({
+    readEntries(prisma,user).count({
       where: {
-        AND: [entryReadWhere(user)],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
@@ -234,6 +228,7 @@ export async function getDashboardData(user: CurrentUser) {
       humanId: task.humanId,
       title: task.title,
       priority: task.priority,
+      displayGroupTotal:task.displayGroupTotal,
     })),
     criticalEntries: criticalEntries.map((entry) => ({
       id: entry.id,
@@ -247,11 +242,13 @@ export async function getDashboardData(user: CurrentUser) {
       humanId: followUp.humanId,
       action: followUp.action,
       status: followUp.status,
+      displayGroupTotal:followUp.displayGroupTotal,
     })),
-  }, Number.POSITIVE_INFINITY);
+  }, 9*20*2+18);
 
   return {
     now,
+    attentionTotal:entryTotal+taskCandidateData.total+followCandidateData.total,
     myShift,
     incoming: incoming ? await visibleHandover(user,incoming) : null,
     nextShift,

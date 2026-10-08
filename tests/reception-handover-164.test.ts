@@ -31,6 +31,8 @@ import {saveScheduleCollaborator,removeScheduleMembership} from '@/server/servic
 import {updateAdministrativeUser} from '@/server/services/schedule-admin-safety';
 import { entryCreateSchema } from '@/server/schemas';
 import type { CurrentUser } from '@/server/auth/current-user';
+import {createSimpleNovelty,updateSimpleNovelty,resolveSimpleNovelty} from '@/server/services/simple-novelties';
+import {operationalRecordRevision} from '@/server/security/authorized-revision';
 
 let reception: CurrentUser, other: CurrentUser, supervisor: CurrentUser;
 async function sentShift() {
@@ -53,13 +55,25 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
   beforeAll(seedCatalog);
   beforeEach(async()=>{await resetOperationalData(); reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});});
 
+  for(const mutation of ['crear','editar','resolver'] as const)it(`modo simple invalida una entrega ya confirmada al ${mutation} novedades`,async()=>{
+    await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:true,category:'pruebas'}});
+    const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});
+    const entry=await createSimpleNovelty(supervisor,{title:'Antes del cierre',description:'Contenido original'});
+    const handover=await prepareHandover(reception,shift.id);await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});
+    const changed=mutation==='crear'?await createSimpleNovelty(supervisor,{title:'Después de confirmar',description:'Debe conocerse'}):mutation==='editar'?await updateSimpleNovelty(supervisor,{id:entry.id,title:entry.title,description:'Contenido actualizado',departmentId:null,workNextAction:'Nuevo seguimiento'},operationalRecordRevision('entries',entry)):await resolveSimpleNovelty(other,entry.id,operationalRecordRevision('entries',entry));
+    expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({receptionSummaryRevision:1,pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null});
+    await expect(sendHandover(reception,{shiftId:shift.id})).rejects.toThrow(/Regenera|revisión final/);
+    await prepareHandover(reception,shift.id);
+    if(mutation!=='resolver')expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:changed.id}})).toBe(1);
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});await sendHandover(reception,{shiftId:shift.id});
+  });
+
 
   it('modo simple exige una confirmación global al entregar y recibir, incluso sin urgentes',async()=>{
     await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:true,category:'pruebas'}});
     const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});
     await notice(reception);
     const handover=await prepareHandover(reception,shift.id);
-    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});
     await expect(confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'})).rejects.toThrow(/Confirma/);
     const reviewed=await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL',urgentAcknowledged:true});expect(reviewed.urgentAcknowledgedAt).not.toBeNull();
     await sendHandover(reception,{shiftId:shift.id});await closeShift(reception,{shiftId:shift.id});

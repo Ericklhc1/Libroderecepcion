@@ -319,8 +319,11 @@ export async function getAllSettings() {
   });
 }
 
-/** Serializes a simple-mode mutation with the existing audited setting update. */
+/** The same advisory key as the audited setting writer, including absent/default rows. */
+export async function lockSimpleNoveltiesMode(tx:Prisma.TransactionClient) {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock_shared(hashtext(${'setting:book.simpleNovelties'}))::text`;
+  return (await tx.systemSetting.findUnique({where:{key:'book.simpleNovelties'}}))?.value===true;
+}
 export async function assertSimpleNoveltiesEnabled(tx: Prisma.TransactionClient) {
-  const rows=await tx.$queryRaw<{value:unknown}[]>`SELECT value FROM "SystemSetting" WHERE key='book.simpleNovelties' FOR SHARE`;
-  if(rows[0]?.value!==true)throw new RuleError('La prueba de novedades simples está apagada.');
+  if(!await lockSimpleNoveltiesMode(tx))throw new RuleError('La prueba de novedades simples está apagada.');
 }

@@ -1,4 +1,4 @@
-import { getSettingBool } from './settings';
+import { getSettingBool, lockSimpleNoveltiesMode } from './settings';
 import { entryReadSql } from './entry-visibility';
 import { readEntries } from '@/server/services/entry-visibility';
 import {incidentResolutionAt} from '@/domain/operational-metrics';
@@ -176,13 +176,14 @@ export async function coordinateWork(user: CurrentUser, input: Mutation, transac
   await assertReceptionOperationPermission(user, input.kind==='task'?'task.edit':'entry.edit', transaction ?? prisma);
   if (!input.nextAction.trim()) throw new RuleError('Indica la siguiente acción para quien continúa.');
   const perform = async (tx:Prisma.TransactionClient)=>{
+    const simpleMode=input.kind==='entry'?await lockSimpleNoveltiesMode(tx):false;
     // Lock before checking revision and permissions: no stale assignment or receipt can win.
     if(input.kind==='entry') await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.id} FOR UPDATE`;
     else await tx.$queryRaw`SELECT "id" FROM "Task" WHERE "id"=${input.id} FOR UPDATE`;
     const entry=input.kind==='entry'?await readEntries(tx, user).findFirst({where:{id:input.id,AND:[coordinationEntries(user)]}}):null;
     const task=input.kind==='task'?await tx.task.findFirst({where:{id:input.id,AND:[coordinationTasks(user)]}}):null;
     const current=entry??task;if(!current)throw new NotFoundError();
-    if(entry&&['NOVEDAD','INCIDENCIA'].includes(entry.type)&&await getSettingBool('book.simpleNovelties',false))throw new RuleError('En novedades simples se elige el área relacionada; no se asignan ni reciben novedades individualmente.');
+    if(entry&&['NOVEDAD','INCIDENCIA'].includes(entry.type)&&simpleMode)throw new RuleError('En novedades simples se elige el área relacionada; no se asignan ni reciben novedades individualmente.');
     const ownerId=entry?entry.ownerId:task!.assigneeId;
     const assign=user.permissions.includes(input.kind==='entry'?'entry.edit':'task.assign');
     const responding=input.action==='RESPONDER_ACLARACION';

@@ -1337,3 +1337,9 @@ Se corrigió el P2 de la revisión de `460b04e`: toda transición de tarea termi
 El mismo walker PostgreSQL valida todos los tipos de origen de seguimiento y sus alias, sin una lista paralela: incluye HK, comentarios, atenciones de área, auditoría y avisos. Primero se autoriza lectura del origen y la privacidad de tareas/seguimientos; sólo después se consulta el estado, evitando revelar estados privados mediante errores. Regresiones rechazan nuevas cadenas simples, diez clases de origen resuelto y alias privados/ocultos, sin filas ni auditorías parciales.
 
 Aprobaron las 99 pruebas focales en tres archivos. El verify completo, navegador y Compuerta del nuevo commit se repiten antes de cerrar; no hay migraciones nuevas ni datos reales.
+
+### 2026-10-08 — PR #282, sincronización del recorrido de borradores
+
+El verify de c5f6f0a aprobó 2.526 pruebas/235 archivos y los seis recorridos locales; su primera Compuerta falló al esperar el recibo de una acción de arqueo ya guardada. El recorrido de Caja pasó en la primera reproducción local y en la segunda falló al recuperar un borrador tras navegación de historial. El navegador podía editar/enviar HTML antes de la hidratación y restauración de los formularios.
+
+ActionForm señala que sus efectos de restauración y sus handlers nativos están preparados; el recorrido espera esa señal en arqueo, devolución y notas. No cambia la lógica, no agrega esperas fijas ni amplía timeouts, no acepta HTTP 200 como resultado y conserva todas las aserciones de recuperación/aislamiento/confirmación y el recibo nativo. Se repiten build, navegador, Compuerta y revisión en el nuevo commit.

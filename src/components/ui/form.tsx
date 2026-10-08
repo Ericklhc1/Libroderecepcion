@@ -364,6 +364,15 @@ export function ActionForm({
     onError,
   ]);
 
+  // Browser journeys must wait for native handlers and draft restoration,
+  // rather than submitting the progressively enhanced HTML before hydration.
+  useEffect(() => {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    form.setAttribute('data-action-form-ready', 'true');
+    return () => { form.removeAttribute('data-action-form-ready'); };
+  }, [formId, draftKey, draftFieldKey, draftRevision]);
+
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
 
   return (

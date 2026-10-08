@@ -41,7 +41,7 @@ try {
     const otherUrl=`http://localhost:3000/turno/entrega/${otherHandover.id}`;
     const cashDraftKey=`aroh:form-draft:v1:cash:${f.users.admin.id}:${handover.id}:declarar`;
     const noteDraftKey=`aroh:form-draft:v1:handover-note:${f.users.admin.id}:${handover.id}`;
-    const form=()=>page.locator('form').filter({has:page.getByRole('button',{name:'Guardar arqueo declarado',exact:true})});
+    const form=()=>page.locator('form[data-action-form-ready="true"]').filter({has:page.getByRole('button',{name:'Guardar arqueo declarado',exact:true})});
     const quantity=()=>form().locator(`input[name="d_${denomination.id}"]`);
     const check=()=>form().locator(`input[name="g_${guarantee.id}"]`);
     async function submit(target,button) {
@@ -55,7 +55,7 @@ try {
     assert.equal(await page.getByRole('button',{name:'Cobrar garantía',exact:true}).count(),0,'Charging a guarantee remains blocked during closing');
     const returnRow=page.locator('li').filter({hasText:`#${returnGuarantee.humanId}`});
     await returnRow.getByRole('button',{name:'Devolver',exact:true}).click();
-    const returnForm=page.locator('form').filter({has:page.getByRole('button',{name:'Registrar devolución',exact:true})});
+    const returnForm=page.locator('form[data-action-form-ready="true"]').filter({has:page.getByRole('button',{name:'Registrar devolución',exact:true})});
     await returnForm.locator('input[name=confirmed]').check();await submit(returnForm,'Registrar devolución');
     assert.equal((await db.guarantee.findUniqueOrThrow({where:{id:returnGuarantee.id}})).state,'DEVUELTA');
     await page.getByRole('link',{name:'Volver al cierre',exact:true}).click();
@@ -102,7 +102,7 @@ try {
     // In the synthetic configuration without cash requirements, inspect the note step independently.
     await db.cashFund.updateMany({data:{active:false}});
     await page.goto(`${url}?paso=2`);
-    const note=()=>page.locator('form').filter({has:page.getByRole('button',{name:'Guardar nota para el turno siguiente',exact:true})});
+    const note=()=>page.locator('form[data-action-form-ready="true"]').filter({has:page.getByRole('button',{name:'Guardar nota para el turno siguiente',exact:true})});
     await note().locator('textarea[name=observation]').fill('SYNTHETIC nota persistida');await note().locator('textarea[name=nextAction]').fill('SYNTHETIC verificar respuesta');
     await submit(note(),'Guardar nota para el turno siguiente');await page.waitForFunction(key=>sessionStorage.getItem(key)===null,noteDraftKey);await page.reload();
     assert.equal(await note().locator('textarea[name=observation]').inputValue(),'SYNTHETIC nota persistida');assert.equal(await note().locator('textarea[name=nextAction]').inputValue(),'SYNTHETIC verificar respuesta');

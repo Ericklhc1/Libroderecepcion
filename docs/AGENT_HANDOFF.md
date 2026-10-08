@@ -1355,3 +1355,13 @@ La fotografía simple incluye todas las novedades activas y resueltas del turno;
 La reconciliación selecciona, crea/actualiza o resuelve la incidencia de decisión, audita e invalida dentro de la misma transacción con candado de resumen/modo. La creación permite reutilizar su motor existente con el cliente transaccional, conservando validaciones, notificaciones y correo nativos. Cuatro regresiones preparan el borrador después de la novedad de log y antes de actualizar/resolver la incidencia, comprobando su invalidación ON y conservación OFF. No hay nueva ruta ni migración.
 
 Aprobaron lint/tipos y 75 pruebas focales en cuatro archivos. La validación completa, navegador, Compuerta y revisión Codex se repiten para el nuevo commit; la revisión anterior encontró estos tres P2 y no se da por cerrado el bloque.
+
+### 2026-10-08 — PR #282, P2 de e8e055a y preparación del formulario
+
+Encender el modo exige no tener entregas ENVIADA pendientes: se deben recibir en modo legado o anular mediante el motor existente y regenerar. El rechazo no cambia el parámetro, fotografía, confirmaciones ni auditoría. Así una entrega enviada y limitada no puede acreditar conocimiento global con el modo nuevo. El recorrido simple se aísla mediante la misma fixture loopback antes de leer sesiones, para no heredar entregas enviadas por recorridos previos.
+
+El creador nativo obtiene la participación activa con el cliente de su misma transacción cuando falta shiftId y el modo está encendido. Las novedades nativas RESUELTO de permanencia quedan atribuidas y provocan la invalidación/inclusión en resueltos. Apagado conserva atribución legada; se respetan los shiftId explícitos del motor. Regresiones cubren creador resuelto ON/OFF y las operaciones reales de asignación manual y room move (tres novedades atribuidas, tres invalidaciones e inclusión en fotografía).
+
+La Compuerta e8e055a aprobó todos los grupos anteriores a auditoría; en el cambio de actor, la pantalla correcta carecía de la señal imperativa de preparación. Esa señal ahora pertenece al estado/render de React y no se elimina escribiendo atributos directamente en el DOM. La evidencia de fallo muestra sólo identidad/preparación de formularios sintéticos, sin tokens ni valores sensibles. No cambian los límites ni las aserciones.
+
+Aprobaron lint/tipos, 158 pruebas focales en seis archivos y las cinco pruebas de asignación/room move; hay casos comunes y no se suman. Se repiten verify completo, navegador, Compuerta y Codex del nuevo commit. No hay migraciones adicionales ni datos reales.

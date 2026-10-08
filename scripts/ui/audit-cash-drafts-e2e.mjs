@@ -128,7 +128,10 @@ try {
     await context.close();
   }
 } catch(error) {
-  if(activePage&&!activePage.isClosed())console.error('Synthetic cash draft screen',(await activePage.locator('body').innerText()).slice(-12000));
+  if(activePage&&!activePage.isClosed()){
+    console.error('Synthetic form readiness',await activePage.locator('form').evaluateAll(forms=>forms.slice(0,20).map(form=>({id:form.id,ready:form.getAttribute('data-action-form-ready'),handoverId:form.querySelector('input[name=handoverId]')?.value,button:form.querySelector('button[type=submit]')?.textContent}))));
+    console.error('Synthetic cash draft screen',(await activePage.locator('body').innerText()).slice(-12000));
+  }
   throw error;
 } finally {writeFileSync('audit-cash-drafts-browser-results.json',JSON.stringify(results,null,2));await browser.close();await db.$disconnect();}
 console.log('Cash and handover drafts verified on synthetic desktop/mobile.');

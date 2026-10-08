@@ -1,10 +1,13 @@
 import '../etapa1/guard.cjs';
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import {PrismaClient} from '@prisma/client';
 import {SignJWT} from 'jose';
 import {createHash} from 'node:crypto';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
+// Isolate the flag scenarios from sent handovers made by earlier CI journeys.
+execFileSync(`${process.cwd()}/node_modules/.bin/tsx`,['scripts/etapa1/fixture.mts'],{stdio:'pipe'});
 const fixture=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const db=new PrismaClient();const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});
 const results=[];

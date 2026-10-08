@@ -381,6 +381,7 @@ export async function saveSettingAction(
       const previous=await tx.systemSetting.findUnique({where:{key}});
       assertAuthorizedRevision(revisionFromForm(formData),previous);
       if(key==='book.simpleNovelties'&&value!==(previous?.value??defaultValue)){
+        if(value===true&&await tx.shiftHandover.count({where:{status:'ENVIADA'}}))throw new RuleError('Recibe o anula las entregas enviadas antes de activar novedades simples; su fotografía debe conservarse.');
         await tx.shiftHandover.updateMany({where:{status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
         await tx.shiftHandover.updateMany({where:{status:'ENVIADA'},data:{receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null,receiverFinalSummaryKey:null}});
       }

@@ -252,6 +252,7 @@ export function ActionForm({
   const draftKey = draftScope ? `aroh:form-draft:v1:${draftScope}` : null;
   const draftFieldKey = draftFields.join('|');
   const formId = useId();
+  const [actionFormReady,setActionFormReady]=useState(false);
   const actionWithImmediateDialogClose = useCallback(async (previous: ActionState | null, formData: FormData) => {
     const draft = submittedDraft.current;
     const result = await action(previous, formData);
@@ -367,10 +368,7 @@ export function ActionForm({
   // Browser journeys must wait for native handlers and draft restoration,
   // rather than submitting the progressively enhanced HTML before hydration.
   useEffect(() => {
-    const form = document.getElementById(formId);
-    if (!form) return;
-    form.setAttribute('data-action-form-ready', 'true');
-    return () => { form.removeAttribute('data-action-form-ready'); };
+    setActionFormReady(true);
   }, [formId, draftKey, draftFieldKey, draftRevision]);
 
   const errors = state && !state.ok ? (state.fieldErrors ?? {}) : {};
@@ -379,6 +377,7 @@ export function ActionForm({
     <FormContext.Provider value={{ errors }}>
       <form
         id={formId}
+        data-action-form-ready={actionFormReady ? 'true' : undefined}
         action={formAction}
         onChange={(event) => {
           if (!draftKey) return;

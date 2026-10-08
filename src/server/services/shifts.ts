@@ -143,8 +143,8 @@ export async function getMyOpenShift(userId: string, client:Prisma.TransactionCl
 }
 
 /** Participación operativa real: es la que impide entrar simultáneamente en otro turno. */
-export async function getMyActiveShift(userId: string) {
-  return prisma.shift.findFirst({
+export async function getMyActiveShift(userId: string,client:Prisma.TransactionClient=prisma) {
+  return client.shift.findFirst({
     where: {
       status: { in: [...OCCUPYING_SHIFT_STATUSES, ShiftStatus.ENTREGA_ENVIADA] },
       assignments: {

@@ -1,3 +1,4 @@
+import {buildHandoverSnapshot} from '@/server/services/handover-snapshot';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   GuaranteeKind,
@@ -10,6 +11,7 @@ import {
 import {
   ROLE_KEYS,
   createUser,
+  createShift,
   prisma,
   resetOperationalData,
   resetRoomsAndKeys,
@@ -56,6 +58,10 @@ describe('asignación manual y room move', () => {
     receptionist = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST });
   });
 
+  for(const simple of [true,false])it(`asignación y room move resueltos mantienen atribución e invalidación: simple=${simple}`,async()=>{
+    const shift=await createShift({userId:receptionist.id,type:'DIA',status:'ACTIVO'});await prisma.shiftAssignment.updateMany({where:{shiftId:shift.id},data:{activatedAt:new Date()}});await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:simple,category:'pruebas'}});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:receptionist.id,status:'BORRADOR',finalReviewAt:now,pendingsReviewedAt:now}});const reservation=await createReservation('NATIVE-SHIFT-421','Permanencia sintética');const source=await prisma.room.findUniqueOrThrow({where:{number:'421'}});const target=await prisma.room.findUniqueOrThrow({where:{number:'422'}});
+    const attached=await attachReservationToRoom(receptionist,{roomId:source.id,reservationRefId:reservation.id,status:RoomStayStatus.IN_HOUSE});await moveStayToRoom(receptionist,{stayId:attached.stayId,targetRoomId:target.id,note:'Cambio resuelto bajo turno activo'});const rows=await prisma.operationalEntry.findMany({where:{createdById:receptionist.id,type:'NOVEDAD',status:'RESUELTO'}});expect(rows).toHaveLength(3);expect(rows.every(row=>row.shiftId===(simple?shift.id:null))).toBe(true);expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).receptionSummaryRevision).toBe(simple?3:0);const photo=await buildHandoverSnapshot(receptionist,now,{shiftId:shift.id});expect(photo.filter(item=>rows.some(row=>row.id===item.refId))).toHaveLength(simple?3:0);
+  });
   it('añade una reserva a una habitación como ocupada sin inventar otra identidad', async () => {
     const reservation = await createReservation('9001001', 'Huésped Manual');
     const room = await prisma.room.findUniqueOrThrow({ where: { number: '421' } });

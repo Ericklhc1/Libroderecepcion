@@ -3,7 +3,7 @@ import {ensureIncidentWorkflow} from '@/server/services/incident-workflow';
 import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 import { beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
 import { prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS } from './helpers';
-import { createEntry,updateEntry,changeEntryStatus,updateEntryVisibility } from '@/server/services/entries';
+import { createEntry,updateEntry,changeEntryStatus,updateEntryVisibility,restoreEntry,softDeleteEntry } from '@/server/services/entries';
 import { createSimpleNovelty,listSimpleNovelties,resolveSimpleNovelty,simpleNoveltiesEnabled,updateSimpleNovelty } from '@/server/services/simple-novelties';
 import { entryReadSql,readEntries } from '@/server/services/entry-visibility';
 import { operationalRecordRevision } from '@/server/security/authorized-revision';
@@ -45,6 +45,13 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
     expect(entry.ownerId).toBeNull();expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}}))).toMatchObject({receptionSummaryRevision:1,finalReviewAt:null,urgentAcknowledgedAt:null,pendingsReviewedAt:null});
     await prisma.shiftHandover.update({where:{id:draft.id},data:{status:'ENVIADA',finalReviewAt:now}});
     await prisma.$transaction(tx=>createNativeEntry(tx,{data:{type:'NOVEDAD',title:'Otra novedad nativa',description:'No cambiar fotografía',createdById:author.id}}));expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).finalReviewAt).toEqual(now);
+  });
+  it('restaurar una novedad abierta invalida revisión final y la eliminación también invalida su fotografía',async()=>{
+    await flag(true);const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const shift=await createShift({userId:author.id,type:'DIA'});
+    const entry=await createSimpleNovelty(author,{title:'Novedad recuperada',description:'No omitir al enviar'});await softDeleteEntry(admin,{id:entry.id,reason:'Prueba sintética'});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:author.id,finalReviewAt:now,urgentAcknowledgedAt:now,pendingsReviewedAt:now}});
+    await restoreEntry(admin,{id:entry.id});expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:1,finalReviewAt:null,urgentAcknowledgedAt:null,pendingsReviewedAt:null});
+    await prisma.handoverItem.create({data:{handoverId:draft.id,refType:'entry',section:'novedades',refId:entry.id,title:entry.title,level:'INFORMATIVO'}});await prisma.shiftHandover.update({where:{id:draft.id},data:{finalReviewAt:now}});await softDeleteEntry(admin,{id:entry.id,reason:'Retirar evidencia sintética'});expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:2,finalReviewAt:null});
+    expect((await prisma.auditLog.findFirstOrThrow({where:{entityId:entry.id,action:'RESTAURAR'}})).after).toMatchObject({invalidatedDrafts:[draft.id]});
   });
   it('guardar apagado por primera vez conserva las revisiones de borradores y entregas enviadas',async()=>{
     const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});auth.user=admin;const now=new Date();

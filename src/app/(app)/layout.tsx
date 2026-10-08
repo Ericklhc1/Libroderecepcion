@@ -12,7 +12,7 @@ import { ReceptionAssistant } from '@/components/layout/reception-assistant';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/server/auth/current-user';
 import { needsInstall } from '@/server/services/install';
-import { getSettingString } from '@/server/services/settings';
+import { getSettingBool, getSettingString } from '@/server/services/settings';
 import { countMyActiveOperationalAlarms } from '@/server/services/operational-alarms';
 import { visibleNavGroups } from '@/components/layout/nav-items';
 import { DesktopNav, MobileNav } from '@/components/layout/nav';
@@ -67,6 +67,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     frontiConfig,
     receptionGate,
     businessDate,
+    simpleNovelties,
   ] = await Promise.all([
     getSettingString('hotel.name', 'Hotel'),
     countMyActiveOperationalAlarms(user.id),
@@ -85,6 +86,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getFrontiConfig(),
     getReceptionOperationGate(user),
     resolveOperationalBusinessDate(),
+    getSettingBool('book.simpleNovelties',false),
   ]);
 
   const tutorialDone = tutorialRow?.tutorialDoneAt !== null;
@@ -192,6 +194,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       {frontiVisible ? <ReceptionAssistant /> : null}
 
       <ReceptionOperationGate
+        simpleNovelties={simpleNovelties}
         mode={receptionGate.mode}
         handoverId={receptionGate.handoverId}
       />

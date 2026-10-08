@@ -8,13 +8,18 @@ import type { ReceptionOperationMode } from '@/server/services/reception-operati
 export function ReceptionOperationGate({
   mode,
   handoverId,
+  simpleNovelties=false,
 }: {
   mode: ReceptionOperationMode;
   handoverId?: string | null;
+  simpleNovelties?: boolean;
 }) {
   const pathname = usePathname();
 
   if (mode === 'ACTIVE') return null;
+  // Only the simple book exposes resolution to an outgoing receptionist;
+  // every server action still applies its own permission and shift barriers.
+  if(simpleNovelties && (pathname==='/libro'||pathname.startsWith('/libro/')))return null;
   if (
     pathname === '/turno' ||
     pathname.startsWith('/turno/entrega/') ||

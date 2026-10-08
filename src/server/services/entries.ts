@@ -606,6 +606,9 @@ export async function softDeleteEntry(
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
 
   return prisma.$transaction(async (tx) => {
+    const novelty=['NOVEDAD','INCIDENCIA'].includes(current.type);
+    if(novelty)await lockReceptionSummary(tx);
+    const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
     const deleted = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt: current.updatedAt },
       data: {
@@ -614,6 +617,7 @@ export async function softDeleteEntry(
         deletionReason: input.reason,
       },
     });
+    const invalidatedDrafts=simpleMode?await invalidateSimpleNoveltyDrafts(tx,deleted):[];
     await recordAudit(
       {
         entity: 'OperationalEntry',
@@ -622,7 +626,7 @@ export async function softDeleteEntry(
         summary: `Eliminación lógica del registro #${current.humanId}: ${current.title}`,
         user,
         before: { deletedAt: null },
-        after: { deletedAt: deleted.deletedAt },
+        after: { deletedAt: deleted.deletedAt,...(invalidatedDrafts.length?{invalidatedDrafts}:{}) },
         reason: input.reason,
       },
       tx,
@@ -650,10 +654,14 @@ export async function restoreEntry(
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
 
   return prisma.$transaction(async (tx) => {
+    const novelty=['NOVEDAD','INCIDENCIA'].includes(current.type);
+    if(novelty)await lockReceptionSummary(tx);
+    const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
     const restored = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt: current.updatedAt },
       data: { deletedAt: null, deletedById: null, deletionReason: null },
     });
+    const invalidatedDrafts=simpleMode?await invalidateSimpleNoveltyDrafts(tx,restored):[];
     await recordAudit(
       {
         entity: 'OperationalEntry',
@@ -662,7 +670,7 @@ export async function restoreEntry(
         summary: `Registro #${current.humanId} restaurado`,
         user,
         before: { deletedAt: current.deletedAt, deletionReason: current.deletionReason },
-        after: { deletedAt: null },
+        after: { deletedAt: null,...(invalidatedDrafts.length?{invalidatedDrafts}:{}) },
         reason: input.reason ?? null,
       },
       tx,

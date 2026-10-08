@@ -1,3 +1,4 @@
+import {assertReceptionOperationPermission} from './reception-operation-gate';
 import {invalidateSimpleNoveltyDrafts} from './simple-novelty-drafts';
 import { getSettingBool, assertSimpleNoveltiesEnabled, lockSimpleNoveltiesMode } from './settings';
 import { isReceptionDeskRole } from '@/lib/permissions';
@@ -326,7 +327,8 @@ export async function updateEntry(
   const novelty=Boolean(kind&&['NOVEDAD','INCIDENCIA'].includes(kind.type));
   return prisma.$transaction(async (tx) => {
     if(novelty)await lockReceptionSummary(tx);
-    const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
+    if(simpleMode && !novelty)await assertReceptionOperationPermission(user,'entry.edit',tx);
     if(options.simpleNovelty&&!simpleMode)throw new RuleError('La prueba de novedades simples está apagada.');
     // The snapshot and the incident workflow belong to the same locked mutation.
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
@@ -483,7 +485,8 @@ export async function changeEntryStatus(
   const updated = await prisma.$transaction(async (tx) => {
     const novelty=['NOVEDAD','INCIDENCIA'].includes(current.type);
     if(novelty)await lockReceptionSummary(tx);
-    const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
+    if(simpleMode && !(novelty && input.status===EntryStatus.RESUELTO))await assertReceptionOperationPermission(user,'entry.edit',tx);
     if(options.simpleNovelty || (closing && !user.permissions.includes('entry.close') && !user.permissions.includes('incident.close')))await assertSimpleNoveltiesEnabled(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.id} FOR UPDATE`;
     if (closing) await assertSubjectCanFinish(tx,current.id);

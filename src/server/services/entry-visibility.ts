@@ -34,10 +34,15 @@ export function canManageEntryVisibility(user: EntryReader, createdById: string)
   return user.id === createdById || user.isSystemAdmin || user.roleKey === 'SUPERVISOR';
 }
 
+/** One privileged-reader decision for ORM, SQL and native source projections. */
+export function canReadAllEntryAreas(user: EntryReader): boolean {
+  return Boolean(user.isSystemAdmin || user.roleKey === 'SUPERVISOR');
+}
+
 /** Visibility is presentation/access by area; assignment does not grant access. */
 export function entryReadWhere(user: EntryReader): Prisma.OperationalEntryWhereInput {
   // Explicit identity predicate: Prisma prunes an empty relation filter inside OR.
-  if (user.isSystemAdmin || user.roleKey === 'SUPERVISOR') return { id: { not: '' } };
+  if (canReadAllEntryAreas(user)) return { id: { not: '' } };
   const reception = Boolean(user.roleKey && isReceptionDeskRole(user.roleKey));
   return { AND: [
     ...(reception ? [] : [{ receptionInternal:false }]),
@@ -65,7 +70,7 @@ export const closureValidationAlertWhere: Prisma.AlertWhereInput = {
 
 /** SQL counterpart for the existing global search view. Alias e is fixed. */
 export function entryReadSql(user: EntryReader) {
-  if (user.isSystemAdmin || user.roleKey === 'SUPERVISOR') return Prisma.sql`TRUE`;
+  if (canReadAllEntryAreas(user)) return Prisma.sql`TRUE`;
   const internal = user.roleKey && isReceptionDeskRole(user.roleKey) ? Prisma.sql`TRUE` : Prisma.sql`NOT e."receptionInternal"`;
   return Prisma.sql`${internal} AND (e."createdById" = ${user.id} OR NOT EXISTS (
     SELECT 1 FROM "_EntryHiddenAreas" h JOIN "Department" d ON d.id=h."A"

@@ -1,3 +1,4 @@
+import {SimpleNoveltyAccessProvider} from '@/components/operational/simple-novelty-access';
 import { FormDraftSession } from '@/components/operational/form-draft-session';
 import { Fragment } from 'react';
 import { taskFollowUpReadWhere } from '@/server/services/followup-access';
@@ -102,7 +103,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const maintenanceActive = user.isSystemAdmin && (await getMaintenanceState()).enabled;
 
   return (
-    <div className="min-h-screen bg-[var(--aroh-canvas)]">
+    <SimpleNoveltyAccessProvider><div className="min-h-screen bg-[var(--aroh-canvas)]">
       <a href="#contenido-principal" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-petrol-900">Ir al contenido principal</a>
       {!user.isSystemAdmin && <MaintenanceWatcher />}
       {maintenanceActive && <div role="status" className="bg-amber-100 px-4 py-3 text-center text-sm text-amber-950">Mantenimiento activo: la operación del personal está pausada. <Link className="font-semibold underline" href="/admin/mantenimiento">Controlar / reabrir</Link></div>}
@@ -221,6 +222,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           modules={pendingModules}
         />
       ) : null}
-    </div>
+    </div></SimpleNoveltyAccessProvider>
   );
 }

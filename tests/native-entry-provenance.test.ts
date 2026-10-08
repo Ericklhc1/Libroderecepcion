@@ -526,7 +526,8 @@ describe('procedencia acotada: auditoría de áreas, responsables y resumen',()=
       expect((await read(admin))[0]!._count).toEqual({comments:0,followUps:0});
       expect((await read(management))[0]!._count).toEqual({comments:0,followUps:0});
       expect((await read(supervisor))[0]!._count).toEqual({comments:1,followUps:1});
-      const query=queries.find(q=>q.query.includes('CompleteFollowUpSourceEntry'))!;
+      // Measure the same first (Sysadmin) query even when its redundant area join disappears.
+      const query=queries[0]!;expect(query.query).toContain('OperationalEntry');
       // The suite shares this synthetic DB and deletes fixtures between tests.
       // Refresh estimates for this measured fixture, not earlier files' row counts.
       await client.$executeRawUnsafe('ANALYZE "OperationalEntry", "FollowUp", "Task", "Alert", "Comment"');

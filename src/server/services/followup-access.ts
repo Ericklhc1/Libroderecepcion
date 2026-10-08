@@ -1,4 +1,4 @@
-import { entryReadWhere, entryReadSql, receptionHandoverEntryWhere, closureValidationAlertWhere } from './entry-visibility';
+import { entryReadWhere, entryReadSql, canReadAllEntryAreas, receptionHandoverEntryWhere, closureValidationAlertWhere } from './entry-visibility';
 import 'server-only';
 import { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -6,10 +6,15 @@ function sourceAreaReadWhere(user:Parameters<typeof entryReadWhere>[0],shared:bo
   const reader=entryReadWhere(user);
   return shared?{AND:[receptionHandoverEntryWhere,reader]}:reader;
 }
+/** All-area readers need no recursive area join, but retain private follow-up checks.
+ * Shared Reception and proposed area policies always retain their narrower scope. */
+function requiresAreaCheck(user:Parameters<typeof entryReadWhere>[0],shared=false,areaPolicy?:Prisma.OperationalEntryWhereInput){
+  return shared || Boolean(areaPolicy) || !canReadAllEntryAreas(user);
+}
 // The source's reserved visibility is checked before projecting any linked work.
 function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted = false, shared = false, areaPolicy?:Prisma.OperationalEntryWhereInput): Prisma.FollowUpWhereInput {
   const manager = user.permissions.includes('supervision.followup.manage');
-  const area:Prisma.FollowUpWhereInput={sourceEntries:{none:{entry:{NOT:areaPolicy??sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}}};
+  const area:Prisma.FollowUpWhereInput=requiresAreaCheck(user,shared,areaPolicy)?{sourceEntries:{none:{entry:{NOT:areaPolicy??sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}}}:{};
   if (shared) return { AND:[area], ...(includeDeleted ? {} : {deletedAt:null}), visibility:'OPERATIVO' };
   return { AND:[area], ...(includeDeleted ? {} : {deletedAt: null}), OR: [
     { visibility: 'PRIVADO', createdById: user.id },
@@ -19,14 +24,14 @@ function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> &
 }
 
 export function followUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, includeDeleted = false, shared = false): Prisma.FollowUpWhereInput {
-  return {AND:[{OR:[{taskId:null},{task:taskFollowUpReadWhere(user,shared)}]},{OR:[{entryId:null},{entry:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}]},directFollowUpReadWhere(user,includeDeleted,shared),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
+  return {AND:[{OR:[{taskId:null},{task:taskFollowUpReadWhere(user,shared)}]},...(requiresAreaCheck(user,shared)?[{OR:[{entryId:null},{entry:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}]}]:[]),directFollowUpReadWhere(user,includeDeleted,shared),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
 }
 
 // An archived origin retains its authorization; active work does not disappear.
 // The views resolve every native source edge, including old chains and cycles.
 export function taskFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, shared=false, areaPolicy?:Prisma.OperationalEntryWhereInput): Prisma.TaskWhereInput {
   return { AND: [
-    { sourceEntries: {none: {entry: {NOT: areaPolicy??sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}} },
+    ...(requiresAreaCheck(user,shared,areaPolicy)?[{ sourceEntries: {none: {entry: {NOT: areaPolicy??sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}} }]:[]),
     { OR: [{ alertId: null }, { sourceAlert: { OR: [{dedupeKey:null}, {NOT:closureValidationAlertWhere}] } }] },
     { sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared,areaPolicy)}}}},
   ] };
@@ -34,14 +39,14 @@ export function taskFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permission
 
 export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, shared=false): Prisma.AlertWhereInput {
   return { AND: [
-    { sourceEntries: {none: {entry: {NOT: sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}} },
+    ...(requiresAreaCheck(user,shared)?[{ sourceEntries: {none: {entry: {NOT: sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}} }]:[]),
     ...(shared || !(user.isSystemAdmin || user.permissions.includes('supervision.center.view')) ? [{ OR: [{dedupeKey:null}, {NOT:closureValidationAlertWhere}] }] : []),
     { sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}},
   ] };
 }
 
 export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser, 'isSystemAdmin' | 'departmentId' | 'roleKey'>>, shared=false): Prisma.OperationalAlarmWhereInput {
-  return {AND:[{sourceEntries:{none:{entry:{NOT:sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}}},{sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}}]};
+  return {AND:[...(requiresAreaCheck(user,shared)?[{sourceEntries:{none:{entry:{NOT:sourceAreaReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false},shared)}}}}]:[]),{sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}}]};
 }
 
 /** Same reserved-source policy for the existing PostgreSQL search view.
@@ -76,10 +81,10 @@ export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Par
 }
 
 export function auditFollowUpReadWhere(user: Pick<CurrentUser,'id'|'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'departmentId'|'isSystemAdmin'>>): Prisma.AuditLogWhereInput {
-  return {AND:[{sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}},{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}}]};
+  return {AND:[...(requiresAreaCheck(user)?[{sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}}]:[]),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}}]};
 }
 
 export function notificationReadWhere(user: Pick<CurrentUser,'id'|'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'departmentId'|'isSystemAdmin'>>): Prisma.NotificationWhereInput {
   // Independent relation predicates remain conjunctive when combined with legacy AND filters.
-  return {sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}},sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}};
+  return {...(requiresAreaCheck(user)?{sourceEntries:{none:{entry:{NOT:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}}}}:{}),sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true)}}}};
 }

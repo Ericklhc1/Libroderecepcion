@@ -20,8 +20,9 @@ try{
     const surface=page.locator('[aria-label="Acciones del asunto"]');
     await surface.getByRole('button',{name:'Solicitar atención',exact:true}).waitFor();
     assert.equal(await surface.getByRole('button',{name:'Solicitar atención',exact:true}).count(),1,'Solicitar atención aparece una sola vez');
+    assert.equal(await surface.getByRole('button',{name:'Visibilidad',exact:true}).count(),1,'La nueva acción de visibilidad es única');
     const visibleBefore=await surface.locator('button,a,summary').evaluateAll(elements=>elements.filter(el=>el.checkVisibility()).length);
-    assert.ok(visibleBefore>0&&visibleBefore<=(width>=1024?6:4),`Acciones visibles según espacio: ${JSON.stringify(await surface.locator('button,a,summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).map(e=>e.textContent)))}`);
+    assert.ok(visibleBefore>0&&visibleBefore<=(width>=1024?7:4),`Acciones visibles según espacio: ${JSON.stringify(await surface.locator('button,a,summary').evaluateAll(es=>es.filter(e=>e.checkVisibility()).map(e=>e.textContent)))}`);
     const sourceText=await page.locator('main').innerText();
     if(sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'))console.error('Synthetic reserved projection:',await page.locator('main').getByText('PRUEBA_PRIVADA_NO_PROYECTAR',{exact:true}).evaluateAll(es=>es.map(e=>({tag:e.tagName,section:e.closest('section')?.innerText,visible:e.getClientRects().length>0}))),sourceText);
     assert.ok(!sourceText.includes('PRUEBA_PRIVADA_NO_PROYECTAR'));

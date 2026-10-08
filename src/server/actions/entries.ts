@@ -54,7 +54,7 @@ export async function createEntryAction(
       ok: true as const,
       message:
         entry.type === EntryType.INCIDENCIA
-          ? `Incidencia #${entry.humanId} creada con tarea y seguimiento.`
+          ? `Incidencia #${entry.humanId} creada${entry.requiresFollowUp?' con tarea y seguimiento':''}.`
           : `Registro #${entry.humanId} creado.`,
       id: entry.id,
     };

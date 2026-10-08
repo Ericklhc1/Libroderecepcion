@@ -1,3 +1,5 @@
+import {getSimpleNoveltyContinuity} from '@/server/services/simple-novelty-continuity';
+import {createEntryAction} from '@/server/actions/entries';
 import {getAssignmentBoard} from '@/server/services/assignment-board';
 import {ensureIncidentWorkflow} from '@/server/services/incident-workflow';
 import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
@@ -21,6 +23,33 @@ import {getWebPushPayload} from '@/server/services/web-push';
 async function flag(value:boolean){await prisma.systemSetting.upsert({where:{key:'book.simpleNovelties'},create:{key:'book.simpleNovelties',value,category:'pruebas'},update:{value}});}
 describe('prueba de novedades simples sobre el libro existente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
+  for(const status of [null,'INICIADO','PREPARANDO_ENTREGA'] as const)it(`el modo simple no permite cambiar Caja fuera de operación activa: ${status??'sin turno'}`,async()=>{
+    await flag(true);const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
+    if(status){const shift=await createShift({userId:author.id,type:'DIA',status});await prisma.shiftAssignment.updateMany({where:{shiftId:shift.id},data:{activatedAt:new Date()}});}
+    const caja=await prisma.operationalEntry.create({data:{type:'CAJA',title:'Caja sintética protegida',description:'No habilitar por estar bajo /libro',createdById:author.id,ownerId:author.id}});
+    await expect(changeEntryStatus(author,{id:caja.id,status:'RESUELTO'})).rejects.toThrow(/turno|operación|operar|cierre/i);
+    await expect(updateEntry(author,{id:caja.id,title:'Edición no autorizada'})).rejects.toThrow(/turno|operación|operar|cierre/i);
+    expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:caja.id}})).toMatchObject({status:'ABIERTO',title:caja.title});
+    const novelty=await createSimpleNovelty(author,{title:'Resolver fuera de turno',description:'Excepción concreta'});expect((await resolveSimpleNovelty(author,novelty.id,operationalRecordRevision('entries',novelty))).status).toBe('RESUELTO');
+  });
+  it('conserva y muestra las obligaciones legadas sin permitir resolver antes de atenderlas',async()=>{
+    const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
+    const incident=await createEntry(author,{type:'INCIDENCIA',title:'Trabajo anterior pendiente',description:'No perder al encender',priority:'MEDIA',tags:[],requiresFollowUp:true,severity:'ALTA'},{incidentWorkflow:true});
+    const privateFollow=await prisma.followUp.create({data:{entryId:incident.id,action:'Seguimiento privado anterior',visibility:'PRIVADO',ownerId:author.id,createdById:author.id}});
+    await flag(true);const work=await getSimpleNoveltyContinuity(incident.id,author);expect(work.tasks).toHaveLength(1);expect(work.followups).toHaveLength(2);
+    const otherWork=await getSimpleNoveltyContinuity(incident.id,other);expect(otherWork.followups.map(row=>row.id)).not.toContain(privateFollow.id);
+    const activeIncident=await readEntries(prisma,author).findUniqueOrThrow({where:{id:incident.id}});await expect(resolveSimpleNovelty(author,incident.id,operationalRecordRevision('entries',activeIncident),'Atendida')).rejects.toThrow(/tarea|seguimiento|pendiente/i);
+    expect(await prisma.task.count({where:{entryId:incident.id}})).toBe(1);
+    const hiddenReader=await createUser({roleKey:ROLE_KEYS.MANAGEMENT});const receptionArea=await prisma.department.findUniqueOrThrow({where:{key:'ADMINISTRACION'}});await prisma.user.update({where:{id:hiddenReader.id},data:{departmentId:receptionArea.id}});hiddenReader.departmentId=receptionArea.id;
+    const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:incident.id}});await updateEntryVisibility(author,{id:incident.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[receptionArea.id],includeInReceptionHandover:false});
+    await expect(getSimpleNoveltyContinuity(incident.id,hiddenReader)).rejects.toThrow();
+  });
+  for(const enabled of [true,false])it(`el mensaje de creación describe el trabajo realmente creado: simple=${enabled}`,async()=>{
+    await flag(enabled);auth.user=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});
+    const form=new FormData();for(const [key,value] of Object.entries({type:'INCIDENCIA',title:'Mensaje sintético de incidencia',description:'No anunciar cadenas omitidas',priority:'MEDIA',severity:'ALTA',requiresFollowUp:'true'}))form.set(key,value);
+    const result=await createEntryAction(null,form);expect(result.ok).toBe(true);if(!result.ok)throw new Error(result.error);expect(result.message).toContain('creada');
+    expect(result.message?.includes('con tarea y seguimiento')).toBe(!enabled);expect(await prisma.task.count()).toBe(enabled?0:1);expect(await prisma.followUp.count()).toBe(enabled?0:1);
+  });
   it('el tablero de asignación conserva tareas y excluye novedades simples en lista y total',async()=>{
     const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
     const row=await createEntry(supervisor,{type:'NOVEDAD',title:'Área sin persona',description:'Prueba',priority:'MEDIA',tags:[],requiresFollowUp:false});

@@ -1,3 +1,6 @@
+import {getAssignmentBoard} from '@/server/services/assignment-board';
+import {ensureIncidentWorkflow} from '@/server/services/incident-workflow';
+import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 import { beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
 import { prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS } from './helpers';
 import { createEntry,updateEntry,changeEntryStatus,updateEntryVisibility } from '@/server/services/entries';
@@ -18,6 +21,31 @@ import {getWebPushPayload} from '@/server/services/web-push';
 async function flag(value:boolean){await prisma.systemSetting.upsert({where:{key:'book.simpleNovelties'},create:{key:'book.simpleNovelties',value,category:'pruebas'},update:{value}});}
 describe('prueba de novedades simples sobre el libro existente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
+  it('el tablero de asignación conserva tareas y excluye novedades simples en lista y total',async()=>{
+    const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});
+    const row=await createEntry(supervisor,{type:'NOVEDAD',title:'Área sin persona',description:'Prueba',priority:'MEDIA',tags:[],requiresFollowUp:false});
+    await prisma.task.create({data:{title:'Tarea asignable',createdById:supervisor.id}});
+    const before=await getAssignmentBoard(supervisor);expect(before.unassigned.some(item=>item.id===row.id)).toBe(true);expect(before.unassignedTotal).toBe(2);
+    await flag(true);const after=await getAssignmentBoard(supervisor);expect(after.unassigned.map(item=>item.kind)).toEqual(['task']);expect(after.unassignedTotal).toBe(1);
+  });
+  it('incidencias de formulario anterior y Fronti no generan cadenas con el modo simple encendido',async()=>{
+    const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await flag(true);
+    const row=await createEntry(author,{type:'INCIDENCIA',title:'Formulario ya abierto',description:'Guardar tras interruptor',priority:'MEDIA',tags:[],requiresFollowUp:true,severity:'ALTA'},{incidentWorkflow:true});
+    await ensureIncidentWorkflow(row.id);
+    await updateEntry(author,{id:row.id,title:'Edición sin cadena'});
+    expect(await prisma.task.count({where:{entryId:row.id}})).toBe(0);expect(await prisma.followUp.count({where:{entryId:row.id}})).toBe(0);
+    const current=await readEntries(prisma,author).findUniqueOrThrow({where:{id:row.id}});
+    expect((await resolveSimpleNovelty(author,row.id,operationalRecordRevision('entries',current),'Atendida')).status).toBe('RESUELTO');
+    await flag(false);const legacy=await createEntry(author,{type:'INCIDENCIA',title:'Modo anterior',description:'Conservar motor',priority:'MEDIA',tags:[],requiresFollowUp:true,severity:'ALTA'},{incidentWorkflow:true});expect(await prisma.task.count({where:{entryId:legacy.id}})).toBe(1);expect(await prisma.followUp.count({where:{entryId:legacy.id}})).toBe(1);
+  });
+  it('creadores nativos invalidan borradores visibles y conservan las entregas enviadas',async()=>{
+    const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const shift=await createShift({userId:author.id,type:'DIA'});await flag(true);const now=new Date();
+    const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:author.id,finalReviewAt:now,urgentAcknowledgedAt:now,pendingsReviewedAt:now}});
+    const entry=await prisma.$transaction(async tx=>{await lockNativeNoveltyCreation(tx);return createNativeEntry(tx,{data:{type:'INCIDENCIA',title:'Incidencia de motor nativo',description:'Mantenimiento, garantía o lavandería',createdById:author.id,ownerId:author.id}});});
+    expect(entry.ownerId).toBeNull();expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}}))).toMatchObject({receptionSummaryRevision:1,finalReviewAt:null,urgentAcknowledgedAt:null,pendingsReviewedAt:null});
+    await prisma.shiftHandover.update({where:{id:draft.id},data:{status:'ENVIADA',finalReviewAt:now}});
+    await prisma.$transaction(tx=>createNativeEntry(tx,{data:{type:'NOVEDAD',title:'Otra novedad nativa',description:'No cambiar fotografía',createdById:author.id}}));expect((await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).finalReviewAt).toEqual(now);
+  });
   it('guardar apagado por primera vez conserva las revisiones de borradores y entregas enviadas',async()=>{
     const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});auth.user=admin;const now=new Date();
     const handovers=[];
@@ -127,8 +155,8 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
     expect(await prisma.$queryRaw(Prisma.sql`SELECT e.id FROM "OperationalEntry" e WHERE e.id=${internal.id} AND (${entryReadSql(maid)})`)).toEqual([]);
     expect((await listSimpleNovelties(receptionist)).internalTotal).toBe(1);
     await expect(resolveSimpleNovelty(maid,related.id,operationalRecordRevision('entries',related))).rejects.toThrow();
-    await updateEntryVisibility(receptionist,{id:related.id,revision:related.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
-    expect((await listSimpleNovelties(maid,{q:'HSK_VISIBLE'})).total).toBe(0);
+    await expect(updateEntryVisibility(receptionist,{id:related.id,revision:related.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true})).rejects.toThrow(/área relacionada debe poder ver/);
+    expect((await listSimpleNovelties(maid,{q:'HSK_VISIBLE'})).total).toBe(1);
     expect((await listSimpleNovelties(await createUser({roleKey:ROLE_KEYS.SUPERVISOR}))).total).toBe(2);
   });
 });

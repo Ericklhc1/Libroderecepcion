@@ -1,4 +1,5 @@
 'use server';
+import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 import { readEntries } from '@/server/services/entry-visibility';
 
 import { revalidatePath } from 'next/cache';
@@ -113,8 +114,9 @@ async function ensureUnresolvedGuaranteeIncidents(
     if (!reservation) continue;
 
     await prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
       const guestName = reservation.guest?.fullName ?? 'Huésped';
-      const entry = await tx.operationalEntry.create({
+      const entry = await createNativeEntry(tx,{
         data: {
           type: EntryType.INCIDENCIA,
           status: EntryStatus.ABIERTO,
@@ -395,6 +397,7 @@ export async function modifyStayAction(
     const newText = `IN_HOUSE · salida ${nextDeparture.toLocaleString('es-CL', { timeZone: 'America/Santiago' })}`;
 
     await prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
       await tx.roomStay.update({
         where: { id: stay.id },
         data: {
@@ -421,7 +424,7 @@ export async function modifyStayAction(
         });
       }
 
-      await tx.operationalEntry.create({
+      await createNativeEntry(tx,{
         data: {
           type: EntryType.NOVEDAD,
           status: EntryStatus.RESUELTO,

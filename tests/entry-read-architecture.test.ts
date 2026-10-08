@@ -26,6 +26,13 @@ export function entryReadViolations(code:string,file:string):string[]{
   const visit=(node:ts.Node)=>{
     if(ts.isPropertyAccessExpression(node)&&node.name.text==='operationalEntry'){
       const call=node.parent;
+      if(ts.isPropertyAccessExpression(call)&&['create','createMany','createManyAndReturn','upsert'].includes(call.name.text)&&!['src/server/services/entries.ts','src/server/services/native-entry-creation.ts'].includes(file)){
+        const invocation=call.parent;const argument=ts.isCallExpression(invocation)?invocation.arguments[0]:null;
+        const data=argument&&ts.isObjectLiteralExpression(argument)?argument.properties.find(prop=>ts.isPropertyAssignment(prop)&&prop.name.getText(ast)==='data'):null;
+        const type=data&&ts.isPropertyAssignment(data)&&ts.isObjectLiteralExpression(data.initializer)?data.initializer.properties.find(prop=>ts.isPropertyAssignment(prop)&&prop.name.getText(ast)==='type'):null;
+        if(!type||!ts.isPropertyAssignment(type)||type.initializer.getText(ast)!=='EntryType.CAJA')errors.push('Creador de novedades fuera del helper de bloqueo/invalidation');
+      }
+
       if(!ts.isPropertyAccessExpression(call)||!mutations.has(call.name.text)||!ts.isCallExpression(call.parent)||call.parent.expression!==call)errors.push('Acceso directo o alias a operationalEntry');
     }
     if(ts.isElementAccessExpression(node)&&node.argumentExpression&&ts.isStringLiteral(node.argumentExpression)&&node.argumentExpression.text==='operationalEntry')errors.push('Acceso indexado a operationalEntry');
@@ -56,7 +63,7 @@ describe('toda lectura de novedades usa la política central',()=>{
     expect(violations).toEqual([]);
   });
   it('el guardia falla con bypasses representativos aunque se renombre el cliente',()=>{
-    const bypasses=['client.operationalEntry.findMany({})','const rows=client.operationalEntry; rows.count()','client["operationalEntry"].findUnique({})','const {operationalEntry: records}=client; records.findMany()','db.$queryRaw`SELECT title FROM "OperationalEntry"`','readEntries(db,{engine:"alerts"}).findMany()',`db.$queryRawUnsafe('SELECT title FROM "OperationalEntry"')`];
+    const bypasses=['client.operationalEntry.create({data:{type:EntryType.INCIDENCIA}})','client.operationalEntry.findMany({})','const rows=client.operationalEntry; rows.count()','client["operationalEntry"].findUnique({})','const {operationalEntry: records}=client; records.findMany()','db.$queryRaw`SELECT title FROM "OperationalEntry"`','readEntries(db,{engine:"alerts"}).findMany()',`db.$queryRawUnsafe('SELECT title FROM "OperationalEntry"')`];
     for(const code of bypasses)expect(entryReadViolations(code,'src/app/example.tsx').length).toBeGreaterThan(0);
     expect(entryReadViolations('readEntries(db,user).findMany({where:{OR:[{title:"x"}]}})','src/app/example.tsx')).toEqual([]);
   });

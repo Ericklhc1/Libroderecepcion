@@ -1,9 +1,10 @@
+import {getSettingBool} from './settings';
 import { readEntries } from '@/server/services/entry-visibility';
 import { entryReadWhere } from './entry-visibility';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
-import { Priority, TaskStatus } from '@prisma/client';
+import {type EntryType, Priority, TaskStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { TASK_OPEN_STATUSES, ENTRY_OPEN_STATUSES } from '@/domain/labels';
 
@@ -60,6 +61,8 @@ export type AssignmentBoard = {
 
 export async function getAssignmentBoard(user: CurrentUser): Promise<AssignmentBoard> {
   const now = new Date();
+  const simple=await getSettingBool('book.simpleNovelties',false);
+  const noveltyFilter=simple?{type:{notIn:['NOVEDAD','INCIDENCIA'] as EntryType[]}}:{};
 
   const [unassignedTasks, unassignedEntries, unassignedTaskCount, unassignedEntryCount, people] = await Promise.all([
     prisma.task.findMany({
@@ -76,7 +79,7 @@ export async function getAssignmentBoard(user: CurrentUser): Promise<AssignmentB
       take: 40,
     }),
     readEntries(prisma, user).findMany({
-      where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
+      where: { ...noveltyFilter, deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
       select: {
         id: true,
         humanId: true,
@@ -98,7 +101,7 @@ export async function getAssignmentBoard(user: CurrentUser): Promise<AssignmentB
       where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, assigneeId: null, status: { in: TASK_OPEN_STATUSES } },
     }),
     readEntries(prisma, user).count({
-      where: { deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
+      where: { ...noveltyFilter, deletedAt: null, ownerId: null, status: { in: ENTRY_OPEN_STATUSES }, AND:[entryReadWhere(user)] },
     }),
         prisma.user.findMany({
       where: {

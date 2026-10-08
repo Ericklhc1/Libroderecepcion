@@ -1,3 +1,4 @@
+import {createNativeEntry,lockNativeNoveltyCreation,createNativeEntries} from '@/server/services/native-entry-creation';
 import 'server-only';
 
 import {
@@ -51,6 +52,7 @@ export async function attachReservationToRoom(
   const businessDate = todayBusinessDate(now);
 
   return prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
     const room = await tx.room.findFirst({
       where: { id: input.roomId, active: true },
       select: { id: true, number: true },
@@ -183,7 +185,7 @@ export async function attachReservationToRoom(
       }
     }
 
-    await tx.operationalEntry.create({
+    await createNativeEntry(tx,{
       data: {
         type: EntryType.NOVEDAD,
         status: EntryStatus.RESUELTO,
@@ -252,6 +254,7 @@ export async function moveStayToRoom(
   const businessDate = todayBusinessDate(now);
 
   return prisma.$transaction(async (tx) => {
+    await lockNativeNoveltyCreation(tx);
     const stay = await tx.roomStay.findFirst({
       where: { id: input.stayId, deletedAt: null },
       include: {
@@ -398,7 +401,7 @@ export async function moveStayToRoom(
     const guestName =
       stay.reservationRef?.guest?.fullName ?? stay.guestNames[0] ?? 'Huésped';
 
-    await tx.operationalEntry.createMany({
+    await createNativeEntries(tx,{
       data: [
         {
           type: EntryType.NOVEDAD,

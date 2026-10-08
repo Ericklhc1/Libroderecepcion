@@ -1,3 +1,4 @@
+import {invalidateSimpleNoveltyDrafts} from './simple-novelty-drafts';
 import { getSettingBool, assertSimpleNoveltiesEnabled, lockSimpleNoveltiesMode } from './settings';
 import { isReceptionDeskRole } from '@/lib/permissions';
 import { readEntries } from '@/server/services/entry-visibility';
@@ -139,7 +140,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
         occurredAt: input.occurredAt ?? new Date(),
         dueAt: input.dueAt ?? null,
         tags: normalizeTags(input.tags),
-        requiresFollowUp: input.requiresFollowUp,
+        requiresFollowUp: simpleMode ? false : input.requiresFollowUp,
         guestId: null,
         reservationId: null,
         stayId: null,
@@ -178,7 +179,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
       tx,
     );
 
-    if(options.incidentWorkflow&&created.type===EntryType.INCIDENCIA)await ensureIncidentWorkflow(created.id,tx);
+    if(!simpleMode&&options.incidentWorkflow&&created.type===EntryType.INCIDENCIA)await ensureIncidentWorkflow(created.id,tx);
 
     if (created.ownerId && created.ownerId !== user.id) {
       await notify(
@@ -374,7 +375,7 @@ export async function updateEntry(
       Object.keys(after),
     );
     if (changes.changed.length === 0) {
-      if (current.type !== EntryType.INCIDENCIA) return current;
+      if (simpleMode || current.type !== EntryType.INCIDENCIA) return current;
       await ensureIncidentWorkflow(current.id, tx);
       return readEntries(tx, user).findUniqueOrThrow({ where: { id: current.id }, include: entryInclude });
     }
@@ -423,7 +424,7 @@ export async function updateEntry(
     }
 
     await publishHkMaintenanceUpdate(tx, user, current, updated);
-    if (updated.type === EntryType.INCIDENCIA) {
+    if (!simpleMode && updated.type === EntryType.INCIDENCIA) {
       await ensureIncidentWorkflow(updated.id, tx);
       return readEntries(tx, user).findUniqueOrThrow({ where: { id: updated.id }, include: entryInclude });
     }
@@ -674,12 +675,14 @@ export async function restoreEntry(
 export async function updateEntryVisibility(user: CurrentUser, input: { id: string; revision: string; hiddenDepartmentIds: string[]; includeInReceptionHandover: boolean }) {
   return prisma.$transaction(async tx => {
     await lockReceptionSummary(tx);
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
     const current = await readEntries(tx, user).findFirst({ where: { id: input.id, deletedAt: null }, include: { hiddenFromDepartments: { select: { id: true } } } });
     if (!current) throw new NotFoundError('La novedad no existe.');
     if (!canManageEntryVisibility(user, current.createdById)) throw new RuleError('Sólo quien creó la novedad o Supervisión puede cambiar su visibilidad.');
     if (current.updatedAt.toISOString() !== input.revision) throw new RuleError('La novedad cambió. Actualiza antes de guardar.');
     const ids = [...new Set(input.hiddenDepartmentIds)];
+    if(simpleMode && !current.receptionInternal && (current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA) && await tx.department.count({where:{AND:[{id:{in:ids}},current.departmentId?{id:current.departmentId}:{key:"RECEPCION"}]}}))throw new RuleError("El área relacionada debe poder ver la novedad.");
     if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, OR:[{active:true},{id:{in:current.hiddenFromDepartments.map(d=>d.id)}}] } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
     await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
     await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
@@ -715,20 +718,4 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     } });
     return updated;
   });
-}
-
-
-/** Mode-on content changes invalidate the same native handover summary, under its lock. */
-async function invalidateSimpleNoveltyDrafts(tx:Prisma.TransactionClient,entry:{id:string;type:EntryType;isDemo:boolean;status:EntryStatus;shiftId:string|null}) {
-  if(entry.isDemo||!['NOVEDAD','INCIDENCIA'].includes(entry.type))return [];
-  const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR'},select:{id:true,fromShiftId:true,issuedBy:{select:{id:true,departmentId:true,role:{select:{key:true}}}},items:{where:{refId:entry.id},select:{id:true}}}});
-  const ids:string[]=[];
-  for(const draft of drafts){
-    if(draft.items.length){ids.push(draft.id);continue;}
-    if(!ENTRY_OPEN_STATUSES.includes(entry.status)&&entry.shiftId!==draft.fromShiftId)continue;
-    const reader:EntryReader={id:draft.issuedBy.id,departmentId:draft.issuedBy.departmentId,roleKey:draft.issuedBy.role.key,isSystemAdmin:draft.issuedBy.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]};
-    if(await readEntries(tx,reader).count({where:{id:entry.id,AND:[receptionHandoverEntryWhere]}}))ids.push(draft.id);
-  }
-  if(ids.length)await tx.shiftHandover.updateMany({where:{id:{in:ids},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
-  return ids;
 }

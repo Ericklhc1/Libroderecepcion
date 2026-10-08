@@ -246,10 +246,10 @@ export async function escalateUnreceivedWork(now = new Date(), usePolicyOverride
       if(!result.count)return;
       // Include coordinators who can act in the destination area, including cross-area requests.
       // Reuse source visibility before exposing even the existence of reserved work.
-      const candidates=await tx.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false,OR:[{id:row.createdById},...(row.departmentId?[{AND:[{OR:[{departmentId:row.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:row.departmentId,active:true}}}}]},{role:{permissions:{some:{permission:{key:kind==='entry'?'entry.edit':'task.assign'}}}}}]}]:[])]},select:{id:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
+      const candidates=await tx.user.findMany({where:{active:true,deletedAt:null,hiddenFromSelectors:false,OR:[{id:row.createdById},...(row.departmentId?[{AND:[{OR:[{departmentId:row.departmentId},{scheduleCollaborator:{active:true,memberships:{some:{departmentId:row.departmentId,active:true}}}}]},{role:{permissions:{some:{permission:{key:kind==='entry'?'entry.edit':'task.assign'}}}}}]}]:[])]},select:{id:true,departmentId:true,role:{select:{key:true,permissions:{select:{permission:{select:{key:true}}}}}}}});
       const recipients:string[]=[];
       for(const candidate of candidates){
-        const reader={id:candidate.id,roleKey:candidate.role.key,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)};
+        const reader={id:candidate.id,departmentId:candidate.departmentId,isSystemAdmin:candidate.role.key==='ADMINISTRADOR_SISTEMA',roleKey:candidate.role.key,permissions:candidate.role.permissions.map(p=>p.permission.key as PermissionKey)};
         const visible=kind==='entry'?await readEntries(tx, reader).count({where:{id:row.id,AND:[coordinationEntries(reader)]}}):await tx.task.count({where:{id:row.id,AND:[coordinationTasks(reader)]}});
         if(visible)recipients.push(candidate.id);
       }

@@ -1,3 +1,4 @@
+import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 import { readEntries } from '@/server/services/entry-visibility';
 import { entryReadWhere, housekeepingEntryReadWhere, assertHousekeepingWorkDestination, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
@@ -142,6 +143,7 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
   hasAccess(user); const note = input.note?.trim() || '';
   if (HK_NOTE_REQUIRED.includes(input.action) && !note) throw new RuleError('Indica el motivo, la instrucción o el resultado.');
   const perform=async (tx:Tx) => {
+    if(input.action==='MANTENIMIENTO')await lockNativeNoveltyCreation(tx);
     const current = await tx.housekeepingRequest.findFirst({ where: { id: input.id, workflowVersion: 1, AND: [await hkWorkVisibility(user, tx)] }, include: { sourceEntry: { select: { updatedAt: true, deletedAt: true, status:true } } } });
     if (!current || !current.departmentId) throw new NotFoundError();
     if (current.version !== input.version) throw new RuleError('El trabajo cambió. Actualiza antes de continuar.');
@@ -171,7 +173,7 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
       if (maintenanceEntryId) throw new RuleError('Ya existe una incidencia vinculada a este trabajo.');
       const area = await tx.department.findUnique({ where: { key: 'MANTENIMIENTO', active: true } });
       if (!area) throw new RuleError('Mantenimiento no está disponible.');
-      const entry = await tx.operationalEntry.create({ data: { type: 'INCIDENCIA', title: `Housekeeping #${current.humanId}: ${current.location ?? 'Revisión'}`, description: note, severity: input.severity, departmentId: area.id, roomId: current.roomId, priority: current.priority, createdById: user.id } });
+      const entry = await createNativeEntry(tx,{ data: { type: 'INCIDENCIA', title: `Housekeeping #${current.humanId}: ${current.location ?? 'Revisión'}`, description: note, severity: input.severity, departmentId: area.id, roomId: current.roomId, priority: current.priority, createdById: user.id } });
       await ensureIncidentWorkflow(entry.id, tx, { leaveUnassigned: true });
       maintenanceEntryId = entry.id;
       await tx.auditLog.create({ data: { entity: 'OperationalEntry', entityId: entry.id, action: 'CREAR', userId: user.id, sessionId: user.sessionId, summary: `Incidencia #${entry.humanId} desde Housekeeping #${current.humanId}` } });
@@ -203,7 +205,12 @@ export async function changeHkWork(user: CurrentUser, input: { id: string; versi
 }
 /** Historic photographs retain evidence, but use current source visibility on read. */
 async function visibleHkHandovers<T extends {snapshot:Prisma.JsonValue}>(user:CurrentUser,rows:T[]):Promise<T[]> {
-  const hidden=await prisma.housekeepingRequest.findMany({where:{NOT:housekeepingEntryReadWhere(user)},select:{id:true,humanId:true}});
+  const referencedIds:string[]=[];const referencedFolios:number[]=[];
+  for(const row of rows){const snapshot=row.snapshot;if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot)||!Array.isArray(snapshot.work))continue;
+    for(const item of snapshot.work){if(!item||typeof item!=='object'||Array.isArray(item))continue;if(typeof item.id==='string')referencedIds.push(item.id);if(typeof item.humanId==='number')referencedFolios.push(item.humanId);}
+  }
+  if(!referencedIds.length&&!referencedFolios.length)return rows;
+  const hidden=await prisma.housekeepingRequest.findMany({where:{OR:[{id:{in:[...new Set(referencedIds)]}},{humanId:{in:[...new Set(referencedFolios)]}}],NOT:housekeepingEntryReadWhere(user)},select:{id:true,humanId:true}});
   const ids=new Set(hidden.map(r=>r.id));const folios=new Set(hidden.map(r=>r.humanId));
   return rows.map(row=>{const snapshot=row.snapshot;if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot)||!Array.isArray(snapshot.work))return row;
     return {...row,snapshot:{...snapshot,work:snapshot.work.filter(w=>!w||typeof w!=='object'||Array.isArray(w)||!(typeof w.id==='string'&&ids.has(w.id)||typeof w.humanId==='number'&&folios.has(w.humanId)))}};

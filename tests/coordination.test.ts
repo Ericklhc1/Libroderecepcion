@@ -162,6 +162,12 @@ describe('Etapa 1: coordinación con fuentes reales y continuidad',()=>{
     const t=await prisma.task.create({data:{title:'Reservada',createdById:admin.id,assigneeId:a.id,departmentId:area,followUpId:f.id,workAssignedAt:new Date(Date.now()-3600000)}});
     await escalateUnreceivedWork();const notifications=await prisma.notification.findMany({where:{entityId:t.id,title:{contains:'sin confirmar recepción'}}});expect(notifications.map(n=>n.userId)).toEqual([admin.id]);
   });
+  it('Sysadmin conserva escalaciones de tareas cuyo origen está oculto a su área',async()=>{
+    await prisma.user.update({where:{id:admin.id},data:{departmentId:area}});
+    const source=await prisma.operationalEntry.create({data:{type:'NOVEDAD',title:'Origen reservado',description:'Sysadmin ve todo',createdById:admin.id,hiddenFromDepartments:{connect:{id:area}}}});
+    const task=await prisma.task.create({data:{title:'Tarea sin recepción',createdById:admin.id,assigneeId:a.id,departmentId:area,entryId:source.id,workAssignedAt:new Date(Date.now()-3600000)}});
+    await escalateUnreceivedWork();expect(await prisma.notification.count({where:{userId:admin.id,entityId:task.id,title:{contains:'sin confirmar recepción'}}})).toBe(1);
+  });
   it('Fronti lee Coordinación con los mismos permisos y filtros de Recepción y HK',async()=>{
     const receptionist=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await task();
     const page=resolveFrontiPageContext({pathname:'/coordinacion',search:`?area=${area}`});expect(page.moduleKey).toBe('coordinacion');expect(page.recommendedTools).toContain('consultar_contexto_pantalla');

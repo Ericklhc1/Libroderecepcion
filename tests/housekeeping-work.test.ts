@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createShift, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
 import { ROLE_KEYS } from '@/lib/permissions';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { hotelDateKey } from '@/domain/time';
@@ -146,6 +146,21 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     await expect(receiveHkHandover(supervisor,hand.id)).rejects.toThrow('otra persona');await receiveHkHandover(manager,hand.id);
     await change(maid,r.id,'RETOMAR');expect(JSON.stringify((await prisma.housekeepingHandover.findUniqueOrThrow({where:{id:hand.id}})).snapshot)).toContain('Falta acceso');
     expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('EN_GESTION');
+  });
+  it('filtra sólo los trabajos presentes en fotografías visibles y no consulta históricos sin fotografías',async()=>{
+    const request=await createHkWork(supervisor,input());const spy=vi.spyOn(prisma.housekeepingRequest,'findMany');
+    try{
+      await getHkWorkday(supervisor,{departmentId:area});expect(spy.mock.calls.filter(([args])=>args?.where?.NOT)).toHaveLength(0);
+      await saveHkHandover(supervisor,{requestKey:randomUUID(),departmentId:area,workDate:date(),note:'Evidencia acotada'});spy.mockClear();
+      await getHkWorkday(supervisor,{departmentId:area});const historical=spy.mock.calls.filter(([args])=>args?.where?.NOT);expect(historical).toHaveLength(1);expect(historical[0]?.[0]?.where?.OR).toEqual([{id:{in:[request.id]}},{humanId:{in:[request.humanId]}}]);
+    }finally{spy.mockRestore();}
+  });
+  it('una incidencia de Mantenimiento posterior a la revisión final invalida el borrador sin crear cadenas simples',async()=>{
+    await prisma.systemSetting.upsert({where:{key:'book.simpleNovelties'},create:{key:'book.simpleNovelties',value:true,category:'pruebas'},update:{value:true}});
+    const shift=await createShift({userId:reception.id,type:'DIA'});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:reception.id,finalReviewAt:now,pendingsReviewedAt:now,urgentAcknowledgedAt:now}});
+    const request=await createHkWork(supervisor,{...input(),assignedToId:maid.id});await change(maid,request.id,'COMENZAR');await change(maid,request.id,'IMPEDIMENTO','Fuga de agua');await change(supervisor,request.id,'MANTENIMIENTO','Revisar fuga');
+    const stored=await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:request.id}});expect(stored.maintenanceEntryId).not.toBeNull();expect(await prisma.task.count({where:{entryId:stored.maintenanceEntryId}})).toBe(0);expect(await prisma.followUp.count({where:{entryId:stored.maintenanceEntryId}})).toBe(0);
+    expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:1,finalReviewAt:null,pendingsReviewedAt:null,urgentAcknowledgedAt:null});
   });
   it('vincula una incidencia única a Mantenimiento sin inventar su resolución',async()=>{
     const r=await createHkWork(supervisor,{...input(),assignedToId:maid.id});await change(maid,r.id,'COMENZAR');await change(maid,r.id,'IMPEDIMENTO','Fuga de agua');await change(supervisor,r.id,'MANTENIMIENTO','Revisar fuga bajo lavamanos');

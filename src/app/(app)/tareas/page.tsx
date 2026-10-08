@@ -1,3 +1,4 @@
+import {boundedPage,pageHref as listPageHref} from '@/lib/search-params';
 import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { TaskStatus } from '@prisma/client';
@@ -33,8 +34,8 @@ export default async function TasksPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  const pageValue=Number(params.pagina);const page=Number.isSafeInteger(pageValue)&&pageValue>0?pageValue:1;
-  const pageHref=(number:number)=>{const query=new URLSearchParams();for(const [key,value] of Object.entries(params))if(typeof value==='string'&&key!=='pagina')query.set(key,value);query.set('pagina',String(number));return `/tareas?${query}`;};
+  const page=boundedPage(params.pagina);
+  const pageHref=(number:number)=>listPageHref('/tareas',params,number);
   const values = filterValues(params);
   const onlyMine = params.mias === '1';
 

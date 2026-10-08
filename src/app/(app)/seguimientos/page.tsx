@@ -1,3 +1,4 @@
+import {boundedPage,pageHref as listPageHref} from '@/lib/search-params';
 import {NoticeNavigation} from '@/components/operational/notice-navigation';
 import { followUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
@@ -26,8 +27,8 @@ export default async function FollowUpsPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
-  const pageValue=Number(params.pagina);const page=Number.isSafeInteger(pageValue)&&pageValue>0?pageValue:1;
-  const pageHref=(number:number)=>{const query=new URLSearchParams();for(const [key,value] of Object.entries(params))if(typeof value==='string'&&key!=='pagina')query.set(key,value);query.set('pagina',String(number));return `/seguimientos?${query}`;};
+  const page=boundedPage(params.pagina);
+  const pageHref=(number:number)=>listPageHref('/seguimientos',params,number);
   refreshAlertsInBackground();
 
   const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '') : '';

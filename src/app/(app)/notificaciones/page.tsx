@@ -1,3 +1,4 @@
+import {boundedPage,pageHref} from '@/lib/search-params';
 import { groupNotificationItems } from '@/domain/notification-summary';
 import {NoticeNavigation} from '@/components/operational/notice-navigation';
 import Link from 'next/link';
@@ -25,6 +26,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export default async function NotificationsPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requirePageUser({ allowAreaOperation:true });
   const params = await searchParams;
+  const page=boundedPage(params.pagina);
   const query = typeof params.q === 'string' ? params.q.trim() : '';
   const estado = typeof params.estado === 'string' ? params.estado : '';
 
@@ -45,11 +47,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       : {}),
   };
 
-  const notifications = await prisma.notification.findMany({
+  const [notifications,total] = await Promise.all([prisma.notification.findMany({
     where: notificationWhere,
-    orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
-    take: 150,
-  });
+    orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' },{id:'asc'}],
+    skip:(page-1)*150,take: 150,
+  }),prisma.notification.count({where:notificationWhere})]);
   const groups = groupNotificationItems(notifications.map(item => ({...item, createdAt:item.createdAt.toISOString(), readAt:item.readAt?.toISOString()??null})));
   const unread = notifications.filter((item) => item.readAt === null);
 
@@ -99,7 +101,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       </form>
 
       <Card>
-        <CardHeader title="Avisos recibidos" count={notifications.length} />
+        <CardHeader title={`Avisos recibidos · página ${page}`} count={total} />
         {notifications.length === 0 ? (
           <EmptyState
             message={query ? 'No hay notificaciones que coincidan con el filtro.' : 'No tienes notificaciones.'}
@@ -146,6 +148,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
           </CardScroll>
         )}
       </Card>
+      <nav aria-label="Páginas de avisos" className="flex items-center justify-between gap-2 text-sm">{page>1?<Link href={pageHref('/notificaciones',params,page-1)}>← Anterior</Link>:<span/>}<span>Página {page} · {total} avisos</span>{page*150<total&&<Link href={pageHref('/notificaciones',params,page+1)}>Siguiente →</Link>}</nav>
     </div>
   );
 }

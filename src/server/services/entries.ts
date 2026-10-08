@@ -134,7 +134,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
     if(simpleMode&&input.ownerId&&['NOVEDAD','INCIDENCIA'].includes(input.type))throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
     const hiddenIds = [...new Set(input.hiddenDepartmentIds ?? [])];
     if (hiddenIds.length > 100 || await tx.department.count({ where: { id: { in: hiddenIds }, active: true } }) !== hiddenIds.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
-    if(simpleMode&&!input.receptionInternal&&await tx.department.count({where:{AND:[{id:{in:hiddenIds}},input.departmentId?{id:input.departmentId}:{key:'RECEPCION'}]}}))throw new RuleError('El área relacionada está oculta. Cambia su visibilidad antes de seleccionarla.');
+    if((simpleMode||input.receptionInternal)&&await tx.department.count({where:{AND:[{id:{in:hiddenIds}},input.receptionInternal||!input.departmentId?{key:'RECEPCION'}:{id:input.departmentId}]}}))throw new RuleError('El área relacionada está oculta. Cambia su visibilidad antes de seleccionarla.');
     await assertEntryOwnerVisibility(tx,{ownerId:input.ownerId,createdById:user.id,hiddenDepartmentIds:hiddenIds,receptionInternal:input.receptionInternal});
     const created = await tx.operationalEntry.create({
       data: {
@@ -713,10 +713,10 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     if (!canManageEntryVisibility(user, current.createdById)) throw new RuleError('Sólo quien creó la novedad o Supervisión puede cambiar su visibilidad.');
     if (current.updatedAt.toISOString() !== input.revision) throw new RuleError('La novedad cambió. Actualiza antes de guardar.');
     const ids = [...new Set(input.hiddenDepartmentIds)];
-    if(simpleMode && !current.receptionInternal && (current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA) && await tx.department.count({where:{AND:[{id:{in:ids}},current.departmentId?{id:current.departmentId}:{key:"RECEPCION"}]}}))throw new RuleError("El área relacionada debe poder ver la novedad.");
+    if((simpleMode||current.receptionInternal) && (current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA) && await tx.department.count({where:{AND:[{id:{in:ids}},current.receptionInternal||!current.departmentId?{key:'RECEPCION'}:{id:current.departmentId}]}}))throw new RuleError("El área relacionada debe poder ver la novedad.");
     if (ids.length > 100 || await tx.department.count({ where: { id: { in: ids }, OR:[{active:true},{id:{in:current.hiddenFromDepartments.map(d=>d.id)}}] } }) !== ids.length) throw new RuleError('Selecciona áreas vigentes del catálogo.');
-    await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids});
-    await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
+    await assertEntryOwnerVisibility(tx,{ownerId:current.ownerId,createdById:current.createdById,hiddenDepartmentIds:ids,receptionInternal:current.receptionInternal});
+    await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids,receptionInternal:current.receptionInternal});
     // All area changes can alter a receiver's actual projection, even when the
     // reception checkbox stays unchanged (secondary area memberships apply).
     const selectable=!current.isDemo&&(current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA)&&(ENTRY_OPEN_STATUSES.includes(current.status)||current.status===EntryStatus.RESUELTO||current.status===EntryStatus.CERRADO);

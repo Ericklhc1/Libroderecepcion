@@ -48,6 +48,7 @@ export function entryReadWhere(user: EntryReader): Prisma.OperationalEntryWhereI
     ...(reception ? [] : [{ receptionInternal:false }]),
     { OR: [
     { createdById: user.id },
+    ...(reception?[{receptionInternal:true}]:[]),
     { hiddenFromDepartments: { none: { OR: [
       { users: { some: { id: user.id } } },
       {scheduleMemberships:{some:{active:true,collaborator:{active:true,userId:user.id}}}},
@@ -61,7 +62,7 @@ export function entryReadWhere(user: EntryReader): Prisma.OperationalEntryWhereI
 /** Shared Reception handovers never inherit the supervisor/creator override. */
 export const receptionHandoverEntryWhere: Prisma.OperationalEntryWhereInput = {
   includeInReceptionHandover: true,
-  hiddenFromDepartments: { none: { key: 'RECEPCION' } },
+  OR:[{receptionInternal:true},{hiddenFromDepartments:{none:{key:'RECEPCION'}}}],
 };
 
 export const closureValidationAlertWhere: Prisma.AlertWhereInput = {
@@ -72,7 +73,7 @@ export const closureValidationAlertWhere: Prisma.AlertWhereInput = {
 export function entryReadSql(user: EntryReader) {
   if (canReadAllEntryAreas(user)) return Prisma.sql`TRUE`;
   const internal = user.roleKey && isReceptionDeskRole(user.roleKey) ? Prisma.sql`TRUE` : Prisma.sql`NOT e."receptionInternal"`;
-  return Prisma.sql`${internal} AND (e."createdById" = ${user.id} OR NOT EXISTS (
+  return Prisma.sql`${internal} AND (${user.roleKey&&isReceptionDeskRole(user.roleKey)?Prisma.sql`e."receptionInternal" OR`:Prisma.empty} e."createdById" = ${user.id} OR NOT EXISTS (
     SELECT 1 FROM "_EntryHiddenAreas" h JOIN "Department" d ON d.id=h."A"
     WHERE h."B"=e.id AND (d.id=${user.departmentId ?? null}
       OR EXISTS (SELECT 1 FROM "User" u WHERE u.id=${user.id} AND u."departmentId"=d.id)
@@ -104,8 +105,9 @@ export async function assertEntryOwnerVisibility(tx: Prisma.TransactionClient, i
   await tx.$queryRaw`SELECT id FROM "User" WHERE id=${input.ownerId} FOR SHARE`;
   const owner=await tx.user.findFirst({where:{id:input.ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});
   if(!owner)throw new RuleError('El responsable no está disponible.');
-  if(owner.id===input.createdById || ['SUPERVISOR','ADMINISTRADOR_SISTEMA'].includes(owner.role.key))return;
-  if(input.receptionInternal&&!isReceptionDeskRole(owner.role.key))throw new RuleError('Las operativas internas sólo se pueden asignar a Recepción.');
+  if(['SUPERVISOR','ADMINISTRADOR_SISTEMA'].includes(owner.role.key))return;
+  if(input.receptionInternal){if(!isReceptionDeskRole(owner.role.key))throw new RuleError('Las operativas internas sólo se pueden asignar a Recepción.');return;}
+  if(owner.id===input.createdById)return;
   if(await tx.department.count({where:{id:{in:input.hiddenDepartmentIds},OR:[{id:owner.departmentId??''},{users:{some:{id:owner.id}}},{scheduleMemberships:{some:{active:true,collaborator:{active:true,userId:owner.id}}}},...(isReceptionDeskRole(owner.role.key)?[{key:'RECEPCION'}]:[])]}}))throw new RuleError('El responsable no podrá ver la novedad. Reasigna o quita al responsable antes de ocultarla a su área.');
 }
 
@@ -132,7 +134,7 @@ export async function assertHousekeepingWorkDestination(tx:Prisma.TransactionCli
 
 /** A visibility change must not strand already assigned, still-active work.
  * Called under the canonical entry lock, shared by derived assignment writes. */
-export async function assertEntryLinkedWorkVisibility(tx: Prisma.TransactionClient, input: {id:string;createdById:string;hiddenDepartmentIds:string[]}) {
+export async function assertEntryLinkedWorkVisibility(tx: Prisma.TransactionClient, input: {id:string;createdById:string;hiddenDepartmentIds:string[];receptionInternal?:boolean}) {
   if(!input.hiddenDepartmentIds.length)return;
   const [tasks,followUps,hk,attentions,alarms]=await Promise.all([
     tx.task.findMany({where:{deletedAt:null,status:{in:TASK_OPEN_STATUSES},sourceEntries:{some:{entryId:input.id}}},select:{departmentId:true,assigneeId:true,participants:{where:{removedAt:null},select:{userId:true}}}}),
@@ -149,7 +151,7 @@ export async function assertEntryLinkedWorkVisibility(tx: Prisma.TransactionClie
     ...alarms.flatMap(a=>a.recipients.map(r=>r.userId)),...followUps.map(f=>f.ownerId),...hk.map(h=>h.assignedToId),...attentions.map(a=>a.urgentContactId),
   ].filter((id):id is string=>!!id));
   for(const ownerId of owners) {
-    try { await assertEntryOwnerVisibility(tx,{ownerId,createdById:input.createdById,hiddenDepartmentIds:input.hiddenDepartmentIds}); }
+    try { await assertEntryOwnerVisibility(tx,{ownerId,createdById:input.createdById,hiddenDepartmentIds:input.hiddenDepartmentIds,receptionInternal:input.receptionInternal}); }
     catch(error) { if(error instanceof RuleError)throw new RuleError('Un responsable de trabajo pendiente vinculado perdería acceso. Reasigna o cierra ese trabajo antes de ocultar la novedad.');throw error; }
   }
 }

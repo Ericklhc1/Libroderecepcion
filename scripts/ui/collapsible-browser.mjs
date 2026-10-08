@@ -44,7 +44,7 @@ try{
     await page.goto('http://localhost:3000/indicadores');
     await page.getByRole('heading',{name:'Indicadores',exact:true}).waitFor();
     assert.ok(await page.locator('[data-disclosure-summary]').count()>=4,'Indicadores debe agrupar sus bloques principales');
-    assert.equal(await page.locator('details').filter({hasText:'Tareas'}).first().evaluate(el=>el.open),true);
+    assert.equal(await page.locator('[data-disclosure-summary]').filter({hasText:'Tareas'}).first().locator('xpath=..').evaluate(el=>el.open),true);
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),'Indicadores no debe generar overflow horizontal');
 
     await page.goto('http://localhost:3000/supervision/salud');

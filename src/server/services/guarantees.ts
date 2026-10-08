@@ -23,6 +23,7 @@ import {
   type GuaranteeStateValue,
 } from '@/domain/guarantees';
 import { getMyOpenShift } from './shifts';
+import {ensureUnresolvedGuaranteeIncidents,lockReservationGuaranteeCreation} from './stay-guarantee-incidents';
 import {
   assertGuaranteeCanBeDeleted,
   insertCashMovement,
@@ -138,6 +139,7 @@ export async function createGuarantee(
   const initialState = input.state ?? GuaranteeState.PENDIENTE;
 
   const guarantee = await prisma.$transaction(async (tx) => {
+    const simpleMode=input.reservationReferenceId?await lockReservationGuaranteeCreation(tx,input.reservationReferenceId):false;
     const legacyReservation = input.reservationReferenceId
       ? await tx.reservationReference.findFirst({
           where: { id: input.reservationReferenceId, deletedAt: null },
@@ -215,6 +217,10 @@ export async function createGuarantee(
     }
 
     await syncReservationSummary(tx, created.reservationReferenceId);
+    // Late capture belongs to the simple trial; OFF keeps the legacy creation flow.
+    if(simpleMode&&created.reservationReferenceId&&OPEN_GUARANTEE_STATES.includes(created.state)&&await tx.roomStay.count({where:{reservationRefId:created.reservationReferenceId,deletedAt:null,status:'CHECK_OUT',stage:'FINALIZADO'}})){
+      await ensureUnresolvedGuaranteeIncidents(user,created.reservationReferenceId,created.roomNumber,{client:tx,guaranteeId:created.id});
+    }
 
     await queueOperationalMail(tx, {
       eventKey: `guarantee-created:${created.id}`,

@@ -1,10 +1,17 @@
 import 'server-only';
 import {AlertLevel,AlertStatus,AlertType,AuditAction,EntryStatus,EntryType,GuaranteeState,Impact,Priority,Severity} from '@prisma/client';
+import type {Prisma} from '@prisma/client';
 import {prisma} from '@/lib/prisma';
 import {recordAudit} from '@/server/audit';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {readEntries} from './entry-visibility';
 import {createNativeEntry,lockNativeNoveltyCreation} from './native-entry-creation';
+/** Same reservation synchronization for the checkout scan and native guarantee creation. */
+export async function lockReservationGuaranteeCreation(tx:Prisma.TransactionClient,reservationRefId:string){
+  const simpleMode=await lockNativeNoveltyCreation(tx);
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('aroh-guarantee-reservation'),hashtext(${reservationRefId}))::text`;
+  return simpleMode;
+}
 /**
  * Una garantía que sobrevive al check-out ya no es sólo una alerta: es una
  * incidencia económica trazable. Se crea una sola vez, con área relacionada
@@ -15,12 +22,16 @@ export async function ensureUnresolvedGuaranteeIncidents(
   user: CurrentUser,
   reservationRefId: string | null,
   roomNumber: string | null,
+  options:{client?:Prisma.TransactionClient;guaranteeId?:string}={},
 ): Promise<number> {
   if (!reservationRefId) return 0;
 
-  const guarantees = await prisma.guarantee.findMany({
+  const run=async(tx:Prisma.TransactionClient)=>{
+  await lockReservationGuaranteeCreation(tx,reservationRefId);
+  const guarantees = await tx.guarantee.findMany({
     where: {
       reservationReferenceId: reservationRefId,
+      ...(options.guaranteeId?{id:options.guaranteeId}:{}),
       deletedAt: null,
       state: {
         in: [
@@ -37,8 +48,7 @@ export async function ensureUnresolvedGuaranteeIncidents(
   for (const candidate of guarantees) {
     const marker = `garantia-post-salida:${candidate.id}`;
 
-    const didCreate=await prisma.$transaction(async (tx) => {
-      await lockNativeNoveltyCreation(tx);
+    const didCreate=await (async () => {
       await tx.$queryRaw`SELECT "id" FROM "Guarantee" WHERE "id"=${candidate.id} FOR UPDATE`;
       const guarantee=await tx.guarantee.findFirst({
         where:{id:candidate.id,reservationReferenceId:reservationRefId,deletedAt:null,state:{in:[GuaranteeState.PENDIENTE,GuaranteeState.VIGENTE,GuaranteeState.APLICADA_PARCIALMENTE]}},
@@ -123,8 +133,10 @@ export async function ensureUnresolvedGuaranteeIncidents(
         tx,
       );
       return true;
-    });
+    })();
     if(didCreate)created += 1;
   }
   return created;
+  };
+  return options.client?run(options.client):prisma.$transaction(run);
 }

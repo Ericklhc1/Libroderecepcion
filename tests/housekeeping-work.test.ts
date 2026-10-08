@@ -1,3 +1,4 @@
+import {prisma as applicationPrisma} from '@/lib/prisma';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createShift, createUser, prisma, resetOperationalData, seedCatalog } from './helpers';
@@ -148,7 +149,7 @@ describe('Housekeeping: trabajo, área, inspección y continuidad',()=>{
     expect((await prisma.housekeepingRequest.findUniqueOrThrow({where:{id:r.id}})).status).toBe('EN_GESTION');
   });
   it('filtra sólo los trabajos presentes en fotografías visibles y no consulta históricos sin fotografías',async()=>{
-    const request=await createHkWork(supervisor,input());const spy=vi.spyOn(prisma.housekeepingRequest,'findMany');
+    const request=await createHkWork(supervisor,input());const spy=vi.spyOn(applicationPrisma.housekeepingRequest,'findMany');
     try{
       await getHkWorkday(supervisor,{departmentId:area});expect(spy.mock.calls.filter(([args])=>args?.where?.NOT)).toHaveLength(0);
       await saveHkHandover(supervisor,{requestKey:randomUUID(),departmentId:area,workDate:date(),note:'Evidencia acotada'});spy.mockClear();

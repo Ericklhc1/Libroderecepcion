@@ -1365,3 +1365,11 @@ El creador nativo obtiene la participación activa con el cliente de su misma tr
 La Compuerta e8e055a aprobó todos los grupos anteriores a auditoría; en el cambio de actor, la pantalla correcta carecía de la señal imperativa de preparación. Esa señal ahora pertenece al estado/render de React y no se elimina escribiendo atributos directamente en el DOM. La evidencia de fallo muestra sólo identidad/preparación de formularios sintéticos, sin tokens ni valores sensibles. No cambian los límites ni las aserciones.
 
 Aprobaron lint/tipos, 158 pruebas focales en seis archivos y las cinco pruebas de asignación/room move; hay casos comunes y no se suman. Se repiten verify completo, navegador, Compuerta y Codex del nuevo commit. No hay migraciones adicionales ni datos reales.
+
+### 2026-10-08 — PR #282, revisión de 94d0fb1
+
+El recorrido simple confirma la recepción mediante el botón y recibo nativos y exige entrega RECIBIDA/turno ACTIVO antes de pasar a la otra anchura. No deja una entrega ENVIADA bloqueando el siguiente encendido. Aprobó en 1280/390.
+
+La reparación del singleton de conflictos usa una lectura interna de ciclo de vida bajo el mismo candado; la publicación aplica readEntries por destinatario antes de avisos/correo/push. Gerencia repara una incidencia oculta sin duplicarla ni recibir su contenido. Reservas conserva en lista/búsqueda/contador su propia novedad destinada a Recepción, mientras el filtro explícito de área sigue restringiendo. La fotografía simple añade fecha, autor, referencia de reserva, habitación, área, seguimiento y estado tanto a activas como a resueltas; editar sólo Seguimiento cambia la clave que acredita la revisión. Apagado mantiene la fotografía legada.
+
+Aprobaron 92 pruebas focales de seis archivos y tipos. El diagnóstico de borradores registra sólo operaciones/identidad sintética de almacenamiento, sin valores de controles ni sesiones: dos ejecuciones locales de auditoría aprobaron, pero la Compuerta anterior volvió a fallar entre entregas; queda pendiente identificarlo con esta evidencia si reaparece. No se quitan aserciones ni se amplían tiempos. Validación completa y revisión se repiten en el nuevo commit. Desarrollo local usa libro_development vacía, separada de libro_test; no hay nueva infraestructura alojada ni datos reales.

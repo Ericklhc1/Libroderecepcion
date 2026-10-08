@@ -16,6 +16,7 @@ const engines:Record<string,string[]>={
   'src/server/services/operational-automation.ts':['automation'],
   'src/server/services/subject-completion.ts':['lifecycle'],
   'src/server/services/stay-guarantee-incidents.ts':['lifecycle'],
+  'src/server/services/conflict-resolution.ts':['lifecycle'],
   'src/server/services/work-notifications.ts':['stakeholders'],
   'src/server/ai/execution/revision.ts':['revision'],
 };

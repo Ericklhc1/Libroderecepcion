@@ -33,7 +33,7 @@ export async function listSimpleNovelties(user: EntryReader, input: { area?: str
   const where: Prisma.OperationalEntryWhereInput = {
     deletedAt: null, isDemo: false, type: { in: ['NOVEDAD', 'INCIDENCIA'] },
     AND: [
-      ...(areaIds ? [{ departmentId: { in: areaIds } }] : []),
+      ...(areaIds ? [{ OR:[{departmentId:{in:areaIds}},{createdById:user.id}] }] : []),
       ...(input.area ? [{ departmentId: input.area }] : []),
       ...(input.state === 'resueltas' ? [{ status: { in: ['RESUELTO', 'CERRADO'] as EntryStatus[] } }] : input.state === 'todas' ? [] : [{ status: { notIn: ['RESUELTO', 'CERRADO'] as EntryStatus[] } }]),
       ...(input.q?.trim() ? [{ OR: [{ title: { contains: input.q.trim(), mode: 'insensitive' as const } }, { description: { contains: input.q.trim(), mode: 'insensitive' as const } }, { workNextAction: { contains: input.q.trim(), mode: 'insensitive' as const } }, { room: { number: { contains: input.q.trim(), mode: 'insensitive' as const } } }, { reservationReference: { contains: input.q.trim(), mode: 'insensitive' as const } }] }] : []),

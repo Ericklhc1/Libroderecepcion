@@ -290,7 +290,7 @@ export async function resolveAllOperationalConflicts(
   let escalationEntryId: string | null = null;
   await prisma.$transaction(async tx=>{
     const simpleMode=await lockNativeNoveltyCreation(tx);
-    const existingEscalation = await readEntries(tx, user).findFirst({
+    const existingEscalation = await readEntries(tx,{engine:'lifecycle'}).findFirst({
       where: {
         deletedAt: null,
         category: 'CONFLICTOS_REQUIEREN_DECISION',
@@ -366,10 +366,16 @@ export async function resolveAllOperationalConflicts(
 
   });
 
-  const recipients = await prisma.user.findMany({
+  const candidates = await prisma.user.findMany({
     where: { deletedAt: null, active: true },
-    select: { id: true },
+    select: { id: true, departmentId:true, role:{select:{key:true}} },
   });
+  // Repair scans do not grant access to their private source or its mail/push.
+  const notificationEntryId=escalationEntryId??logEntry.id;
+  const recipients=[];
+  for(const person of candidates){
+    if(await readEntries(prisma,{id:person.id,departmentId:person.departmentId,roleKey:person.role.key,isSystemAdmin:person.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]}).count({where:{id:notificationEntryId}}))recipients.push(person);
+  }
   const body =
     remainingConflicts.length === 0
       ? `${user.name} ejecutó la reconciliación global. ${resolved} conflicto(s) quedaron resueltos; no quedan conflictos vivos.`

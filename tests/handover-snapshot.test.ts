@@ -17,9 +17,9 @@ import {
   seedCatalog,
   openShiftAs,
 } from './helpers';
-import { buildHandoverSnapshot } from '@/server/services/handover-snapshot';
+import { buildHandoverSnapshot,receptionSummaryKey } from '@/server/services/handover-snapshot';
 import { runAlertEngine } from '@/server/services/alert-engine';
-import { createEntry } from '@/server/services/entries';
+import { createEntry,updateEntry,changeEntryStatus } from '@/server/services/entries';
 import { createTask } from '@/server/services/tasks';
 import { createFollowUp } from '@/server/services/followups';
 import {
@@ -53,6 +53,10 @@ describe('resumen automático de la entrega', () => {
     const shift=await createShift({userId:user.id,type:'DIA'});await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:simpleMode,category:'pruebas'}});
     await prisma.operationalEntry.createMany({data:[...Array.from({length:201},(_,index)=>({type:'NOVEDAD' as const,title:`Abierta completa ${index}`,description:'Todas disponibles para revisión',createdById:user.id,status:'ABIERTO' as const})),...Array.from({length:151},(_,index)=>({type:'NOVEDAD' as const,title:`Resuelta completa ${index}`,description:'Todas disponibles para revisión',createdById:user.id,status:'RESUELTO' as const,shiftId:shift.id,closedAt:new Date()}))]});
     const snapshot=await buildHandoverSnapshot(user,new Date(),{shiftId:shift.id});const rows=snapshot.filter(row=>row.refType==='entry');expect(rows.filter(row=>row.title.includes('Abierta completa'))).toHaveLength(simpleMode?201:200);expect(rows.filter(row=>row.title.includes('Resuelta completa'))).toHaveLength(simpleMode?151:150);
+  });
+  it('fotografía Seguimiento, Reserva, HAB y autor antes de confirmar, también resuelta',async()=>{
+    const shift=await openShiftAs(user);await prisma.systemSetting.create({data:{key:'book.simpleNovelties',value:true,category:'pruebas'}});const room=await prisma.room.findFirstOrThrow();const row=await createEntry(user,{type:'NOVEDAD',title:'Campos operativos fotografiados',description:'Antecedente de la planilla',roomId:room.id,reservationReference:'7484708',workNextAction:'Cobrar antes de salir',priority:'MEDIA',tags:[],requiresFollowUp:false});const before=await buildHandoverSnapshot(user,new Date(),{shiftId:shift.id});const detail=before.find(item=>item.refId===row.id)!.detail!;for(const value of ['7484708',`HAB: ${room.number}`,user.name,'Cobrar antes de salir','Recepción','Estado: Abierto'])expect(detail).toContain(value);
+    await updateEntry(user,{id:row.id,workNextAction:'Confirmar cobro registrado'});const after=await buildHandoverSnapshot(user,new Date(),{shiftId:shift.id});expect(receptionSummaryKey(after)).not.toBe(receptionSummaryKey(before));expect(after.find(item=>item.refId===row.id)!.detail).toContain('Confirmar cobro registrado');await changeEntryStatus(user,{id:row.id,status:'RESUELTO'});const resolved=(await buildHandoverSnapshot(user,new Date(),{shiftId:shift.id})).find(item=>item.refId===row.id)!;for(const value of ['7484708',`HAB: ${room.number}`,'Confirmar cobro registrado','Antecedente de la planilla'])expect(resolved.detail).toContain(value);
   });
   it('agrupa cada asunto en su sección y lo clasifica por urgencia', async () => {
     await createEntry(user, {

@@ -38,6 +38,13 @@ try {
     const page=await context.newPage();activePage=page;page.setDefaultTimeout(12000);
     const errors=[]; page.on('pageerror',e=>errors.push(e.message));
     page.on('dialog',dialog=>dialog.type()==='beforeunload'?dialog.accept():dialog.dismiss());
+    await page.addInitScript(()=>{
+      const originalSet=Storage.prototype.setItem;
+      for(const method of ['setItem','removeItem']){const original=Storage.prototype[method];Storage.prototype[method]=function(key,value){
+        if(this===sessionStorage&&key.startsWith('aroh:form-draft')){let trace=[];try{trace=JSON.parse(sessionStorage.getItem('synthetic-draft-trace')??'[]');}catch{}trace.push({method,key,actor:key==='aroh:form-draft-user'?value:undefined,at:Date.now(),source:new Error().stack.split('\n').slice(2,4).join(' ')});originalSet.call(sessionStorage,'synthetic-draft-trace',JSON.stringify(trace.slice(-100)));}
+        return original.apply(this,arguments);
+      };}
+    });
     await page.addInitScript(()=>{window.__shiftUxActionResults=[];window.addEventListener('aroh:action-result',event=>window.__shiftUxActionResults.push(event.detail));});
     const url=`http://localhost:3000/turno/entrega/${handover.id}`;
     const otherUrl=`http://localhost:3000/turno/entrega/${otherHandover.id}`;
@@ -129,6 +136,7 @@ try {
   }
 } catch(error) {
   if(activePage&&!activePage.isClosed()){
+    console.error('Synthetic draft trace',await activePage.evaluate(()=>sessionStorage.getItem('synthetic-draft-trace')));
     console.error('Synthetic form readiness',await activePage.locator('form').evaluateAll(forms=>forms.slice(0,20).map(form=>({id:form.id,ready:form.getAttribute('data-action-form-ready'),handoverId:form.querySelector('input[name=handoverId]')?.value,button:form.querySelector('button[type=submit]')?.textContent}))));
     console.error('Synthetic cash draft screen',(await activePage.locator('body').innerText()).slice(-12000));
   }

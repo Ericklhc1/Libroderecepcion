@@ -23,6 +23,7 @@ import {
   ALERT_TYPE_LABEL,
   ENTRY_OPEN_STATUSES,
   ENTRY_TYPE_LABEL,
+  ENTRY_STATUS_LABEL,
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 
@@ -165,6 +166,11 @@ type SnapshotOptions = {
   includeMetrics?: boolean;
 };
 
+type SimpleNoveltyPhoto={occurredAt:Date;status:EntryStatus;workNextAction:string|null;reservationReference:string|null;createdBy:{name:string};room:{number:string}|null;reservation:{code:string}|null;department:{name:string}|null};
+function simpleNoveltyPhotoFields(row:SimpleNoveltyPhoto){
+  return [`Fecha: ${fmt(row.occurredAt)}`,`Recepcionista: ${row.createdBy.name}`,`Reserva: ${row.reservationReference??row.reservation?.code??'—'}`,`HAB: ${row.room?.number??'—'}`,`Área: ${row.department?.name??'Recepción'}`,`Seguimiento: ${row.workNextAction??'—'}`,`Estado: ${ENTRY_STATUS_LABEL[row.status]}`];
+}
+
 /**
  * Snapshot de entrega v1.4.0.
  *
@@ -220,6 +226,8 @@ export async function buildHandoverSnapshot(
         type: true,
         title: true,
         description: true,
+        occurredAt:true,status:true,workNextAction:true,reservationReference:true,
+        createdBy:{select:{name:true}},room:{select:{number:true}},reservation:{select:{code:true}},
         priority: true,
         severity: true,
         dueAt: true,
@@ -278,6 +286,8 @@ export async function buildHandoverSnapshot(
             humanId: true,
             type: true,
             title: true,
+            description:true,occurredAt:true,status:true,workNextAction:true,reservationReference:true,
+            createdBy:{select:{name:true}},room:{select:{number:true}},reservation:{select:{code:true}},department:{select:{name:true}},
             resolution: true,
             closedAt: true,
             _count: { select: { tasks: {where:taskFollowUpReadWhere(user,true)}, followUps: {where:followUpReadWhere(user,false,true)} } },
@@ -296,6 +306,7 @@ export async function buildHandoverSnapshot(
       detail: [
         ENTRY_TYPE_LABEL[resolved.type],
         resolved.resolution?.trim() || 'Resuelto durante el turno.',
+        ...(simpleMode?[resolved.description,...simpleNoveltyPhotoFields(resolved)]:[]),
         resolved._count.tasks > 0 ? `${resolved._count.tasks} tarea(s)` : null,
         resolved._count.followUps > 0
           ? `${resolved._count.followUps} seguimiento(s)`
@@ -312,8 +323,7 @@ export async function buildHandoverSnapshot(
   for (const entry of entries) {
     const detail = [
       entry.description,
-      entry.department ? `Área: ${entry.department.name}` : null,
-      entry.owner ? `Responsable: ${entry.owner.name}` : 'Sin responsable asignado',
+      ...(simpleMode?simpleNoveltyPhotoFields(entry):[entry.department ? `Área: ${entry.department.name}` : null,entry.owner ? `Responsable: ${entry.owner.name}` : 'Sin responsable asignado']),
       entry.dueAt ? `Vence: ${fmt(entry.dueAt)}` : null,
     ]
       .filter(Boolean)

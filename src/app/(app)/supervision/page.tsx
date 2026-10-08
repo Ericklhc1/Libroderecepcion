@@ -271,7 +271,7 @@ export default async function SupervisionCenterPage({
       <section id="senales" aria-label="Excepciones que requieren intervención" className="space-y-3 scroll-mt-28">
         <h2 className="font-semibold text-petrol-900">Intervenir donde hace falta</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          <Link href="/supervision?seccion=senales&excepcion=criticos#detalle-senales"><StatTile label="🔴 Críticos" value={critical} tone={critical?'alert':'good'}/></Link>
+          <Link href="/supervision?seccion=senales&excepcion=criticos#detalle-senales"><StatTile label="🔴 Críticos" value={critical + pendingClosures} tone={critical + pendingClosures?'alert':'good'}/></Link>
           <Link href="/supervision?seccion=senales&excepcion=vencidos#detalle-senales"><StatTile label="🟠 Vencidos" value={overdue} tone={overdue?'alert':'good'}/></Link>
           <Link href={`/coordinacion?vista=blocked&q=${encodeURIComponent(q)}`}><StatTile label="🟡 Impedimentos" value={blockedBoard.total} tone={blockedBoard.total?'alert':'good'}/></Link>
           <Link href={`/coordinacion?vista=unassigned&q=${encodeURIComponent(q)}`}><StatTile label="🔵 Sin responsable" value={unassignedBoard.total}/></Link>

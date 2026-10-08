@@ -15,6 +15,7 @@ import {
 import type { Prisma, Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { RuleError } from '@/server/errors';
+import {isReceptionDeskRole} from '@/lib/permissions';
 import { recordAudit } from '@/server/audit';
 import { formatDateTime } from '@/lib/format';
 import {
@@ -33,6 +34,14 @@ export type SnapshotItem = {
   refId: string | null;
 };
 
+/** Same audience for the act and its read-only Fronti context. */
+export function canReadReceptionHandover(user:Pick<CurrentUser,'isSystemAdmin'|'roleKey'|'permissions'>){
+  return user.isSystemAdmin
+    ||(isReceptionDeskRole(user.roleKey)&&user.permissions.some(p=>['shift.start','shift.receive','shift.handover','shift.close'].includes(p)))
+    ||(user.roleKey==='SUPERVISOR'&&user.permissions.includes('shift.manage'))
+    ||user.permissions.some(p=>['supervision.center.view','management.dashboard.view','audit.view'].includes(p));
+}
+
 const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={...receptionHandoverEntryWhere,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
 
 /** Preserve historical evidence and controls; redact reserved content for the current reader. */
@@ -48,8 +57,8 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
   const receptionEntries=new Set(entries.map(e=>e.id));
   const closureAlerts=await db.alert.findMany({where:{id:{in:ids('alert')},...closureValidationAlertWhere},select:{id:true}});
   const [hiddenAlerts,hiddenFollowUps]=shared?await Promise.all([
-    db.alert.findMany({where:{id:{in:ids('alert')},sourceEntries:{some:{entry:{NOT:receptionHandoverEntryWhere}}}},select:{id:true}}),
-    db.followUp.findMany({where:{id:{in:ids('followup')},sourceEntries:{some:{entry:{NOT:receptionHandoverEntryWhere}}}},select:{id:true}}),
+    db.alert.findMany({where:{id:{in:ids('alert')},sourceEntries:{some:{entry:{NOT:{AND:[receptionHandoverEntryWhere,entryReadWhere(user)]}}}}},select:{id:true}}),
+    db.followUp.findMany({where:{id:{in:ids('followup')},sourceEntries:{some:{entry:{NOT:{AND:[receptionHandoverEntryWhere,entryReadWhere(user)]}}}}},select:{id:true}}),
   ]):[[],[]];
   const excludedAlerts=new Set([...closureAlerts,...hiddenAlerts].map(a=>a.id));
   const excludedFollowUps=new Set(hiddenFollowUps.map(f=>f.id));

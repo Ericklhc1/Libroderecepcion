@@ -9,7 +9,7 @@ export async function reviewShiftClosureAction(_state: ActionState | null, formD
     const user = await requirePermission('shift.manage');
     const input = parseOrThrow(z.object({ shiftId: z.string().min(1), revision: z.string().datetime(), decision: z.enum(['VALIDADA', 'OBSERVADA']), note: z.string().trim().min(1).max(2000) }), formDataToObject(formData));
     await reviewShiftClosure(user, input);
-    revalidatePath('/supervision'); revalidatePath(`/supervision/cierres/${input.shiftId}`); revalidatePath('/turno');
+    revalidatePath('/alertas/sistema'); revalidatePath('/supervision'); revalidatePath(`/supervision/cierres/${input.shiftId}`); revalidatePath('/turno');
     return { ok: true as const, message: input.decision === 'VALIDADA' ? 'Cierre validado y auditado.' : 'Observación registrada; el cierre sigue pendiente de validación.' };
   });
 }

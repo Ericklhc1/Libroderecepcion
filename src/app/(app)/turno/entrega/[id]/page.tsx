@@ -3,7 +3,7 @@ import { closurePrintValidation } from '@/domain/handover-print';
 import { HandoverPrint } from '@/components/operational/handover-print';
 import { ClosureReviewLink } from '@/components/supervision/closure-review-form';
 import { ClearHandoverDrafts } from '@/components/operational/form-draft-session';
-import {visibleHandover} from '@/server/services/handover-snapshot';
+import {canReadReceptionHandover,visibleHandover} from '@/server/services/handover-snapshot';
 import { handoverElementPending } from '@/domain/handover-custody';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -61,11 +61,7 @@ export default async function HandoverPage({
   searchParams: Promise<{ paso?: string }>;
 }) {
   const user = await requirePageUser();
-  const canReadAct = user.isSystemAdmin
-    || (isReceptionDeskRole(user.roleKey) && user.permissions.some(p => ['shift.start','shift.receive','shift.handover','shift.close'].includes(p)))
-    || (user.roleKey === 'SUPERVISOR' && user.permissions.includes('shift.manage'))
-    || user.permissions.some(p => ['supervision.center.view','management.dashboard.view','audit.view'].includes(p));
-  if (!canReadAct) notFound();
+  if (!canReadReceptionHandover(user)) notFound();
   const { id } = await params;
   const query = await searchParams;
 

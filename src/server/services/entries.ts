@@ -632,6 +632,7 @@ export async function restoreEntry(
 /** Creator or supervisor, independent of content/assignment editing grants. */
 export async function updateEntryVisibility(user: CurrentUser, input: { id: string; revision: string; hiddenDepartmentIds: string[]; includeInReceptionHandover: boolean }) {
   return prisma.$transaction(async tx => {
+    await lockReceptionSummary(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
     const current = await tx.operationalEntry.findFirst({ where: { id: input.id, deletedAt: null }, include: { hiddenFromDepartments: { select: { id: true } } } });
     if (!current) throw new NotFoundError('La novedad no existe.');
@@ -643,7 +644,6 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     await assertEntryLinkedWorkVisibility(tx,{id:current.id,createdById:current.createdById,hiddenDepartmentIds:ids});
     // All area changes can alter a receiver's actual projection, even when the
     // reception checkbox stays unchanged (secondary area memberships apply).
-    await lockReceptionSummary(tx);
     const selectable=!current.isDemo&&(current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA)&&(ENTRY_OPEN_STATUSES.includes(current.status)||current.status===EntryStatus.RESUELTO||current.status===EntryStatus.CERRADO);
     const drafts=selectable?await tx.shiftHandover.findMany({where:{status:'BORRADOR',...(ENTRY_OPEN_STATUSES.includes(current.status)?{}:{fromShiftId:current.shiftId??''})},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true,pendingsReviewedAt:true,finalReviewAt:true,urgentAcknowledgedAt:true,issuedBy:{select:{id:true,departmentId:true,role:{select:{key:true}}}}}}):[];
     const readable=async(d:typeof drafts[number])=>{

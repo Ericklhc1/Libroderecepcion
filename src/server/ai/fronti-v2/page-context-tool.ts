@@ -1,4 +1,4 @@
-import { visibleHandover } from '@/server/services/handover-snapshot';
+import { canReadReceptionHandover,visibleHandover } from '@/server/services/handover-snapshot';
 import { assertClosureReviewer, legacyClosureAlertWhere, closureReviewState } from '@/server/services/closure-review';
 import { outstandingAmount } from '@/domain/guarantees';
 import { listAreaAttentions } from '@/server/services/subject-distribution';
@@ -336,11 +336,7 @@ async function detailSnapshot(
   }
 
   if (page.entityType === 'ShiftHandover') {
-    requireAny(
-      user,
-      ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
-      'No tienes permiso para consultar entregas de turno.',
-    );
+    if(!canReadReceptionHandover(user))throw new Error('No tienes permiso para consultar entregas de turno.');
     const handover = await prisma.shiftHandover.findFirst({
       where: { id: page.entityId, ...(user.isSystemAdmin?{}:{fromShift:{isDemo:false}}) },
       select: {

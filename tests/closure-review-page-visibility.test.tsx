@@ -46,10 +46,14 @@ describe('cierre histórico: evidencia vigente en ficha, Centro y Fronti',()=>{
     expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).toContain(shift.id);
     const html=renderToStaticMarkup(await AlertsPage({searchParams:Promise.resolve({})}));
     expect(html).toContain(`/supervision/cierres/${shift.id}`);expect(html).toContain('Validar / Observar');expect(html).not.toContain('Crear tarea desde la alerta');expect(html).not.toContain('Resolver señal');
-    const validated=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'VALIDADA',note:'Caja y evidencias revisadas',revision:old.updatedAt.toISOString()});
+    const observed=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'OBSERVADA',note:'Comprobante pendiente sintético',revision:old.updatedAt.toISOString()});
+    expect(renderToStaticMarkup(await AlertsPage({searchParams:Promise.resolve({})}))).toContain('Validar / Observar');
+    const validated=await reviewShiftClosure(supervisor,{shiftId:shift.id,decision:'VALIDADA',note:'Caja y evidencias revisadas',revision:observed.updatedAt.toISOString()});
     expect(validated.closureReviewDecision).toBe('VALIDADA');expect((await listPendingClosureReviews(supervisor)).map(r=>r.id)).not.toContain(shift.id);
     expect(await prisma.auditLog.count({where:{entity:'Shift',entityId:shift.id,summary:{startsWith:'Cierre validado'},reason:'Caja y evidencias revisadas'}})).toBe(1);
     expect(await prisma.alert.findUnique({where:{id:legacy.id}})).toMatchObject({status:'NUEVA'});
+    const active=renderToStaticMarkup(await AlertsPage({searchParams:Promise.resolve({})}));expect(active).not.toContain('Validar cierre de turno');expect(active).not.toContain('Validar / Observar');
+    const historical=renderToStaticMarkup(await AlertsPage({searchParams:Promise.resolve({estado:'todas'})}));expect(historical).toContain('Validar cierre de turno');expect(historical).toContain('Evidencia histórica');expect(historical).toContain('Ver cierre');expect(historical).not.toContain('Validar / Observar');
   });
   for(const reviewer of [true,false])it(`el enlace histórico usa permisos de revisión y no de alertas: reviewer=${reviewer}`,async()=>{
     const supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});const reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const shift=await createShift({userId:reception.id,type:'DIA'});

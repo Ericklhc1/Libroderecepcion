@@ -1,5 +1,5 @@
 import { beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
-import { prisma,seedCatalog,resetOperationalData,createUser,ROLE_KEYS } from './helpers';
+import { prisma,seedCatalog,resetOperationalData,createUser,createShift,ROLE_KEYS } from './helpers';
 import { createEntry,updateEntry,changeEntryStatus,updateEntryVisibility } from '@/server/services/entries';
 import { createSimpleNovelty,listSimpleNovelties,resolveSimpleNovelty,simpleNoveltiesEnabled,updateSimpleNovelty } from '@/server/services/simple-novelties';
 import { entryReadSql,readEntries } from '@/server/services/entry-visibility';
@@ -18,6 +18,16 @@ import {getWebPushPayload} from '@/server/services/web-push';
 async function flag(value:boolean){await prisma.systemSetting.upsert({where:{key:'book.simpleNovelties'},create:{key:'book.simpleNovelties',value,category:'pruebas'},update:{value}});}
 describe('prueba de novedades simples sobre el libro existente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
+  it('guardar apagado por primera vez conserva las revisiones de borradores y entregas enviadas',async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});auth.user=admin;const now=new Date();
+    const handovers=[];
+    for(const status of ['BORRADOR','ENVIADA'] as const){
+      const shift=await createShift({userId:admin.id,type:'DIA'});handovers.push(await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:admin.id,status,finalReviewAt:now,urgentAcknowledgedAt:now,receiverFinalReviewAt:now,receiverUrgentAcknowledgedAt:now,receiverFinalSummaryKey:'synthetic-summary'}}));
+    }
+    const form=new FormData();form.set('key','book.simpleNovelties');form.set('value','false');
+    expect((await saveSettingAction(null,form)).ok).toBe(true);expect(await simpleNoveltiesEnabled()).toBe(false);
+    for(const original of handovers)expect(await prisma.shiftHandover.findUnique({where:{id:original.id}})).toMatchObject({finalReviewAt:now,urgentAcknowledgedAt:now,receiverFinalReviewAt:now,receiverUrgentAcknowledgedAt:now,receiverFinalSummaryKey:'synthetic-summary'});
+  });
   it('pagina más de cuarenta novedades del área sin perder la más antigua',async()=>{
     await flag(true);const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});
     const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});maid.departmentId=area.id;

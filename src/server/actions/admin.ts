@@ -380,7 +380,7 @@ export async function saveSettingAction(
       await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'setting:'+key}))::text`;
       const previous=await tx.systemSetting.findUnique({where:{key}});
       assertAuthorizedRevision(revisionFromForm(formData),previous);
-      if(key==='book.simpleNovelties'&&value!==previous?.value){
+      if(key==='book.simpleNovelties'&&value!==(previous?.value??defaultValue)){
         await tx.shiftHandover.updateMany({where:{status:'BORRADOR'},data:{finalReviewAt:null,urgentAcknowledgedAt:null}});
         await tx.shiftHandover.updateMany({where:{status:'ENVIADA'},data:{receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null,receiverFinalSummaryKey:null}});
       }

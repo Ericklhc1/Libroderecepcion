@@ -92,10 +92,10 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
       <details className="w-full border-t border-slate-100 pt-2"><summary className="cursor-pointer text-sm font-medium">Más filtros</summary><div className="mt-3 flex flex-wrap items-end gap-3">
         <label className="min-w-0 text-xs font-medium text-slate-600">Día operativo<input className="input-base mt-1" name="fecha" type="date" defaultValue={board.date}/></label>
         <label className="text-xs font-medium text-slate-600">Piso<select className="input-base mt-1" name="piso" defaultValue={params.piso??''}><option value="">Todos / zonas comunes</option>{[4,5,6].map(f=><option key={f} value={f}>Piso {f}</option>)}</select></label>
-        {simpleAreaNovelties}
     {board.teamVisible&&<label className="min-w-0 text-xs font-medium text-slate-600">Responsable<select className="input-base mt-1" name="responsable" defaultValue={params.responsable??''}><option value="">Todo el equipo</option>{board.workload.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
       </div></details>
     </ListFilterBar>
+    {simpleAreaNovelties}
     <p className="text-xs text-slate-500">Los indicadores resumen el día y su continuidad dentro de tu acceso; buscar o filtrar sólo cambia la lista de trabajos.</p>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><StatTile label="Por asignar" value={board.counts.unassigned}/><StatTile label="Por revisar" value={board.counts.review}/><StatTile label="Con impedimento" value={board.counts.blocked}/><StatTile label="Terminados del día" value={board.counts.completed}/></div>
     {board.teamVisible&&<section className="card space-y-3 p-4" aria-label="Tablero de habitaciones">

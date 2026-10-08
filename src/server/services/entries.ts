@@ -704,7 +704,7 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
       hiddenFromDepartments: { set: ids.map(id => ({ id })) },
     }, include: entryInclude });
     const afterReadable=await Promise.all(drafts.map(readable));
-    const invalidatedDrafts=drafts.filter((_,i)=>!beforeReadable[i]&&afterReadable[i]).map(d=>({id:d.id,receptionSummaryRevision:d.receptionSummaryRevision,receptionSummaryPreparedRevision:d.receptionSummaryPreparedRevision,pendingsReviewedAt:d.pendingsReviewedAt?.toISOString()??null,finalReviewAt:d.finalReviewAt?.toISOString()??null,urgentAcknowledgedAt:d.urgentAcknowledgedAt?.toISOString()??null}));
+    const invalidatedDrafts=drafts.filter((_,i)=>beforeReadable[i]!==afterReadable[i]).map(d=>({id:d.id,receptionSummaryRevision:d.receptionSummaryRevision,receptionSummaryPreparedRevision:d.receptionSummaryPreparedRevision,pendingsReviewedAt:d.pendingsReviewedAt?.toISOString()??null,finalReviewAt:d.finalReviewAt?.toISOString()??null,urgentAcknowledgedAt:d.urgentAcknowledgedAt?.toISOString()??null}));
     if(invalidatedDrafts.length)await tx.shiftHandover.updateMany({where:{id:{in:invalidatedDrafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
     await tx.auditLog.create({ data: {
       entity: 'OperationalEntry', entityId: current.id, action: AuditAction.EDITAR,

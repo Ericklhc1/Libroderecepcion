@@ -1,7 +1,6 @@
 'use server';
 import {ensureUnresolvedGuaranteeIncidents} from '@/server/services/stay-guarantee-incidents';
 import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
-import { readEntries } from '@/server/services/entry-visibility';
 
 import { revalidatePath } from 'next/cache';
 import {
@@ -19,7 +18,6 @@ import { ENTRY_OPEN_STATUSES } from '@/domain/labels';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { formDataToObject, parseOrThrow, runAction, type ActionState } from '@/server/action';
 import { recordAudit } from '@/server/audit';
-import type { CurrentUser } from '@/server/auth/current-user';
 import { requirePermission } from '@/server/auth/guard';
 import { RuleError } from '@/server/errors';
 import { confirmCheckOut, softDeleteStay } from '@/server/services/rooms';

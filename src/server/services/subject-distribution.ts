@@ -1,4 +1,3 @@
-import {entryReadWhere,assertEntryWorkDestination} from './entry-visibility';
 import {assertSubjectDistributionEnabled} from './subject-distribution-gate';
 import 'server-only';
 import {createHash} from 'node:crypto';
@@ -38,7 +37,7 @@ async function canRead(user:CurrentUser,row:Attention,tx:Tx){
   return false;
 }
 export async function getAreaAttention(user:CurrentUser,id:string,tx:Tx=prisma){
-  const row=await tx.subjectAreaAttention.findFirst({where:{id,entry:{AND:[entryReadWhere(user)]}},include});
+  const row=await tx.subjectAreaAttention.findUnique({where:{id},include});
   if(!row||!await canRead(user,row,tx))throw new NotFoundError();
   return row;
 }
@@ -140,7 +139,6 @@ export async function decideAreaAttention(user:CurrentUser,input:{id:string;vers
       if(row.knownAt)return row;
       data={...data,knownAt:now,knownById:user.id};
     }else if(input.action==='REABRIR'){
-      await assertEntryWorkDestination(tx,row.entryId,row.departmentId,row.urgent?row.urgentContactId:null);
       if(row.task&&!['VALIDADA','COMPLETADA','CANCELADA'].includes(row.task.status)||row.housekeeping&&!['RESUELTO','CANCELADO'].includes(row.housekeeping.status)||!row.task&&!row.housekeeping&&row.status!=='INFORMADA')throw new RuleError('La intervención todavía está pendiente; continúa su atención vigente.');
       data={...data,status:'POR_REVISAR',knownAt:null,knownById:null,decisionAt:null,decidedById:null,decisionNote:`Nueva atención solicitada: ${note}`};
     }else if(responding){
@@ -197,7 +195,7 @@ export async function listAreaAttentions(user:CurrentUser,input:{entryId?:string
   const scope:Prisma.SubjectAreaAttentionWhereInput=user.isSystemAdmin?{}:{OR:[{createdById:user.id},{entry:{ownerId:user.id}},{entry:{createdById:user.id}},{departmentId:{in:reviewAreas}},{departmentId:{in:memberAreas},urgentContactId:user.id},{departmentId:{in:memberAreas},status:{in:['INFORMADA','ASIGNADA']}}]};
   const page=Math.max(1,Math.min(100000,Math.trunc(input.page||1)));
   const pageSize=input.entryId?100:25;
-  const rows=await prisma.subjectAreaAttention.findMany({where:{AND:[scope],entry:{deletedAt:null,isDemo:false,AND:[entryReadWhere(user)],...(!input.entryId&&!input.id?{status:{notIn:['RESUELTO','CERRADO']}}:{})},...(input.entryId?{entryId:input.entryId}:{}),...(input.departmentId?{departmentId:input.departmentId}:{}),...(input.id?{id:input.id}:{})},include,orderBy:[{urgent:'desc'},{createdAt:'desc'},{id:'asc'}],take:pageSize+1,skip:(page-1)*pageSize});
+  const rows=await prisma.subjectAreaAttention.findMany({where:{AND:[scope],entry:{deletedAt:null,isDemo:false,...(!input.entryId&&!input.id?{status:{notIn:['RESUELTO','CERRADO']}}:{})},...(input.entryId?{entryId:input.entryId}:{}),...(input.departmentId?{departmentId:input.departmentId}:{}),...(input.id?{id:input.id}:{})},include,orderBy:[{urgent:'desc'},{createdAt:'desc'},{id:'asc'}],take:pageSize+1,skip:(page-1)*pageSize});
   const result=[];
   for(const row of rows)if(await canRead(user,row,prisma))result.push({...row,canReview:await canReviewArea(user,row.departmentId,row.department.key),canRespond:row.createdById===user.id||row.entry.createdById===user.id||row.entry.ownerId===user.id,canClaim:row.urgentContactId===user.id&&!(row.task?.assigneeId||row.housekeeping?.assignedToId)});
   return {rows:result.slice(0,pageSize),hasMore:rows.length>pageSize,page,areas:areas.filter(a=>user.isSystemAdmin||memberAreas.includes(a.id)||reviewAreas.includes(a.id))};

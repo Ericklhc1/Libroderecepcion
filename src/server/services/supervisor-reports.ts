@@ -7,7 +7,8 @@ import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { listGymPasses } from './gym-pass';
 
-import {closureValidationAlertWhere,entryReadWhere,type EntryReader} from './entry-visibility';
+import {closureValidationAlertWhere} from './closure-validation-policy';
+import type {CurrentUser} from '@/server/auth/current-user';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
 
@@ -54,7 +55,7 @@ export function reportDateRange(fromRaw?: string | null, toRaw?: string | null):
 }
 
 export async function buildSupervisorReport(
-  user: EntryReader,
+  user: Pick<CurrentUser,'id'|'permissions'>,
   type: SupervisorReportType,
   range: { from: Date; to: Date },
 ): Promise<SupervisorReport> {
@@ -127,7 +128,7 @@ export async function buildSupervisorReport(
   ] = await Promise.all([
     prisma.operationalEntry.groupBy({
       by: ['status'],
-      where: { AND:[entryReadWhere(user)], deletedAt: null, occurredAt: { gte: range.from, lte: range.to } },
+      where: { deletedAt: null, occurredAt: { gte: range.from, lte: range.to } },
       _count: { _all: true },
     }),
     prisma.task.groupBy({
@@ -147,7 +148,7 @@ export async function buildSupervisorReport(
       take: 500,
     }),
     prisma.operationalEntry.count({
-      where: { AND:[entryReadWhere(user)], deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
+      where: { deletedAt: null, status: { in: [...OPEN_ENTRY_STATUSES] } },
     }),
     prisma.task.count({
       where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },

@@ -40,10 +40,10 @@ export default async function OperationalHealthPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user=await requirePagePermission('supervision.center.view');
+  await requirePagePermission('supervision.center.view');
   const params = await searchParams;
   const period = parsePeriod(params.periodo);
-  const health = await getOperationalHealth(operationalHealthRange(period),user);
+  const health = await getOperationalHealth(operationalHealthRange(period));
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">

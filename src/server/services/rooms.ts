@@ -1,4 +1,3 @@
-import {entryReadWhere,type EntryReader} from './entry-visibility';
 import 'server-only';
 import { AuditAction, KeyStatus, RoomStayStage, RoomStayStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -147,7 +146,7 @@ export type RoomDetail = RoomWithState & {
   }>;
 };
 
-export async function getRoomDetail(number: string,user:EntryReader={id:'',permissions:[],isSystemAdmin:false,roleKey:'RECEPCIONISTA'}): Promise<RoomDetail> {
+export async function getRoomDetail(number: string): Promise<RoomDetail> {
   const room = await prisma.room.findUnique({
     where: { number },
     select: {
@@ -216,7 +215,7 @@ export async function getRoomDetail(number: string,user:EntryReader={id:'',permi
       },
       _count: {
         select: {
-          entries: { where: { AND:[entryReadWhere(user)], deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } } },
+          entries: { where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } } },
         },
       },
     },

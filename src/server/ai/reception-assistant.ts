@@ -1,4 +1,3 @@
-import { entryReadWhere } from '@/server/services/entry-visibility';
 import {prepareSubjectIntent} from './fronti-v2/subject-intent';
 import {isSubjectAttentionTask} from '@/domain/subject-attention';
 import 'server-only';
@@ -266,9 +265,9 @@ function compactStay(stay: { id: string; reservationId: string; guestNames: stri
     : null;
 }
 
-export async function roomTool(user: CurrentUser, args: Record<string, unknown>) {
+async function roomTool(user: CurrentUser, args: Record<string, unknown>) {
   requireToolPermission(user, 'room.view');
-  const room = await getRoomDetail(cleanRoomNumber(args.roomNumber),user);
+  const room = await getRoomDetail(cleanRoomNumber(args.roomNumber));
   return {
     room: room.number,
     state: room.snapshot.state,
@@ -317,7 +316,7 @@ async function prioritiesTool(user: CurrentUser) {
   };
 }
 
-export async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
+async function deadlinesTool(user: CurrentUser, args: Record<string, unknown>) {
   const canTasks =
     user.isSystemAdmin ||
     ['task.create', 'task.assign', 'task.edit', 'task.close', 'metrics.view'].some((permission) =>
@@ -404,7 +403,7 @@ export async function deadlinesTool(user: CurrentUser, args: Record<string, unkn
       : Promise.resolve([]),
     canEntries
       ? prisma.operationalEntry.findMany({
-          where: { AND:[entryReadWhere(user)],
+          where: {
             deletedAt: null,
             status: { in: ENTRY_OPEN_STATUSES },
             dueAt: { not: null, lte: until },
@@ -594,7 +593,7 @@ async function checkoutsProposalTool(user: CurrentUser, args: Record<string, unk
   const roomNumbers = Array.from(new Set(raw.map(cleanRoomNumber).filter(Boolean))).slice(0, 20);
   if (!roomNumbers.length) throw new Error('Indica al menos una habitación.');
 
-  const rooms = await Promise.all(roomNumbers.map((roomNumber) => getRoomDetail(roomNumber,user)));
+  const rooms = await Promise.all(roomNumbers.map((roomNumber) => getRoomDetail(roomNumber)));
   const invalid = rooms.filter((room) => !room.snapshot.outgoing);
   if (invalid.length) {
     return {
@@ -1366,7 +1365,7 @@ export async function executeReceptionConfirmation(
   requireToolPermission(user, 'room.manage');
   const validated: Array<{ roomNumber: string; stayId: string }> = [];
   for (const roomNumber of pending.args.roomNumbers) {
-    const room = await getRoomDetail(roomNumber,user);
+    const room = await getRoomDetail(roomNumber);
     if (!room.snapshot.outgoing) {
       throw new Error(`La habitación ${roomNumber} ya no tiene una salida pendiente. No se ejecutó el lote.`);
     }

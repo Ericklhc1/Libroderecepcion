@@ -1,5 +1,4 @@
 import 'server-only';
-import {lockReceptionSummary,invalidateReceptionDraftsForUser} from './handover-snapshot';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -25,7 +24,6 @@ export const collaboratorSchema = z.object({
 export async function saveScheduleCollaborator(user: CurrentUser, raw: z.input<typeof collaboratorSchema>) {
   assertSchedulePermission(user, 'schedule.catalog.manage'); const input = collaboratorSchema.parse(raw);
   return prisma.$transaction(async (tx) => {
-    await lockReceptionSummary(tx);
     // Share the substitution reader's User → Department → collaborator order.
     // NO KEY UPDATE permits notification/audit FK KEY SHARE in schedule writers.
     await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${input.userId} FOR NO KEY UPDATE`;
@@ -61,7 +59,6 @@ export async function saveScheduleCollaborator(user: CurrentUser, raw: z.input<t
     if (existing && editing && (!data.active || data.functionName !== existing.functionName) && await tx.scheduleSlot.count({ where: { collaboratorId: existing.id, ...ongoingOrFutureScheduleSlots() } })) throw new RuleError('Revisa las asignaciones vigentes o futuras antes de deshabilitar el perfil global o cambiar su función. Reasigna o cancela las futuras y espera a que finalicen las jornadas iniciadas.');
     const saved = existing ? await tx.scheduleCollaborator.update({ where: { id: existing.id }, data: { ...data, version: { increment: 1 } } }) : await tx.scheduleCollaborator.create({ data });
     if (!editing) for (const departmentId of input.departmentIds) await tx.scheduleMembership.upsert({ where: { collaboratorId_departmentId: { collaboratorId: saved.id, departmentId } }, create: { collaboratorId: saved.id, departmentId }, update: { active: true } });
-    if(existing?.active!==saved.active||(!editing&&input.departmentIds.some(id=>!existing?.memberships.some(m=>m.departmentId===id&&m.active))))await invalidateReceptionDraftsForUser(tx,user,account.id);
     for (const area of input.departmentIds) await scheduleCatalogAudit(tx, user, area, `Usuario ${account.name}: ${existing ? 'actualizado' : 'incorporado'}`, { id: saved.id, ...data, departmentIds: input.departmentIds });
     return saved;
   });
@@ -71,7 +68,6 @@ export async function removeScheduleMembership(user: CurrentUser, raw: unknown) 
   const input = z.object({ collaboratorId: scheduleId, departmentId: scheduleId, version: z.coerce.number().int().min(0), reason: z.string().trim().min(3).max(1000) }).parse(raw);
   await assertScheduleArea(user, input.departmentId, 'schedule.catalog.manage');
   return prisma.$transaction(async tx => {
-    await lockReceptionSummary(tx);
     const observed = await tx.scheduleCollaborator.findUnique({ where: { id: input.collaboratorId }, select: { userId: true } });
     if (!observed) throw new NotFoundError();
     if (observed.userId) await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${observed.userId} FOR NO KEY UPDATE`;
@@ -83,7 +79,6 @@ export async function removeScheduleMembership(user: CurrentUser, raw: unknown) 
     const membership = person.memberships.find(m => m.departmentId === input.departmentId && m.active);
     if (!membership) throw new RuleError('Esta pertenencia ya está retirada. Actualiza el listado.');
     if (await tx.scheduleSlot.count({ where: { collaboratorId: person.id, plan: { departmentId: input.departmentId }, ...ongoingOrFutureScheduleSlots() } })) throw new RuleError('Reasigna o cancela las asignaciones futuras de esta área y espera a que finalicen las jornadas iniciadas antes de retirar la pertenencia.');
-    if(person.userId&&person.memberships.some(m=>m.departmentId===input.departmentId&&m.active))await invalidateReceptionDraftsForUser(tx,user,person.userId);
     await tx.scheduleMembership.update({ where: { collaboratorId_departmentId: { collaboratorId: person.id, departmentId: input.departmentId } }, data: { active: false } });
     await tx.scheduleCollaborator.update({ where: { id: person.id }, data: { version: { increment: 1 } } });
     await tx.auditLog.create({ data: { entity: 'ScheduleCatalog', entityId: input.departmentId, action: 'EDITAR', summary: `Pertenencia al área retirada: ${person.name}`, reason: input.reason, userId: user.id, sessionId: user.sessionId, before: { collaboratorId: person.id, departmentId: input.departmentId, active: true }, after: { collaboratorId: person.id, departmentId: input.departmentId, active: false, accountUnchanged: true } } });

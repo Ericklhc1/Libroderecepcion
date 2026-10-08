@@ -1,6 +1,5 @@
-import {createHash} from 'node:crypto';
 import { isReceptionHandoverItem } from '@/domain/handover-print';
-import { receptionHandoverEntryWhere, closureValidationAlertWhere, entryReadWhere } from './entry-visibility';
+import {closureValidationAlertWhere} from './closure-validation-policy';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
@@ -14,9 +13,7 @@ import {
 } from '@prisma/client';
 import type { Prisma, Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import { RuleError } from '@/server/errors';
 import {isReceptionDeskRole} from '@/lib/permissions';
-import { recordAudit } from '@/server/audit';
 import { formatDateTime } from '@/lib/format';
 import {
   ALERT_TYPE_LABEL,
@@ -42,7 +39,7 @@ export function canReadReceptionHandover(user:Pick<CurrentUser,'isSystemAdmin'|'
     ||user.permissions.some(p=>['supervision.center.view','management.dashboard.view','audit.view'].includes(p));
 }
 
-const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={...receptionHandoverEntryWhere,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
+const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={deletedAt:null,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
 
 /** Preserve historical evidence and controls; redact reserved content for the current reader. */
 export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[], shared=false, db:Prisma.TransactionClient=prisma):Promise<T[]> {
@@ -51,26 +48,15 @@ export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'
     db.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user,shared)]},select:{id:true}}),
     db.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true,shared)]},select:{id:true}}),
     db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}]},select:{id:true}}),
-    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)]},select:{id:true}}),
+    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere},select:{id:true}}),
   ]);
   const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
   const receptionEntries=new Set(entries.map(e=>e.id));
   const closureAlerts=await db.alert.findMany({where:{id:{in:ids('alert')},...closureValidationAlertWhere},select:{id:true}});
-  const [hiddenAlerts,hiddenFollowUps]=shared?await Promise.all([
-    db.alert.findMany({where:{id:{in:ids('alert')},sourceEntries:{some:{entry:{NOT:{AND:[receptionHandoverEntryWhere,entryReadWhere(user)]}}}}},select:{id:true}}),
-    db.followUp.findMany({where:{id:{in:ids('followup')},sourceEntries:{some:{entry:{NOT:{AND:[receptionHandoverEntryWhere,entryReadWhere(user)]}}}}},select:{id:true}}),
-  ]):[[],[]];
-  const excludedAlerts=new Set([...closureAlerts,...hiddenAlerts].map(a=>a.id));
-  const excludedFollowUps=new Set(hiddenFollowUps.map(f=>f.id));
-  return items.filter(item=>!shared || (isReceptionHandoverItem({...item,section:'section' in item ? String(item.section) : ''}) && !(item.refType==='entry'&&item.refId&&!receptionEntries.has(item.refId)) && !(item.refType==='alert'&&item.refId&&excludedAlerts.has(item.refId)) && !(item.refType==='followup'&&item.refId&&excludedFollowUps.has(item.refId)))).map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
+  const excludedAlerts=new Set(closureAlerts.map(a=>a.id));
+  return items.filter(item=>!shared || (isReceptionHandoverItem({...item,section:'section' in item ? String(item.section) : ''}) && !(item.refType==='entry'&&item.refId&&!receptionEntries.has(item.refId)) && !(item.refType==='alert'&&item.refId&&excludedAlerts.has(item.refId)))).map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
     ? {...item,title:'Asunto reservado',detail:'Requiere revisión por una persona autorizada. La evidencia original se conserva.',refType:null,refId:null}
     : item);
-}
-
-/** Exact visible photographed multiset, including duplicates; order does not change evidence. */
-export function receptionSummaryKey(items:SnapshotItem[]){
-  const rows=items.map(i=>JSON.stringify([i.level,i.section,i.title,i.detail??null,i.refType??null,i.refId??null])).sort();
-  return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 }
 
 /** Sanitizes both native items and the historic JSON photograph without rewriting either. */
@@ -96,33 +82,7 @@ export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:P
     const counts=snapshot.counts;
     if(counts&&typeof counts==='object'&&!Array.isArray(counts))snapshot={...snapshot,counts:{...counts,urgente:items.filter(i=>i.level===HandoverLevel.URGENTE).length,importante:items.filter(i=>i.level===HandoverLevel.IMPORTANTE).length,informativo:items.filter(i=>i.level===HandoverLevel.INFORMATIVO).length,...('total' in counts?{total:items.length}:{})}};
   }
-  let receptionReviewMask:{receiverBriefingReviewedAt?:null;receiverFinalReviewAt?:null;receiverUrgentAcknowledgedAt?:null}={};
-  if(handover.status==='ENVIADA'&&'receiverBriefingReviewedAt' in handover){
-    const key=receptionSummaryKey(items);
-    if(!('receiverBriefingSummaryKey' in handover)||handover.receiverBriefingSummaryKey!==key)receptionReviewMask={receiverBriefingReviewedAt:null,receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null};
-    else if(!('receiverFinalSummaryKey' in handover)||handover.receiverFinalSummaryKey!==key)receptionReviewMask={receiverFinalReviewAt:null,receiverUrgentAcknowledgedAt:null};
-  }
-  return {...handover,items,snapshot,...receptionReviewMask};
-}
-
-/** Call under lockReceptionSummary: identities/areas are reloaded in the same transaction. */
-export async function reloadReceptionReader(tx:Prisma.TransactionClient,user:CurrentUser):Promise<CurrentUser>{
-  const account=await tx.user.findFirst({where:{id:user.id,active:true,deletedAt:null},select:{roleId:true,departmentId:true,role:{select:{key:true}}}});
-  if(!account||account.roleId!==user.roleId)throw new RuleError('La cuenta cambió. Actualiza antes de continuar con la entrega.');
-  return {...user,departmentId:account.departmentId,roleKey:account.role.key,isSystemAdmin:account.role.key==='ADMINISTRADOR_SISTEMA'};
-}
-
-/** Native identity writers invalidate only this preparer's drafts; sent evidence stays immutable. */
-export async function invalidateReceptionDraftsForUser(tx:Prisma.TransactionClient,actor:CurrentUser,userId:string){
-  const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR',issuedById:userId},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true}});
-  if(!drafts.length)return;
-  await tx.shiftHandover.updateMany({where:{id:{in:drafts.map(d=>d.id)},status:'BORRADOR'},data:{receptionSummaryRevision:{increment:1},pendingsReviewedAt:null,finalReviewAt:null,urgentAcknowledgedAt:null}});
-  for(const draft of drafts)await recordAudit({entity:'ShiftHandover',entityId:draft.id,action:'EDITAR',summary:'Selección del borrador pendiente de regenerar por cambio de áreas del emisor',user:actor,before:{receptionSummaryRevision:draft.receptionSummaryRevision},after:{receptionSummaryRevision:draft.receptionSummaryRevision+1,preparedById:userId}},tx);
-}
-
-/** Serialize eligibility changes with prepare/review/send in the same engine. */
-export async function lockReceptionSummary(tx:Prisma.TransactionClient){
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('aroh.reception-handover-summary'))::text`;
+  return {...handover,items,snapshot};
 }
 
 const SECTIONS = {
@@ -168,7 +128,7 @@ type SnapshotOptions = {
  * Snapshot de entrega v1.4.0.
  *
  * La entrega resume únicamente la continuidad operacional del Libro:
- * Novedades/Incidencias visibles para Recepción, Seguimientos operativos y Alertas.
+ * Novedades/Incidencias, Seguimientos operativos y Alertas.
  * Las tareas y acciones de Supervisión permanecen en sus motores, fuera del relevo. Caja mantiene su
  * propio snapshot y flujo de custodia. PMS, habitaciones, reservas, huéspedes,
  * llaves, multas y ocupación no se consultan ni se proyectan aquí.
@@ -211,7 +171,7 @@ export async function buildHandoverSnapshot(
     resolvedEntries,
   ] = await Promise.all([
     db.operationalEntry.findMany({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)] },
+      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere },
       select: {
         id: true,
         humanId: true,
@@ -228,7 +188,7 @@ export async function buildHandoverSnapshot(
       take: 200,
     }),
     db.alert.findMany({
-      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]},{OR:[{entryId:null},{entry:receptionHandoverEntryWhere}]}], taskId:null} ,
+      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}], taskId:null} ,
       select: {
         id: true,
         type: true,
@@ -248,7 +208,6 @@ export async function buildHandoverSnapshot(
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
         AND:[followUpReadWhere(user,false,true), { OR: [{ scheduledAt: null }, { scheduledAt: { lte: soon } }] }],
-        OR: [{ entryId: null }, { entry: receptionHandoverEntryWhere }],
       },
       select: {
         id: true,
@@ -266,7 +225,7 @@ export async function buildHandoverSnapshot(
     currentShiftId
       ? db.operationalEntry.findMany({
           where: {
-            ...receptionHandoverNoticeWhere,AND:[entryReadWhere(user)],
+            ...receptionHandoverNoticeWhere,
             shiftId: currentShiftId,
             deletedAt: null,
             status: { in: [EntryStatus.RESUELTO, EntryStatus.CERRADO] },

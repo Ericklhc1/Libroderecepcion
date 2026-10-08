@@ -1,4 +1,4 @@
-> Vigente desde 1.64.0: la validación posterior es una acción del mismo Shift en el Centro de Supervisión, no una tarea/alerta operativa. Recepción no hereda tareas ni acciones de Supervisión; la visibilidad por área y en entrega es explícita y auditada. Diseño y pruebas de impresión: [IMPRESION_ENTREGA_1_64.md](IMPRESION_ENTREGA_1_64.md).
+> Vigente desde 1.64.0: la validación posterior es una acción del mismo Shift en el Centro de Supervisión, no una tarea/alerta operativa. Recepción no hereda tareas ni acciones de Supervisión; la visibilidad configurable de novedades queda fuera de este bloque. Diseño y pruebas de impresión: [IMPRESION_ENTREGA_1_64.md](IMPRESION_ENTREGA_1_64.md).
 
 # Cierre Operativo — contrato vigente de Recepción
 
@@ -64,7 +64,7 @@ saliente se presenta como un recorrido secuencial y reversible hasta el envío:
 1. **Caja y custodia:** arqueo, garantías y elementos físicos; Caja debe quedar
    formalmente cerrada.
 2. **Pendientes:** Novedades, incidencias, seguimientos operativos y alertas
-   vigentes visibles e incluidos para Recepción; sin tareas ni acciones de Supervisión. El sistema los reúne; el recepcionista no inventa una lista.
+   vigentes para Recepción; sin tareas ni acciones de Supervisión. El sistema los reúne; el recepcionista no inventa una lista.
 3. **Revisión final:** fotografía legible de Caja, custodia y puntos de entrega.
 4. **Enviar entrega:** requiere confirmación explícita y constituye el punto de
    no retorno del cierre normal.
@@ -132,12 +132,11 @@ correspondiente para firma y fecha.
 
 La vista operativa de Novedades para Recepción contiene únicamente:
 - registros tipo `NOVEDAD` o `INCIDENCIA`;
-- visibles para el área de Recepción, sin restringir el rol del autor (las
-  novedades de Supervisión también pueden incluirse);
+- sin restringir el rol del autor (las novedades de Supervisión también se incluyen);
 - todavía abiertos / en gestión.
 
-La entrega/impresión aplica además la selección «Incluir en entrega de Recepción».
-La visibilidad por área y esa selección son independientes y se auditan.
+La visibilidad configurable por área y la exclusión individual de entrega quedan
+fuera de 1.64.0; se retomarán con el rediseño de novedades en UI/UX.
 
 Procesos internos, alertas técnicas y validaciones de cierre no deben mezclarse
 con Novedades. Los registros resueltos permanecen disponibles en Historial.

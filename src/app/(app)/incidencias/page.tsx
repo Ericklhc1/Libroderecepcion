@@ -1,4 +1,3 @@
-import { entryReadWhere } from '@/server/services/entry-visibility';
 import Link from 'next/link';
 import { EntryType, Severity } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
@@ -38,7 +37,6 @@ export default async function IncidentsPage({
   const gravedad = typeof params.gravedad === 'string' ? params.gravedad : undefined;
 
   const where: Prisma.OperationalEntryWhereInput = {
-    AND:[entryReadWhere(user)],
     deletedAt: null,
     type: EntryType.INCIDENCIA,
     ...(values.estado === 'abiertos'
@@ -81,7 +79,6 @@ export default async function IncidentsPage({
     prisma.operationalEntry.groupBy({
       by: ['severity'],
       where: {
-        AND:[entryReadWhere(user)],
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
@@ -89,7 +86,7 @@ export default async function IncidentsPage({
       _count: { _all: true },
     }),
     prisma.operationalEntry.count({
-      where: { AND:[entryReadWhere(user)], deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_OPEN_STATUSES } },
+      where: { deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_OPEN_STATUSES } },
     }),
   ]);
 

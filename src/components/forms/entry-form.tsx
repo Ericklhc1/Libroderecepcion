@@ -1,6 +1,5 @@
 'use client';
 
-import { EntryVisibilityFields } from '@/components/operational/entry-visibility';
 import { useState } from 'react';
 import { EntryType, Impact, Priority, Severity } from '@prisma/client';
 import { ActionForm, Checkbox, Field, Input, Select, Textarea } from '@/components/ui/form';
@@ -124,8 +123,6 @@ export function EntryForm({
       >
         <Textarea name="description" required rows={4} maxLength={8000} />
       </Field>
-
-      <EntryVisibilityFields departments={options.departments} />
 
       <Field label="Categoría" name="category" hint="Opcional. Ej.: mantenimiento, caja, seguridad.">
         <Input name="category" maxLength={120} placeholder="Categoría" />

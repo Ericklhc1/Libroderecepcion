@@ -1,5 +1,4 @@
 import 'server-only';
-import {lockReceptionSummary,invalidateReceptionDraftsForUser} from './handover-snapshot';
 import type { Prisma } from '@prisma/client';
 import type { z } from 'zod';
 import { prisma } from '@/lib/prisma';
@@ -56,7 +55,6 @@ async function assertAdminRemains(tx: Tx, excludeUserId: string) {
 export async function updateAdministrativeUser(actor: CurrentUser, input: UserInput, expectedRevision?: string) {
   if (!hasPermission(actor, 'user.manage')) throw new ForbiddenError();
   return prisma.$transaction(async (tx) => {
-    await lockReceptionSummary(tx);
     // Serialize removals of the last active administrators, including simultaneous changes.
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'admin:account-eligibility'}))::text`;
     await lockAccount(tx, input.id, input.departmentId);
@@ -82,7 +80,6 @@ export async function updateAdministrativeUser(actor: CurrentUser, input: UserIn
       active: input.active,
     };
     const updated = await tx.user.update({ where: { id: current.id, updatedAt: current.updatedAt }, data, include: { role: true } });
-    if(roleChanged||current.departmentId!==input.departmentId||current.active!==input.active)await invalidateReceptionDraftsForUser(tx,actor,current.id);
     if (!updated.active || roleChanged) {
       await tx.session.updateMany({ where: { userId: updated.id, revokedAt: null }, data: { revokedAt: new Date() } });
     }
@@ -100,7 +97,6 @@ export async function deleteAdministrativeUser(actor: CurrentUser, input: { id: 
   if (!hasPermission(actor, 'user.manage')) throw new ForbiddenError();
   if (input.id === actor.id) throw new RuleError('No puedes eliminar tu propia cuenta.');
   return prisma.$transaction(async (tx) => {
-    await lockReceptionSummary(tx);
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'admin:account-eligibility'}))::text`;
     await lockAccount(tx, input.id);
     const user = await tx.user.findFirst({ where: { id: input.id, deletedAt: null }, include: { role: true } });

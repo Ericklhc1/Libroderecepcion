@@ -1,4 +1,3 @@
-import { entryReadWhere, type EntryReader } from './entry-visibility';
 import {taskFollowUpReadWhere,operationalAlarmReadWhere} from './followup-access';
 import 'server-only';
 import {
@@ -15,7 +14,7 @@ import { ENTRY_OPEN_STATUSES, TASK_OPEN_STATUSES } from '@/domain/labels';
 
 // Shared operational aggregates never disclose private or supervisory sources.
 const sharedReader={id:'',permissions:[]};
-const sharedTasks=taskFollowUpReadWhere(sharedReader,true,entryReadWhere({...sharedReader,isSystemAdmin:false,roleKey:'RECEPCIONISTA'}));
+const sharedTasks=taskFollowUpReadWhere(sharedReader,true);
 
 export type MetricsRange = { from: Date; to: Date };
 
@@ -27,9 +26,7 @@ export function defaultRange(days = 30): MetricsRange {
  * Indicadores operativos. Se limitan a lo que permite tomar decisiones en el
  * día a día: cumplimiento, carga heredada y tiempos de resolución.
  */
-export async function getMetrics(range: MetricsRange, user?:EntryReader) {
-  const visibleEntries=user?entryReadWhere(user):{id:{not:''}};
-  const visibleTasks=user?taskFollowUpReadWhere(sharedReader,true,entryReadWhere(user)):sharedTasks;
+export async function getMetrics(range: MetricsRange) {
   const now = new Date();
   const createdIn = { gte: range.from, lte: range.to };
 
@@ -50,7 +47,7 @@ export async function getMetrics(range: MetricsRange, user?:EntryReader) {
     tasksWithoutDate,
   ] = await Promise.all([
     prisma.task.findMany({
-      where: { AND:[visibleTasks],
+      where: { AND:[sharedTasks],
         deletedAt: null,
         status: { in: TASK_COMPLETED_STATUSES },
         completedAt: { gte: range.from, lte: range.to },
@@ -58,21 +55,21 @@ export async function getMetrics(range: MetricsRange, user?:EntryReader) {
       select: { completedAt: true, dueAt: true, createdAt: true },
     }),
     prisma.task.count({
-      where: { AND:[visibleTasks],
+      where: { AND:[sharedTasks],
         deletedAt: null,
         status: { in: TASK_OPEN_STATUSES },
         dueAt: { lt: now },
       },
     }),
     prisma.operationalEntry.count({
-      where: { AND:[visibleEntries],
+      where: {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_OPEN_STATUSES },
       },
     }),
     prisma.operationalEntry.findMany({
-      where: { AND:[visibleEntries],
+      where: {
         deletedAt: null,
         type: EntryType.INCIDENCIA,
         status: { in: ENTRY_RESOLVED_STATUSES },
@@ -88,30 +85,30 @@ export async function getMetrics(range: MetricsRange, user?:EntryReader) {
     }),
     prisma.operationalEntry.groupBy({
       by: ['shiftId'],
-      where: { AND:[visibleEntries], deletedAt: null, occurredAt: createdIn },
+      where: { deletedAt: null, occurredAt: createdIn },
       _count: { _all: true },
     }),
     prisma.operationalEntry.groupBy({
       by: ['departmentId'],
-      where: { AND:[visibleEntries], deletedAt: null, type: EntryType.INCIDENCIA, occurredAt: createdIn },
+      where: { deletedAt: null, type: EntryType.INCIDENCIA, occurredAt: createdIn },
       _count: { _all: true },
     }),
     prisma.task.count({
-      where: { AND:[visibleTasks], deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
+      where: { AND:[sharedTasks], deletedAt: null, status: { in: TASK_OPEN_STATUSES } },
     }),
-    prisma.operationalAlarm.count({ where: { AND:[operationalAlarmReadWhere(user??{...sharedReader,isSystemAdmin:false,roleKey:'RECEPCIONISTA'})], status: OperationalAlarmStatus.ACTIVA } }),
+    prisma.operationalAlarm.count({ where: { AND:[operationalAlarmReadWhere(sharedReader,true)], status: OperationalAlarmStatus.ACTIVA } }),
     // La continuidad es inherente: todo registro abierto sigue vigente entre
     // turnos hasta resolverse o cerrarse. No existe una categoría separada de
     // «heredados» ni un umbral horario artificial.
     prisma.operationalEntry.count({
-      where: { AND:[visibleEntries],
+      where: {
         deletedAt: null,
         status: { in: ENTRY_OPEN_STATUSES },
       },
     }),
-    prisma.operationalEntry.count({ where: { AND:[visibleEntries], deletedAt: null, type: EntryType.INCIDENCIA, status: EntryStatus.CERRADO, closedAt: createdIn } }),
-    prisma.operationalEntry.count({ where: { AND:[visibleEntries], deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_RESOLVED_STATUSES }, resolvedAt: null, closedAt: null } }),
-    prisma.task.count({ where: { AND: [visibleTasks], deletedAt: null, status: { in: TASK_COMPLETED_STATUSES }, completedAt: null } }),
+    prisma.operationalEntry.count({ where: { deletedAt: null, type: EntryType.INCIDENCIA, status: EntryStatus.CERRADO, closedAt: createdIn } }),
+    prisma.operationalEntry.count({ where: { deletedAt: null, type: EntryType.INCIDENCIA, status: { in: ENTRY_RESOLVED_STATUSES }, resolvedAt: null, closedAt: null } }),
+    prisma.task.count({ where: { AND: [sharedTasks], deletedAt: null, status: { in: TASK_COMPLETED_STATUSES }, completedAt: null } }),
   ]);
 
   const completedOnTime = tasksClosed.filter(
@@ -222,17 +219,15 @@ export async function getMetrics(range: MetricsRange, user?:EntryReader) {
 }
 
 /** Indicadores del turno en curso, para la cabecera del panel. */
-export async function getShiftMetrics(shiftId: string, user?: EntryReader) {
-  const entriesWhere=entryReadWhere(user??{id:'',permissions:[],isSystemAdmin:false,roleKey:'RECEPCIONISTA'});
-  const tasksWhere=user?taskFollowUpReadWhere(sharedReader,true,entryReadWhere(user)):sharedTasks;
+export async function getShiftMetrics(shiftId: string) {
   const [entries, incidents, tasksCreated, tasksCompleted] = await Promise.all([
-    prisma.operationalEntry.count({ where: { AND:[entriesWhere], shiftId, deletedAt: null } }),
+    prisma.operationalEntry.count({ where: { shiftId, deletedAt: null } }),
     prisma.operationalEntry.count({
-      where: { AND:[entriesWhere], shiftId, deletedAt: null, type: EntryType.INCIDENCIA },
+      where: { shiftId, deletedAt: null, type: EntryType.INCIDENCIA },
     }),
-    prisma.task.count({ where: { AND:[tasksWhere], shiftId, deletedAt: null } }),
+    prisma.task.count({ where: { AND:[sharedTasks], shiftId, deletedAt: null } }),
     prisma.task.count({
-      where: { AND:[tasksWhere], shiftId, deletedAt: null, status: { in: TASK_COMPLETED_STATUSES } },
+      where: { AND:[sharedTasks], shiftId, deletedAt: null, status: { in: TASK_COMPLETED_STATUSES } },
     }),
   ]);
   return { entries, incidents, tasksCreated, tasksCompleted };

@@ -1,4 +1,3 @@
-import { entryReadWhere } from './entry-visibility';
 import 'server-only';
 import type { AuditAction } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
@@ -31,9 +30,8 @@ type HistoryTarget = {
  * reasignaciones, seguimientos, cambios de estado y cierre, en orden
  * cronológico. Se alimenta del AuditLog más los objetos asociados.
  */
-export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id'|'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'departmentId'|'isSystemAdmin'>>): Promise<HistoryEvent[]> {
-  const visible=target.entity==='OperationalEntry'?await prisma.operationalEntry.count({where:{id:target.entityId,AND:[entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})]}})
-    :target.entity==='Task'?await prisma.task.count({where:{id:target.entityId,AND:[taskFollowUpReadWhere(user)]}})
+export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id'|'permissions'>): Promise<HistoryEvent[]> {
+  const visible=target.entity==='Task'?await prisma.task.count({where:{id:target.entityId,AND:[taskFollowUpReadWhere(user)]}})
     :target.entity==='FollowUp'?await prisma.followUp.count({where:{id:target.entityId,AND:[followUpReadWhere(user,true)]}})
     :target.entity==='Alert'?await prisma.alert.count({where:{id:target.entityId,AND:[alertReadWhere(user)]}}):1;
   if(!visible) return [];
@@ -47,7 +45,7 @@ export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id
     prisma.comment.findMany({
       where: {
         deletedAt: null,
-        AND:[{OR:[{entryId:null},{entry:entryReadWhere({...user,isSystemAdmin:user.isSystemAdmin??false})}]},{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},{OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},{OR:[{alertId:null},{alert:alertReadWhere(user)}]}],
+        AND:[{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]},{OR:[{taskId:null},{task:taskFollowUpReadWhere(user)}]},{OR:[{alertId:null},{alert:alertReadWhere(user)}]}],
         ...(target.entity === 'OperationalEntry' ? { entryId: target.entityId } : {}),
         ...(target.entity === 'Task' ? { taskId: target.entityId } : {}),
         ...(target.entity === 'FollowUp' ? { followUpId: target.entityId } : {}),

@@ -1,5 +1,4 @@
 'use server';
-import { entryReadWhere } from '@/server/services/entry-visibility';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from '@/server/services/followup-access';
 
@@ -55,8 +54,8 @@ function dateTime(date: Date) {
 
 async function loadRecord(kind: BookKind, id: string, user: CurrentUser): Promise<MailRecord | null> {
   if (kind === 'entry') {
-    const row = await prisma.operationalEntry.findFirst({
-      where: { id, AND: [entryReadWhere(user)] },
+    const row = await prisma.operationalEntry.findUnique({
+      where: { id },
       include: {
         owner: { select: { name: true } },
         createdBy: { select: { name: true } },

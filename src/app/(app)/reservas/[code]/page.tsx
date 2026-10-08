@@ -23,9 +23,9 @@ export default async function ReservationFolderPage({
 }: {
   params: Promise<{ code: string }>;
 }) {
-  const user = await requirePageAnyPermission(['room.view', 'guest.view', 'guest.manage']);
+  await requirePageAnyPermission(['room.view', 'guest.view', 'guest.manage']);
   const { code } = await params;
-  const reservation = await getReservationOperationalContextByCode(decodeURIComponent(code),user);
+  const reservation = await getReservationOperationalContextByCode(decodeURIComponent(code));
   if (!reservation) notFound();
 
   const signals = reservationModuleSignals(reservation);

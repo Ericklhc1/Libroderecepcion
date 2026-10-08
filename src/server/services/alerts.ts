@@ -1,4 +1,3 @@
-import { assertEntryVisibleForWrite, lockEntrySourcesForRecord } from './entry-visibility';
 import {alertReadWhere,taskFollowUpReadWhere} from './followup-access';
 import 'server-only';
 import { AlertLevel, AlertStatus, AlertType, AuditAction, EntryStatus } from '@prisma/client';
@@ -46,11 +45,8 @@ export async function createManualAlert(
     departmentId?: string | null;
   },
 ) {
-  return prisma.$transaction(async tx=>{
-  if(input.entryId)await assertEntryVisibleForWrite(tx,user,input.entryId);
-  if(input.taskId)await lockEntrySourcesForRecord(tx,user,'task',input.taskId);
-  if(input.taskId&&!await tx.task.findFirst({where:{id:input.taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{id:true}}))throw new NotFoundError('La tarea de origen no existe.');
-  const created = await tx.alert.create({
+  if(input.taskId&&!await prisma.task.findFirst({where:{id:input.taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{id:true}}))throw new NotFoundError('La tarea de origen no existe.');
+  const created = await prisma.alert.create({
     data: {
       type: input.type,
       level: input.level,
@@ -76,9 +72,8 @@ export async function createManualAlert(
     summary: `Alerta #${created.humanId} manual (${ALERT_TYPE_LABEL[created.type]}): ${created.title}`,
     user,
     after: { type: created.type, level: created.level, title: created.title },
-  },tx);
-  return created;
   });
+  return created;
 }
 
 async function loadAlert(user: CurrentUser,id: string) {

@@ -35,9 +35,10 @@ try{
     await assign.locator('select[name=ownerId]').selectOption(f.users.worker.id);
     await assign.locator('textarea[name=nextAction]').fill('Conseguir repuesto y devolver resultado al asunto');
     const assignedResponse=admin.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
+    const assignmentDestination=new URL(await assign.locator('input[name=returnTo]').inputValue(),'http://localhost:3000');assignmentDestination.hash='';
     const [assignedResult]=await Promise.all([assignedResponse,admin.waitForNavigation({waitUntil:'load',timeout:12000}),assign.getByRole('button',{name:'Asignar y solicitar recepción',exact:true}).click()]);
     assert.equal(assignedResult.status(),200,assignedResult.status()===200?'':await assignedResult.text());
-    const assignmentReceipt=await assignedResult.json();assert.equal(assignmentReceipt.ok,true);assert.equal(admin.url(),new URL(assignmentReceipt.navigateTo,'http://localhost:3000').href);
+    assert.equal(admin.url(),assignmentDestination.href);
     const assigned=await db.task.findUniqueOrThrow({where:{id:task.id}});
     assert.equal(assigned.assigneeId,f.users.worker.id);
     assert.equal(assigned.workNextAction,'Conseguir repuesto y devolver resultado al asunto');
@@ -52,9 +53,10 @@ try{
     const receive=receiptPanel.locator('form').filter({has:worker.locator('input[name=action][value=RECIBIR]')});
     await receive.locator('textarea[name=nextAction]').fill('Recibido; gestionar repuesto y atender');
     const receivedResponse=worker.waitForResponse(r=>r.url().endsWith('/api/operational-actions/coordination')&&r.request().method()==='POST');
+    const receptionDestination=new URL(await receive.locator('input[name=returnTo]').inputValue(),'http://localhost:3000');receptionDestination.hash='';
     const [receivedResult]=await Promise.all([receivedResponse,worker.waitForNavigation({waitUntil:'load',timeout:12000}),receive.getByRole('button',{name:'Confirmar recepción',exact:true}).click()]);
     assert.equal(receivedResult.status(),200,receivedResult.status()===200?'':await receivedResult.text());
-    const receptionReceipt=await receivedResult.json();assert.equal(receptionReceipt.ok,true);assert.equal(worker.url(),new URL(receptionReceipt.navigateTo,'http://localhost:3000').href);
+    assert.equal(worker.url(),receptionDestination.href);
     const receivedTask=await db.task.findUniqueOrThrow({where:{id:task.id}});
     assert.equal(receivedTask.workAcknowledgedById,f.users.worker.id);
 

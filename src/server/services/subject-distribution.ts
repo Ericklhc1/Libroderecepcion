@@ -93,6 +93,8 @@ export async function distributeSubject(user:CurrentUser,input:{entryId:string;r
     const entry=await readEntries(tx, user).findFirst({where:{id:input.entryId,AND:[coordinationEntries(user)]}});
     if(!entry)throw new NotFoundError();
     if(['NOVEDAD','INCIDENCIA'].includes(entry.type)&&simpleMode)throw new RuleError('En novedades simples se elige el área relacionada, sin cadenas de asignación.');
+    // Validate every destination under the source lock before receipts, rows or notices.
+    for(const departmentId of ids)await assertEntryWorkDestination(tx,entry.id,departmentId,input.urgent?input.urgentContacts?.[departmentId]:null);
     const prefix=`distribution:${user.id}:${input.requestKey}:`;
     const receipt=await tx.auditLog.findFirst({where:{entity:'SubjectDistribution',entityId:{startsWith:prefix},userId:user.id},select:{entityId:true,after:true}});
     if(receipt){

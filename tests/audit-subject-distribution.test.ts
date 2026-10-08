@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {prisma,seedCatalog,resetOperationalData,createUser,ROLE_KEYS} from './helpers';
-import {createEntry,changeEntryStatus,getEntry} from '@/server/services/entries';
+import {createEntry,changeEntryStatus,getEntry,updateEntryVisibility} from '@/server/services/entries';
 import {distributeSubject,decideAreaAttention,listAreaAttentions,getAreaAttention} from '@/server/services/subject-distribution';
 import {getCoordinationBoard,coordinateWork} from '@/server/services/coordination';
 import {createTask,assignTask,changeTaskStatus} from '@/server/services/tasks';
@@ -32,6 +32,12 @@ describe('Auditoría: distribución y resultado por área',()=>{
     const input={entryId:source.id,revision:source.updatedAt.toISOString(),requestKey:randomUUID(),departmentIds:[maintenance.id,hk.id,publicArea.id],location:'Zona común 5'};
     return{admin,hk,maintenance,publicArea,supervisor,maid,technician,source,input};
   }
+  for(const urgent of [false,true])it(`rechaza todas las áreas ocultas antes de crear filas o avisos: urgente=${urgent}`,async()=>{
+    const f=await fixture();await updateEntryVisibility(f.admin,{id:f.source.id,revision:f.source.updatedAt.toISOString(),hiddenDepartmentIds:[f.hk.id],includeInReceptionHandover:true});
+    const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:f.source.id}});const notifications=await prisma.notification.count();const audits=await prisma.auditLog.count();
+    await expect(distributeSubject(f.admin,{...f.input,revision:current.updatedAt.toISOString(),departmentIds:[f.maintenance.id,f.hk.id],urgent,urgencyReason:urgent?'Riesgo sintético':undefined,urgentContacts:urgent?{[f.maintenance.id]:f.technician.id,[f.hk.id]:f.maid.id}:undefined})).rejects.toThrow(/oculta/);
+    expect(await prisma.subjectAreaAttention.count()).toBe(0);expect(await prisma.task.count()).toBe(0);expect(await prisma.housekeepingRequest.count()).toBe(0);expect(await prisma.notification.count()).toBe(notifications);expect(await prisma.auditLog.count()).toBe(audits);
+  });
   it('distribuye varias áreas sin copias ni trabajo prematuro y reintenta sin duplicar',async()=>{
     const f=await fixture();const [a,b]=await Promise.all([distributeSubject(f.admin,f.input),distributeSubject(f.admin,f.input)]);
     expect(a.map(r=>r.id).sort()).toEqual(b.map(r=>r.id).sort());

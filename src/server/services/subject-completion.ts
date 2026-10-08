@@ -1,14 +1,15 @@
+import {subjectTaskObligations,subjectFollowUpObligations,subjectHousekeepingObligations} from './subject-obligations';
 import { readEntries } from '@/server/services/entry-visibility';
 import 'server-only';
 import type {Prisma} from '@prisma/client';
 import {RuleError} from '@/server/errors';
 
 /** Called under the source row lock, shared by resolve and close. */
-export async function assertSubjectCanFinish(tx:Prisma.TransactionClient,entryId:string){
+export async function assertSubjectCanFinish(tx:Prisma.TransactionClient,entryId:string,simpleNovelties=false){
   const [tasks,hk,followups,areas]=await Promise.all([
-    tx.task.count({where:{entryId,deletedAt:null,isDemo:false,status:{notIn:['VALIDADA','COMPLETADA','CANCELADA']}}}),
-    tx.housekeepingRequest.count({where:{sourceEntryId:entryId,isDemo:false,status:{notIn:['RESUELTO','CANCELADO']}}}),
-    tx.followUp.count({where:{deletedAt:null,isDemo:false,OR:[{entryId},{task:{entryId}},{sourceEntity:'OperationalEntry',sourceId:entryId}],status:{in:['PENDIENTE','VENCIDO']},AND:[{OR:[{origin:null},{origin:{not:{startsWith:'SUPERVISION_'}}}]}]}}),
+    tx.task.count({where:subjectTaskObligations(entryId,simpleNovelties)}),
+    tx.housekeepingRequest.count({where:subjectHousekeepingObligations(entryId,simpleNovelties)}),
+    tx.followUp.count({where:subjectFollowUpObligations(entryId,simpleNovelties)}),
     tx.subjectAreaAttention.count({where:{entryId,status:{in:['POR_REVISAR','ACLARACION']}}}),
   ]);
   const reasons=[tasks&&`${tasks} trabajo(s) pendiente(s)`,hk&&`${hk} atención(es) de Housekeeping pendiente(s)`,followups&&`${followups} seguimiento(s) operativo(s) sin resolver`,areas&&`${areas} área(s) por revisar o aclarar`].filter(Boolean);

@@ -115,6 +115,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
     const novelty=['NOVEDAD','INCIDENCIA'].includes(input.type);
     if(novelty)await lockReceptionSummary(tx);
     const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
+    if(simpleMode)await assertReceptionOperationPermission(user,input.type==='INCIDENCIA'?'incident.create':'entry.create',tx);
     if(options.simpleNovelty&&!simpleMode)throw new RuleError('La prueba de novedades simples está apagada.');
     if(simpleMode&&input.ownerId&&['NOVEDAD','INCIDENCIA'].includes(input.type))throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
     const hiddenIds = [...new Set(input.hiddenDepartmentIds ?? [])];
@@ -328,7 +329,7 @@ export async function updateEntry(
   return prisma.$transaction(async (tx) => {
     if(novelty)await lockReceptionSummary(tx);
     const simpleMode=await lockSimpleNoveltiesMode(tx);
-    if(simpleMode && !novelty)await assertReceptionOperationPermission(user,'entry.edit',tx);
+    if(simpleMode)await assertReceptionOperationPermission(user,'entry.edit',tx);
     if(options.simpleNovelty&&!simpleMode)throw new RuleError('La prueba de novedades simples está apagada.');
     // The snapshot and the incident workflow belong to the same locked mutation.
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
@@ -489,7 +490,7 @@ export async function changeEntryStatus(
     if(simpleMode && !(novelty && input.status===EntryStatus.RESUELTO))await assertReceptionOperationPermission(user,'entry.edit',tx);
     if(options.simpleNovelty || (closing && !user.permissions.includes('entry.close') && !user.permissions.includes('incident.close')))await assertSimpleNoveltiesEnabled(tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${current.id} FOR UPDATE`;
-    if (closing) await assertSubjectCanFinish(tx,current.id);
+    if (closing) await assertSubjectCanFinish(tx,current.id,simpleMode);
     const now = new Date();
     const updated = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt:current.updatedAt, ownerId:current.ownerId, status:current.status },

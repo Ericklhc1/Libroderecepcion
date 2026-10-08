@@ -20,17 +20,41 @@ import {coordinateWork} from '@/server/services/coordination';
 import {notifyNativeWork} from '@/server/services/work-notifications';
 import {getWebPushPayload} from '@/server/services/web-push';
 
+async function activateReception(user:CurrentUser){const shift=await createShift({userId:user.id,type:'DIA',status:'ACTIVO'});await prisma.shiftAssignment.updateMany({where:{shiftId:shift.id},data:{activatedAt:new Date()}});return shift;}
 async function flag(value:boolean){await prisma.systemSetting.upsert({where:{key:'book.simpleNovelties'},create:{key:'book.simpleNovelties',value,category:'pruebas'},update:{value}});}
 describe('prueba de novedades simples sobre el libro existente',()=>{
   beforeAll(seedCatalog);beforeEach(resetOperationalData);
-  for(const status of [null,'INICIADO','PREPARANDO_ENTREGA'] as const)it(`el modo simple no permite cambiar Caja fuera de operación activa: ${status??'sin turno'}`,async()=>{
-    await flag(true);const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
-    if(status){const shift=await createShift({userId:author.id,type:'DIA',status});await prisma.shiftAssignment.updateMany({where:{shiftId:shift.id},data:{activatedAt:new Date()}});}
+  for(const status of [null,'INICIADO','PREPARANDO_ENTREGA'] as const)it(`el modo simple sólo permite resolver al terminar la operación activa: ${status??'sin turno'}`,async()=>{
+    await flag(true);const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const shift=await activateReception(author);
+    const novelty=await createSimpleNovelty(author,{title:'Formulario creado durante el turno',description:'Guardar después del cambio de puerta'});
+    if(status)await prisma.shift.update({where:{id:shift.id},data:{status}});else await prisma.shiftAssignment.updateMany({where:{shiftId:shift.id},data:{leftAt:new Date()}});
     const caja=await prisma.operationalEntry.create({data:{type:'CAJA',title:'Caja sintética protegida',description:'No habilitar por estar bajo /libro',createdById:author.id,ownerId:author.id}});
     await expect(changeEntryStatus(author,{id:caja.id,status:'RESUELTO'})).rejects.toThrow(/turno|operación|operar|cierre/i);
     await expect(updateEntry(author,{id:caja.id,title:'Edición no autorizada'})).rejects.toThrow(/turno|operación|operar|cierre/i);
+    await expect(updateSimpleNovelty(author,{id:novelty.id,title:'Edición fuera de turno',description:'No guardar',departmentId:null,workNextAction:null},operationalRecordRevision('entries',novelty))).rejects.toThrow(/turno|operación|operar|cierre/i);
+    await expect(updateEntry(author,{id:novelty.id,description:'Formulario legado fuera de turno'})).rejects.toThrow(/turno|operación|operar|cierre/i);
+    await expect(createSimpleNovelty(author,{title:'Nueva fuera de turno',description:'No crear'})).rejects.toThrow(/turno|operación|operar|cierre/i);
     expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:caja.id}})).toMatchObject({status:'ABIERTO',title:caja.title});
-    const novelty=await createSimpleNovelty(author,{title:'Resolver fuera de turno',description:'Excepción concreta'});expect((await resolveSimpleNovelty(author,novelty.id,operationalRecordRevision('entries',novelty))).status).toBe('RESUELTO');
+    expect(await prisma.operationalEntry.findUniqueOrThrow({where:{id:novelty.id}})).toMatchObject({title:novelty.title,description:novelty.description});
+    expect((await resolveSimpleNovelty(author,novelty.id,operationalRecordRevision('entries',novelty))).status).toBe('RESUELTO');
+  });
+  for(const kind of ['task-alert','followup-alert','housekeeping-maintenance'] as const)it(`detalle y cierre comparten la obligación indirecta ${kind}`,async()=>{
+    await flag(true);const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const novelty=await createSimpleNovelty(admin,{title:'Origen de obligación indirecta',description:'No resolver antes del trabajo'});
+    const alert=await prisma.alert.create({data:{type:'TAREA_VENCIDA',title:'Alerta del origen',entryId:novelty.id}});
+    const task=kind==='task-alert'?await prisma.task.create({data:{alertId:alert.id,title:'Tarea indirecta pendiente',createdById:admin.id}}):null;
+    const follow=kind==='followup-alert'?await prisma.followUp.create({data:{sourceEntity:'Alert',sourceId:alert.id,action:'Seguimiento indirecto pendiente',createdById:admin.id,ownerId:admin.id,visibility:'OPERATIVO'}}):null;
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const hk=kind==='housekeeping-maintenance'?await prisma.housekeepingRequest.create({data:{requestKey:kind,maintenanceEntryId:novelty.id,departmentId:area.id,createdById:admin.id,title:'Mantenimiento vinculado',description:'Trabajo nativo de mantenimiento'}}):null;
+    const work=await getSimpleNoveltyContinuity(novelty.id,admin);expect(task?work.tasks.map(row=>row.id):follow?work.followups.map(row=>row.id):work.housekeeping.map(row=>row.id)).toContain(task?.id??follow?.id??hk!.id);
+    await expect(resolveSimpleNovelty(admin,novelty.id,operationalRecordRevision('entries',novelty))).rejects.toThrow(/trabajo|seguimiento|Housekeeping/);
+    expect((await readEntries(prisma,admin).findUniqueOrThrow({where:{id:novelty.id}})).status).toBe('ABIERTO');
+    if(task)await prisma.task.update({where:{id:task.id},data:{status:'VALIDADA'}});if(follow)await prisma.followUp.update({where:{id:follow.id},data:{status:'CUMPLIDO'}});if(hk)await prisma.housekeepingRequest.update({where:{id:hk.id},data:{status:'RESUELTO'}});
+    const cleared=await getSimpleNoveltyContinuity(novelty.id,admin);expect(cleared.tasks.length+cleared.followups.length+cleared.housekeeping.length).toBe(0);expect((await resolveSimpleNovelty(admin,novelty.id,operationalRecordRevision('entries',novelty))).status).toBe('RESUELTO');
+  });
+  it('apagado conserva la barrera legada para obligaciones indirectas',async()=>{
+    const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const entry=await createEntry(admin,{type:'NOVEDAD',title:'Cierre legado',description:'Flag apagado',priority:'MEDIA',tags:[],requiresFollowUp:false});
+    const alert=await prisma.alert.create({data:{type:'TAREA_VENCIDA',title:'Alerta legada',entryId:entry.id}});await prisma.task.create({data:{alertId:alert.id,title:'Trabajo indirecto legado',createdById:admin.id}});
+    expect(await simpleNoveltiesEnabled()).toBe(false);expect((await changeEntryStatus(admin,{id:entry.id,status:'RESUELTO'})).status).toBe('RESUELTO');
   });
   it('conserva y muestra las obligaciones legadas sin permitir resolver antes de atenderlas',async()=>{
     const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
@@ -58,7 +82,7 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
     await flag(true);const after=await getAssignmentBoard(supervisor);expect(after.unassigned.map(item=>item.kind)).toEqual(['task']);expect(after.unassignedTotal).toBe(1);
   });
   it('incidencias de formulario anterior y Fronti no generan cadenas con el modo simple encendido',async()=>{
-    const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await flag(true);
+    const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await activateReception(author);await flag(true);
     const row=await createEntry(author,{type:'INCIDENCIA',title:'Formulario ya abierto',description:'Guardar tras interruptor',priority:'MEDIA',tags:[],requiresFollowUp:true,severity:'ALTA'},{incidentWorkflow:true});
     await ensureIncidentWorkflow(row.id);
     await updateEntry(author,{id:row.id,title:'Edición sin cadena'});
@@ -77,7 +101,7 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
   });
   it('restaurar una novedad abierta invalida revisión final y la eliminación también invalida su fotografía',async()=>{
     await flag(true);const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const shift=await createShift({userId:author.id,type:'DIA'});
-    const entry=await createSimpleNovelty(author,{title:'Novedad recuperada',description:'No omitir al enviar'});await softDeleteEntry(admin,{id:entry.id,reason:'Prueba sintética'});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:author.id,finalReviewAt:now,urgentAcknowledgedAt:now,pendingsReviewedAt:now}});
+    await activateReception(author);const entry=await createSimpleNovelty(author,{title:'Novedad recuperada',description:'No omitir al enviar'});await softDeleteEntry(admin,{id:entry.id,reason:'Prueba sintética'});const now=new Date();const draft=await prisma.shiftHandover.create({data:{fromShiftId:shift.id,issuedById:author.id,finalReviewAt:now,urgentAcknowledgedAt:now,pendingsReviewedAt:now}});
     await restoreEntry(admin,{id:entry.id});expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:1,finalReviewAt:null,urgentAcknowledgedAt:null,pendingsReviewedAt:null});
     await prisma.handoverItem.create({data:{handoverId:draft.id,refType:'entry',section:'novedades',refId:entry.id,title:entry.title,level:'INFORMATIVO'}});await prisma.shiftHandover.update({where:{id:draft.id},data:{finalReviewAt:now}});await softDeleteEntry(admin,{id:entry.id,reason:'Retirar evidencia sintética'});expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:2,finalReviewAt:null});
     expect((await prisma.auditLog.findFirstOrThrow({where:{entityId:entry.id,action:'RESTAURAR'}})).after).toMatchObject({invalidatedDrafts:[draft.id]});
@@ -102,7 +126,7 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
   });
   it('rechaza cambiar a un área oculta hasta ajustar la visibilidad auditada',async()=>{
     await flag(true);const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
-    const row=await createSimpleNovelty(author,{title:'Área oculta',description:'No perder el aviso'});
+    await activateReception(author);const row=await createSimpleNovelty(author,{title:'Área oculta',description:'No perder el aviso'});
     await updateEntryVisibility(author,{id:row.id,revision:row.updatedAt.toISOString(),hiddenDepartmentIds:[area.id],includeInReceptionHandover:true});
     const hidden=await readEntries(prisma,author).findUniqueOrThrow({where:{id:row.id}});
     await expect(updateSimpleNovelty(author,{id:row.id,title:row.title,description:row.description,departmentId:area.id,workNextAction:null},operationalRecordRevision('entries',hidden))).rejects.toThrow(/área relacionada está oculta/);
@@ -158,7 +182,7 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
     expect(await prisma.auditLog.count({where:{entity:'SystemSetting',userId:auth.user.id}})).toBe(1);
   });
   it('guarda reserva, HAB, seguimiento y área sin responsable ni tareas nuevas',async()=>{
-    await flag(true);const receptionist=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
+    await flag(true);const receptionist=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await activateReception(receptionist);
     const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
     const room=await prisma.room.findFirstOrThrow();
     const row=await createSimpleNovelty(receptionist,{title:'Toalla manchada',description:'Cobrar al huésped',departmentId:area.id,roomId:room.id,reservationReference:'7484708',workNextAction:'Revisar al check-out'});
@@ -170,18 +194,18 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
   });
   it('cualquier recepcionista sin turno ni permiso de cierre puede resolver; no exige supervisor',async()=>{
     await flag(true);const outgoing=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});
-    const row=await createSimpleNovelty(outgoing,{title:'Novedad pendiente',description:'Ya fue atendida'});
+    const creator=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const row=await createSimpleNovelty(creator,{title:'Novedad pendiente',description:'Ya fue atendida'});
     const withoutClose={...other,permissions:other.permissions.filter(p=>!['entry.close','incident.close'].includes(p))};
     const resolved=await resolveSimpleNovelty(withoutClose,row.id,operationalRecordRevision('entries',row));
     expect(resolved.status).toBe('RESUELTO');expect(await prisma.auditLog.count({where:{entityId:row.id,userId:other.id,action:'CAMBIO_ESTADO'}})).toBe(1);
     await expect(resolveSimpleNovelty(outgoing,row.id,operationalRecordRevision('entries',row))).rejects.toThrow(/cambió/);
-    const next=await createSimpleNovelty(outgoing,{title:'Salida de turno',description:'Atendida por saliente'});
+    const next=await createSimpleNovelty(creator,{title:'Salida de turno',description:'Atendida por saliente'});
     expect((await resolveSimpleNovelty({...outgoing,permissions:withoutClose.permissions},next.id,operationalRecordRevision('entries',next))).status).toBe('RESUELTO');
     await flag(false);const legacy=await createEntry(outgoing,{type:'NOVEDAD',title:'Flag off',description:'Permiso anterior',priority:'MEDIA',tags:[],requiresFollowUp:false});
     await expect(changeEntryStatus(withoutClose,{id:legacy.id,status:'RESUELTO'})).rejects.toThrow(/permiso/);
   });
   it('el área ve sólo sus novedades; internas no salen por ORM, SQL, búsquedas ni contadores',async()=>{
-    await flag(true);const receptionist=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});const maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});
+    await flag(true);const receptionist=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await activateReception(receptionist);const maid=await createUser({roleKey:ROLE_KEYS.HK_ATTENDANT});
     const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});await prisma.user.update({where:{id:maid.id},data:{departmentId:area.id}});maid.departmentId=area.id;
     const related=await createSimpleNovelty(receptionist,{title:'HSK_VISIBLE',description:'Solicita limpieza',departmentId:area.id});
     await createSimpleNovelty(receptionist,{title:'RECEP_OTHER',description:'Para Recepción'});

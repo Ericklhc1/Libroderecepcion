@@ -6,7 +6,7 @@ describe('agrupación visual de duplicados', () => {
     const rows = [{ id: 'a', title: 'Revisar Caja', href: '/a', read: false }, { id: 'b', title: 'Llaves', href: '/b', read: false }, { id: 'c', title: 'Revisar Caja', href: '/c', read: true }];
     const groups = groupDisplayRows(rows, row => row.title);
     expect(groups.map(group => group.row.id)).toEqual(['a', 'b']);
-    expect(groups[0].items).toEqual([rows[0], rows[2]]);
+    expect(groups[0]!.items).toEqual([rows[0], rows[2]]);
     expect(groups.flatMap(group => group.items).map(row => row.id).sort()).toEqual(['a', 'b', 'c']);
     expect(rows).toHaveLength(3);
   });

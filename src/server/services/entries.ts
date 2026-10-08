@@ -1,3 +1,5 @@
+import {alertReadWhere,followUpReadWhere} from './followup-access';
+import {LIVE_ALERT_WHERE} from './alert-engine';
 import {lockReceptionSummary} from './handover-snapshot';
 import { receptionHandoverEntryWhere, entryReadWhere, housekeepingEntryReadWhere, canManageEntryVisibility, assertEntryOwnerVisibility, assertEntryLinkedWorkVisibility, type EntryReader } from './entry-visibility';
 import {assertSubjectCanFinish} from './subject-completion';
@@ -645,10 +647,17 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
     // All area changes can alter a receiver's actual projection, even when the
     // reception checkbox stays unchanged (secondary area memberships apply).
     const selectable=!current.isDemo&&(current.type===EntryType.NOVEDAD||current.type===EntryType.INCIDENCIA)&&(ENTRY_OPEN_STATUSES.includes(current.status)||current.status===EntryStatus.RESUELTO||current.status===EntryStatus.CERRADO);
-    const drafts=selectable?await tx.shiftHandover.findMany({where:{status:'BORRADOR',...(ENTRY_OPEN_STATUSES.includes(current.status)?{}:{fromShiftId:current.shiftId??''})},select:{id:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true,pendingsReviewedAt:true,finalReviewAt:true,urgentAcknowledgedAt:true,issuedBy:{select:{id:true,departmentId:true,role:{select:{key:true}}}}}}):[];
+    const drafts=await tx.shiftHandover.findMany({where:{status:'BORRADOR'},select:{id:true,fromShiftId:true,receptionSummaryRevision:true,receptionSummaryPreparedRevision:true,pendingsReviewedAt:true,finalReviewAt:true,urgentAcknowledgedAt:true,issuedBy:{select:{id:true,departmentId:true,role:{select:{key:true}}}}}});
     const readable=async(d:typeof drafts[number])=>{
       const reader:EntryReader={id:d.issuedBy.id,departmentId:d.issuedBy.departmentId,roleKey:d.issuedBy.role.key as CurrentUser['roleKey'],isSystemAdmin:d.issuedBy.role.key==='ADMINISTRADOR_SISTEMA',permissions:[]};
-      return await tx.operationalEntry.count({where:{id:current.id,AND:[receptionHandoverEntryWhere,entryReadWhere(reader)]}})>0;
+      const direct=selectable&&(ENTRY_OPEN_STATUSES.includes(current.status)||current.shiftId===d.fromShiftId);
+      const now=new Date();
+      const counts=await Promise.all([
+        direct?tx.operationalEntry.count({where:{id:current.id,AND:[receptionHandoverEntryWhere,entryReadWhere(reader)]}}):Promise.resolve(0),
+        tx.alert.count({where:{...LIVE_ALERT_WHERE(now),taskId:null,sourceEntries:{some:{entryId:current.id}},AND:[alertReadWhere(reader,true)]}}),
+        tx.followUp.count({where:{deletedAt:null,status:{in:['PENDIENTE','VENCIDO']},sourceEntries:{some:{entryId:current.id}},AND:[followUpReadWhere(reader,false,true),{OR:[{scheduledAt:null},{scheduledAt:{lte:new Date(now.getTime()+24*3600_000)}}]}]}}),
+      ]);
+      return counts.some(count=>count>0);
     };
     const beforeReadable=await Promise.all(drafts.map(readable));
     const updated = await tx.operationalEntry.update({ where: { id: input.id }, data: {

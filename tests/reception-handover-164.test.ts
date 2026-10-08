@@ -54,6 +54,40 @@ describe('AROH 1.64 · cierre exclusivo de Supervisión y visibilidad por área'
   beforeEach(async()=>{await resetOperationalData(); reception=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); other=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST}); supervisor=await createUser({roleKey:ROLE_KEYS.SUPERVISOR});});
 
 
+  for(const type of [EntryType.CAJA,EntryType.MANTENIMIENTO])for(const kind of ['alert','followup'] as const)it(`habilitar origen ${type} invalida el borrador por su ${kind} operativo`,async()=>{
+    const e=await notice(supervisor,{type,includeInReceptionHandover:false});
+    const task=kind==='followup'?await prisma.task.create({data:{title:'Origen indirecto',createdById:supervisor.id,entryId:e.id}}):null;
+    const linked=kind==='alert'?await createManualAlert(supervisor,{entryId:e.id,type:'OTRO',level:'ATENCION',title:'Alerta de origen no novedad'}):await createFollowUp(supervisor,{taskId:task!.id,action:'Seguimiento de origen no novedad',visibility:'OPERATIVO'});
+    const shift=await createShift({userId:reception.id,type:'DIA'});await openShiftAs(reception,shift);await receiveHandover(reception,{shiftId:shift.id});
+    const handover=await prepareHandover(reception,shift.id);expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:linked.id}})).toBe(0);
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});
+    const current=await prisma.operationalEntry.findUniqueOrThrow({where:{id:e.id}});await updateEntryVisibility(supervisor,{id:e.id,revision:current.updatedAt.toISOString(),hiddenDepartmentIds:[],includeInReceptionHandover:true});
+    expect(await prisma.shiftHandover.findUnique({where:{id:handover.id}})).toMatchObject({receptionSummaryRevision:1,pendingsReviewedAt:null,finalReviewAt:null});
+    await expect(sendHandover(reception,{shiftId:shift.id})).rejects.toThrow(/Regenera/);
+    await prepareHandover(reception,shift.id);expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:linked.id}})).toBe(1);expect(await prisma.handoverItem.count({where:{handoverId:handover.id,refId:e.id}})).toBe(0);
+    await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'PENDINGS'});await confirmHandoverReviewStep(reception,{handoverId:handover.id,step:'FINAL'});await sendHandover(reception,{shiftId:shift.id});
+    expect(JSON.stringify((await prisma.shiftHandover.findUniqueOrThrow({where:{id:handover.id}})).snapshot)).toContain(linked.id);
+  });
+
+  for(const roleKey of [ROLE_KEYS.SUPERVISOR,ROLE_KEYS.SYSTEM_ADMIN])it(`avisos históricos de cierre exigen shift.manage vigente para ${roleKey}`,async()=>{
+    const reader=await createUser({roleKey});
+    const alert=await prisma.alert.create({data:{title:'Validar cierre de turno',type:'OTRO',dedupeKey:'shift-validation:synthetic-permission'}});
+    const task=await prisma.task.create({data:{title:alert.title,createdById:supervisor.id,alertId:alert.id}});
+    const notices=await Promise.all([['Alert',alert.id],['Task',task.id]].map(([entity,entityId])=>prisma.notification.create({data:{userId:reader.id,type:'ACCION_REQUERIDA',title:alert.title,entity,entityId}})));
+    const ordinary=await prisma.notification.create({data:{userId:reader.id,type:'ACTUALIZACION_OPERATIVA',title:'Aviso ordinario'}});
+    const endpoint=`https://push.invalid/closure-permission-${roleKey}`;await prisma.pushSubscription.create({data:{userId:reader.id,endpoint,createdAt:new Date(Date.now()-10000)}});
+    expect((await getNotificationFeedForUser(reader.id)).items.map(n=>n.id)).toEqual(expect.arrayContaining(notices.map(n=>n.id)));
+    const role=await prisma.role.findUniqueOrThrow({where:{key:roleKey}});const permission=await prisma.permission.findUniqueOrThrow({where:{key:'shift.manage'}});
+    await prisma.rolePermission.deleteMany({where:{roleId:role.id,permissionId:permission.id}});
+    try{
+      expect((await getNotificationFeedForUser(reader.id)).items.map(n=>n.id)).toEqual([ordinary.id]);
+      expect((await getWebPushPayload({userId:reader.id,endpoint})).items.map(n=>n.id)).toEqual([ordinary.id]);
+      for(const n of notices)expect(await markReadableNotifications(reader.id,n.id)).toMatchObject({count:0});
+      expect(await prisma.notification.count({where:{id:{in:notices.map(n=>n.id)},readAt:null}})).toBe(2);
+    }finally{await prisma.rolePermission.create({data:{roleId:role.id,permissionId:permission.id}});}
+    expect((await getNotificationFeedForUser(reader.id)).items.map(n=>n.id)).toEqual(expect.arrayContaining(notices.map(n=>n.id)));
+  });
+
   for(const selection of ['include','area','both'] as const)it(`habilitar una novedad antes excluida por ${selection} invalida revisión y exige regenerar sin borrar evidencia manual`,async()=>{
     const receptionId=(await prisma.department.findUniqueOrThrow({where:{key:'RECEPCION'}})).id;
     const e=await notice(supervisor,{includeInReceptionHandover:selection==='area',hiddenDepartmentIds:selection==='include'?[]:[receptionId]});

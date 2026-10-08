@@ -7,7 +7,7 @@ import { formatCalendarDate, formatDateTime } from '@/lib/format';
 import { addHotelCalendarDays, hotelDateKey, hotelWallDateTime } from '@/domain/time';
 import { listGymPasses } from './gym-pass';
 
-import {entryReadWhere,type EntryReader} from './entry-visibility';
+import {closureValidationAlertWhere,entryReadWhere,type EntryReader} from './entry-visibility';
 
 export type SupervisorReportType = 'gimnasio' | 'multas' | 'estado';
 
@@ -153,7 +153,7 @@ export async function buildSupervisorReport(
       where: { AND:[taskFollowUpReadWhere(user)], deletedAt: null, status: { in: [...OPEN_TASK_STATUSES] } },
     }),
     prisma.alert.count({
-      where: { AND:[alertReadWhere(user)], deletedAt: null, status: { not: AlertStatus.RESUELTA } },
+      where: { AND:[alertReadWhere(user),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}], deletedAt: null, status: { not: AlertStatus.RESUELTA } },
     }),
   ]);
 

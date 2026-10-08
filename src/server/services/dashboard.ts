@@ -107,13 +107,11 @@ export async function getDashboardData(user: CurrentUser) {
         dueAt: true,
       },
       orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }],
-      take: 8,
     }),
     prisma.task.findMany({
       where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], status: { in: TASK_OPEN_STATUSES }, dueAt: { lt: now } },
       select: { id: true, humanId: true, title: true, priority: true },
       orderBy: { dueAt: 'asc' },
-      take: 8,
     }),
     prisma.task.findMany({
       where: { deletedAt: null,AND:[taskFollowUpReadWhere(user)], assigneeId: user.id, status: { in: TASK_OPEN_STATUSES } },
@@ -133,7 +131,6 @@ export async function getDashboardData(user: CurrentUser) {
         status: true,
       },
       orderBy: [{ scheduledAt: 'asc' }],
-      take: 6,
     }),
     prisma.shift.findFirst({
       where: {
@@ -246,7 +243,7 @@ export async function getDashboardData(user: CurrentUser) {
       action: followUp.action,
       status: followUp.status,
     })),
-  });
+  }, Number.POSITIVE_INFINITY);
 
   return {
     now,

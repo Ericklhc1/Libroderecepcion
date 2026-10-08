@@ -119,6 +119,9 @@ export function groupNotificationItems<T extends NotificationFeedItem>(items: T[
     }
     group.items.push(item);
   }
+  for (const group of duplicates.values()) {
+    if(group.items.length>1){group.title=group.items[0]!.title;group.body=group.items[0]!.body;}
+  }
   for (const group of keysByDay.values()) {
     if (group.items.length < 2) continue;
     const floors = [...new Set(group.items.flatMap((item) => {
@@ -138,7 +141,7 @@ export function notificationDeviceItems(items: NotificationFeedItem[]): Notifica
   return groupNotificationItems(items).map((group) => {
     const newest = group.items.reduce((a, b) => a.createdAt > b.createdAt ? a : b);
     return group.title
-      ? { ...newest, title: group.title, body: group.body, link: '/llaves?piso=todos' }
+      ? { ...newest, title: group.title, body: group.body, link: group.id.startsWith('key-counts:') ? '/llaves?piso=todos' : newest.link }
       : newest;
   }).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

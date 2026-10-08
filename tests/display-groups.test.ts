@@ -16,7 +16,8 @@ describe('agrupación visual de duplicados', () => {
   });
 });
 
-import { groupNotificationItems } from '@/domain/notification-summary';
+import { buildOperationalAttention } from '@/domain/operational-attention';
+import { notificationDeviceItems, groupNotificationItems } from '@/domain/notification-summary';
 it('agrupa los conteos de pisos por día hotelero y conserva los no leídos', () => {
   const base = { type:'FRONTI_HALLAZGO', body:null, entity:'KeyInventory', createdAt:'2026-10-08T02:00:00.000Z' };
   const rows = [ {...base,id:'a',title:'Inventario de llaves con diferencias · piso 1',entityId:'one',link:'/llaves?piso=1',readAt:'2026-10-08T02:01:00.000Z'}, {...base,id:'b',title:'Inventario de llaves con diferencias · piso 2',entityId:'two',link:'/llaves?piso=2',readAt:null} ];
@@ -24,4 +25,16 @@ it('agrupa los conteos de pisos por día hotelero y conserva los no leídos', ()
   expect(groups).toHaveLength(1);
   expect(groups[0]!.items.filter(item=>item.readAt===null)).toHaveLength(1);
   expect(groups[0]!.items.map(item=>item.link)).toEqual(['/llaves?piso=1','/llaves?piso=2']);
+});
+
+it('los duplicados exactos comparten presentación en campana, lista y push sin cambiar destino',()=>{
+  const base={type:'COMENTARIO',title:'Revisar novedad',body:'Resultado',entity:'OperationalEntry',entityId:'e',createdAt:'2026-10-08T02:00:00Z',link:'/libro/e',readAt:null};
+  const rows=[{...base,id:'a'},{...base,id:'b'}];
+  const groups=groupNotificationItems(rows);expect(groups).toHaveLength(1);expect(groups[0]!.title).toBe(base.title);
+  expect(notificationDeviceItems(rows)).toMatchObject([{link:'/libro/e',title:base.title}]);
+});
+it('agrupa todas las prioridades antes de elegir ocho grupos y conserva originales inferiores',()=>{
+  const items=buildOperationalAttention({rooms:[],alerts:[],overdueTasks:Array.from({length:12},(_,i)=>({id:String(i),title:'Duplicada',priority:'CRITICA' as const})),criticalEntries:[{id:'distinct',humanId:1234,title:'Otra prioridad',priority:'ALTA',overdue:false}],followUps:[]},Number.POSITIVE_INFINITY);
+  const groups=groupDisplayRows(items,item=>JSON.stringify([item.kind,item.tone,item.title,item.reason,item.action]));
+  expect(groups).toHaveLength(2);expect(groups[0]!.items).toHaveLength(12);expect(groups.flatMap(group=>group.items).some(item=>item.id==='entry:distinct')).toBe(true);
 });

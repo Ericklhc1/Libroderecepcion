@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {PrismaClient} from '@prisma/client';
 import {SignJWT} from 'jose';
+import {createHash} from 'node:crypto';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright-core');
 const fixture=JSON.parse(readFileSync('/tmp/etapa1-fixture.json','utf8'));
 const db=new PrismaClient();const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});
@@ -24,6 +25,7 @@ try{
       const title=`${internal?'INTERNA':'SIMPLE'}_UI_${width}`;await form.locator('[name="title"]').fill(title);await form.locator('[name="description"]').fill('Descripción sintética de la novedad');await form.locator('[name="reservationReference"]').fill('7484708');await form.locator('[name="departmentId"]').selectOption(area.id);await form.locator('[name="workNextAction"]').fill('Seguimiento sintético');if(internal)await form.locator('[name="internal"]').check();
       await form.getByRole('button',{name:'Guardar novedad',exact:true}).click();await admin.page.getByRole('link',{name:new RegExp(title)}).waitFor();
       const row=await db.operationalEntry.findFirstOrThrow({where:{title}});assert.equal(row.ownerId,null);assert.equal(row.receptionInternal,internal);assert.equal(row.reservationReference,'7484708');
+      await admin.page.getByRole('link',{name:new RegExp(title)}).click();await admin.page.locator('#contenido-principal h1').waitFor();assert.equal(await admin.page.getByRole('button',{name:'Solicitar atención',exact:true}).count(),0);assert.ok(await admin.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
       await admin.page.goto('http://localhost:3000/libro');
     }
     const pagingPrefix=`PAGINA_UI_${width}`;await db.operationalEntry.createMany({data:Array.from({length:41},(_,index)=>({type:'NOVEDAD',title:`${pagingPrefix}_${index}`,description:'Paginación sintética',createdById:fixture.users.admin.id,departmentId:area.id,occurredAt:new Date(Date.now()+index*1000)}))});
@@ -31,6 +33,20 @@ try{
     const out=await context('outgoing',width);await out.page.goto('http://localhost:3000/libro');const row=out.page.locator('tr').filter({hasText:`SIMPLE_UI_${width}`});await row.getByRole('button',{name:'Marcar resuelta',exact:true}).click();await out.page.getByText('Novedad resuelta.',{exact:true}).waitFor();assert.equal((await db.operationalEntry.findFirstOrThrow({where:{title:`SIMPLE_UI_${width}`}})).status,'RESUELTO');await out.ctx.close();
     await toggle(admin.page,false);await admin.page.goto('http://localhost:3000/libro');assert.equal(await admin.page.getByText('Prueba de novedades simples',{exact:true}).count(),0);
     assert.deepEqual(errors,[]);await admin.ctx.close();results.push({width,flagOff:true,flagOn:true,areaVisibility:true,internalPrivacy:true,outgoingResolvedWithoutShift:true,areaPagination:true});
+  }
+  // Isolated native handover fixtures exercise the one awareness checkbox on both sides.
+  const receiver=await db.user.create({data:{name:'Recepcionista entrante sintético',username:'simple_receiver_ui',passwordHash:'synthetic-no-login',roleId:role.id,departmentId:fixture.areaId,mustChangePassword:false,tutorialDoneAt:template.tutorialDoneAt,tutorialKnownModules:template.tutorialKnownModules}});
+  for(const accepted of await db.legalAcceptance.findMany({where:{userId:template.id}}))await db.legalAcceptance.create({data:{userId:receiver.id,document:accepted.document,version:accepted.version}});
+  const receiverSession=await db.session.create({data:{userId:receiver.id,expiresAt}});fixture.users.receiver={id:receiver.id,token:await new SignJWT({sub:receiver.id,sid:receiverSession.id}).setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime(Math.floor(expiresAt.getTime()/1000)).sign(new TextEncoder().encode(process.env.AUTH_SECRET))};
+  for(const width of [1280,390]){
+    const admin=await context('admin',width);await toggle(admin.page,true);const now=new Date();
+    const from=await db.shift.create({data:{date:now,type:'DIA',status:'PREPARANDO_ENTREGA',plannedStart:now,plannedEnd:now,actualStart:now,createdById:outgoing.id,assignments:{create:{userId:outgoing.id,activatedAt:now}}}});
+    const handover=await db.shiftHandover.create({data:{fromShiftId:from.id,issuedById:outgoing.id}});
+    const out=await context('outgoing',width);await out.page.goto(`http://localhost:3000/turno/entrega/${handover.id}?paso=3`);const awareness=out.page.getByRole('checkbox',{name:'Estoy al tanto de las novedades.',exact:true});assert.equal(await awareness.count(),1);await awareness.check();await out.page.getByRole('button',{name:'CONFIRMAR REVISIÓN FINAL',exact:true}).click();await out.page.waitForURL('**?paso=4');const reviewed=await db.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});assert.ok(reviewed.finalReviewAt&&reviewed.urgentAcknowledgedAt&&reviewed.pendingsReviewedAt);assert.ok(await out.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await out.ctx.close();
+    const to=await db.shift.create({data:{date:now,type:'NOCHE',status:'INICIADO',plannedStart:now,plannedEnd:now,actualStart:now,createdById:receiver.id,assignments:{create:{userId:receiver.id,activatedAt:now}}}});
+    await db.shiftHandover.update({where:{id:handover.id},data:{status:'ENVIADA',issuedAt:now,toShiftId:to.id,receiverBriefingReviewedAt:now,receiverCustodyReviewedAt:now,receiverBriefingSummaryKey:createHash('sha256').update('[]').digest('hex')}});await db.shift.update({where:{id:from.id},data:{status:'CERRADO',actualEnd:now}});
+    const incoming=await context('receiver',width);await incoming.page.goto(`http://localhost:3000/turno/entrega/${handover.id}`);const receiverAwareness=incoming.page.getByRole('checkbox',{name:'Estoy al tanto de las novedades.',exact:true});assert.equal(await receiverAwareness.count(),1);await receiverAwareness.check();const finalForm=receiverAwareness.locator('xpath=ancestor::form');await finalForm.getByRole('button').click();await incoming.page.getByRole('heading',{name:'Recepción de turno · paso 5 de 5',exact:true}).waitFor();assert.ok((await db.shiftHandover.findUniqueOrThrow({where:{id:handover.id}})).receiverUrgentAcknowledgedAt);assert.ok(await incoming.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await incoming.ctx.close();
+    await db.shiftAssignment.updateMany({where:{shiftId:{in:[from.id,to.id]}},data:{leftAt:new Date()}});await toggle(admin.page,false);await admin.ctx.close();results.find(row=>row.width===width).handoverAwareness=true;
   }
   writeFileSync('simple-novelties-browser-results.json',JSON.stringify({status:'passed',results},null,2));console.log('Simple novelties journeys passed: 1280 and 390');
 }finally{await db.systemSetting.updateMany({where:{key:'book.simpleNovelties'},data:{value:false}});await browser.close();await db.$disconnect();}

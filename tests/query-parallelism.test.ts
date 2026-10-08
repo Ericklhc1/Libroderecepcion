@@ -62,8 +62,9 @@ describe('paralelismo de consultas', () => {
       y no la lista de variables, que cambia cuando el panel gana una sección.
     */
     expect(source).not.toMatch(/\w+: await prisma\./);
-    // Dos esperas en todo el servicio: el turno abierto y el lote en paralelo.
-    expect(source.match(/await Promise\.all\(\[/g) ?? []).toHaveLength(2);
+    // Los dos lotes principales siguen en paralelo; los candidatos añaden su propio lote.
+    expect(source).toMatch(/followTotal,\s*\] = await Promise\.all\(\[/);
+    expect(source).toMatch(/liveAlerts,\s*\] = await Promise\.all\(\[/);
     for (const value of ['openEntries', 'openTasks', 'liveAlerts', 'criticalAlerts']) {
       expect(source).toContain(value);
     }

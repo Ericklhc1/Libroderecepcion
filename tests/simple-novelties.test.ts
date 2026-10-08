@@ -36,6 +36,29 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
     const form=new FormData();for(const [key,value] of Object.entries({id:row.id,revision:operationalRecordRevision('entries',row),title:row.title,description:row.description,departmentId:'',workNextAction:'',roomId:right.id,reservationReference:'CORRECTA'}))form.set(key,value);expect((await updateSimpleNoveltyAction(null,form)).ok).toBe(true);let changed=await prisma.operationalEntry.findUniqueOrThrow({where:{id:row.id}});expect(changed).toMatchObject({roomId:right.id,reservationReference:'CORRECTA',ownerId:null});expect(await prisma.shiftHandover.findUniqueOrThrow({where:{id:draft.id}})).toMatchObject({receptionSummaryRevision:draft.receptionSummaryRevision+1,finalReviewAt:null});await shiftServices.prepareHandover(receiver,shift.id);const photo=await prisma.handoverItem.findFirstOrThrow({where:{handoverId:draft.id,refId:row.id}});expect(photo.detail).toContain('CORRECTA');expect(photo.detail).toContain('HAB: 402');
     form.set('revision',operationalRecordRevision('entries',changed));form.set('roomId','');form.set('reservationReference','');expect((await updateSimpleNoveltyAction(null,form)).ok).toBe(true);changed=await prisma.operationalEntry.findUniqueOrThrow({where:{id:row.id}});expect(changed).toMatchObject({roomId:null,reservationReference:null});form.set('revision',operationalRecordRevision('entries',changed));form.set('roomId','hab-inexistente');expect((await updateSimpleNoveltyAction(null,form)).ok).toBe(false);expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:row.id}})).updatedAt).toEqual(changed.updatedAt);
   });
+  it('preserva área y HAB desactivadas al corregir otro dato, pero rechaza nuevos destinos inactivos',async()=>{
+    await flag(true);
+    const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});auth.user=author;await activateReception(author);
+    const area=await prisma.department.findUniqueOrThrow({where:{key:'HOUSEKEEPING'}});
+    const room=await prisma.room.findFirstOrThrow({where:{number:'401'}});
+    const inactiveRoom=await prisma.room.findFirstOrThrow({where:{number:'402'}});
+    const inactiveArea=await prisma.department.create({data:{key:'INACTIVE_NEW',name:'Otra área desactivada',active:false}});
+    try{
+      const row=await createSimpleNovelty(author,{title:'Contexto histórico',description:'Área original',departmentId:area.id,roomId:room.id});
+      await prisma.department.update({where:{id:area.id},data:{active:false}});await prisma.room.update({where:{id:room.id},data:{active:false}});
+      const form=new FormData();for(const [key,value] of Object.entries({id:row.id,revision:operationalRecordRevision('entries',row),title:row.title,description:row.description,departmentId:area.id,roomId:room.id,workNextAction:'Corrección sin reasociar',reservationReference:''}))form.set(key,value);
+      expect((await updateSimpleNoveltyAction(null,form)).ok).toBe(true);
+      const saved=await prisma.operationalEntry.findUniqueOrThrow({where:{id:row.id}});expect(saved).toMatchObject({departmentId:area.id,roomId:room.id,workNextAction:'Corrección sin reasociar'});
+      form.set('revision',operationalRecordRevision('entries',saved));form.set('departmentId',inactiveArea.id);expect((await updateSimpleNoveltyAction(null,form)).ok).toBe(false);
+      form.set('departmentId',area.id);await prisma.room.update({where:{id:inactiveRoom.id},data:{active:false}});form.set('roomId',inactiveRoom.id);expect((await updateSimpleNoveltyAction(null,form)).ok).toBe(false);
+      expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:row.id}})).updatedAt).toEqual(saved.updatedAt);
+    }finally{
+      await prisma.department.update({where:{id:area.id},data:{active:area.active}});
+      await prisma.room.update({where:{id:room.id},data:{active:room.active}});
+      await prisma.room.update({where:{id:inactiveRoom.id},data:{active:inactiveRoom.active}});
+      await prisma.department.delete({where:{id:inactiveArea.id}});
+    }
+  });
   it('busca el folio mostrado, con y sin #, y la reserva vinculada sin ampliar visibilidad',async()=>{
     await flag(true);const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const reader=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await activateReception(reader);const reservation=await prisma.reservationReference.create({data:{code:'RESERVA-NATIVA-DETALLE'}});const visible=await prisma.$transaction(tx=>createNativeEntry(tx,{data:{createdById:reader.id,type:'INCIDENCIA',title:'Asunto sin número',severity:'MEDIA',description:'Texto sin folio',reservationId:reservation.id,priority:'MEDIA'}}));
     expect((await listSimpleNovelties(reader,{q:'#9007199254740991'})).total).toBe(0);const detail=await getSubjectEntry(reader,visible.id);expect(detail.reservation?.code).toBe(reservation.code);expect(detail.reservationReference).toBeNull();for(const q of [String(visible.humanId),`#${visible.humanId}`,reservation.code]){const list=await listSimpleNovelties(reader,{q});expect(list.total).toBe(1);expect(list.general.map(row=>row.id)).toEqual([visible.id]);}

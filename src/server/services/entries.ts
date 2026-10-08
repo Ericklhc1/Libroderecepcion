@@ -341,6 +341,7 @@ export async function updateEntry(
     });
     if (!current) throw new NotFoundError('El registro no existe o fue eliminado.');
     assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,dueAt:current.dueAt});
+    if(options.simpleNovelty&&input.departmentId&&input.departmentId!==current.departmentId&&!await tx.department.count({where:{id:input.departmentId,active:true}}))throw new RuleError('Selecciona un área relacionada vigente.');
     if (input.ownerId !== undefined && input.ownerId !== current.ownerId && ['NOVEDAD','INCIDENCIA'].includes(current.type) && simpleMode) throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
     if(simpleMode&&['NOVEDAD','INCIDENCIA'].includes(current.type)&&'departmentId' in input&&input.departmentId!==current.departmentId&&!current.receptionInternal&&await tx.department.count({where:{AND:[{id:{in:current.hiddenFromDepartments.map(area=>area.id)}},input.departmentId?{id:input.departmentId}:{key:'RECEPCION'}]}}))throw new RuleError('El área relacionada está oculta. Cambia su visibilidad antes de seleccionarla.');
     if (current.status === EntryStatus.CERRADO && !user.permissions.includes('entry.reopen')) {
@@ -353,8 +354,8 @@ export async function updateEntry(
       await assertAssignable(input.ownerId);
       await assertEntryOwnerVisibility(tx,{ownerId:input.ownerId,createdById:current.createdById,hiddenDepartmentIds:current.hiddenFromDepartments.map(d=>d.id),receptionInternal:current.receptionInternal});
     }
-    if (input.roomId) {
-      const room = await prisma.room.findFirst({
+    if (input.roomId && !(options.simpleNovelty && input.roomId === current.roomId)) {
+      const room = await tx.room.findFirst({
         where: { id: input.roomId, active: true },
         select: { id: true },
       });

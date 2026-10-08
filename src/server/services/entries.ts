@@ -1,4 +1,4 @@
-import {assertReceptionOperationPermission} from './reception-operation-gate';
+import {assertReceptionOperationPermission,authorizeReceptionOperation} from './reception-operation-gate';
 import {invalidateSimpleNoveltyDrafts} from './simple-novelty-drafts';
 import { getSettingBool, assertSimpleNoveltiesEnabled, lockSimpleNoveltiesMode } from './settings';
 import { isReceptionDeskRole } from '@/lib/permissions';
@@ -115,7 +115,8 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
     const novelty=['NOVEDAD','INCIDENCIA'].includes(input.type);
     if(novelty)await lockReceptionSummary(tx);
     const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
-    if(simpleMode)await assertReceptionOperationPermission(user,input.type==='INCIDENCIA'?'incident.create':'entry.create',tx);
+    const authorizedGate=simpleMode?await authorizeReceptionOperation(user,input.type==='INCIDENCIA'?'incident.create':'entry.create',tx):null;
+    const creationShiftId=simpleMode?(isReceptionDeskRole(user.roleKey)?authorizedGate!.shiftId:(await getMyOpenShift(user.id,tx))?.id??null):shift?.id??null;
     if(options.simpleNovelty&&!simpleMode)throw new RuleError('La prueba de novedades simples está apagada.');
     if(simpleMode&&input.ownerId&&['NOVEDAD','INCIDENCIA'].includes(input.type))throw new RuleError('En novedades simples se elige el área relacionada; no se asignan personas.');
     const hiddenIds = [...new Set(input.hiddenDepartmentIds ?? [])];
@@ -138,7 +139,7 @@ export async function createEntry(user: CurrentUser, input: EntryCreateInput, op
         priority: input.priority,
         ownerId: input.ownerId ?? null,
         workAssignedAt: input.ownerId ? new Date() : null,
-        shiftId: shift?.id ?? null,
+        shiftId: creationShiftId,
         occurredAt: input.occurredAt ?? new Date(),
         dueAt: input.dueAt ?? null,
         tags: normalizeTags(input.tags),
@@ -613,6 +614,7 @@ export async function softDeleteEntry(
     const novelty=['NOVEDAD','INCIDENCIA'].includes(current.type);
     if(novelty)await lockReceptionSummary(tx);
     const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
+    if(simpleMode)await assertReceptionOperationPermission(user,'entry.delete',tx);
     const deleted = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt: current.updatedAt },
       data: {
@@ -661,6 +663,7 @@ export async function restoreEntry(
     const novelty=['NOVEDAD','INCIDENCIA'].includes(current.type);
     if(novelty)await lockReceptionSummary(tx);
     const simpleMode=novelty?await lockSimpleNoveltiesMode(tx):false;
+    if(simpleMode)await assertReceptionOperationPermission(user,'entry.restore',tx);
     const restored = await tx.operationalEntry.update({
       where: { id: input.id, updatedAt: current.updatedAt },
       data: { deletedAt: null, deletedById: null, deletionReason: null },
@@ -688,6 +691,7 @@ export async function updateEntryVisibility(user: CurrentUser, input: { id: stri
   return prisma.$transaction(async tx => {
     await lockReceptionSummary(tx);
     const simpleMode=await lockSimpleNoveltiesMode(tx);
+    if(simpleMode)await assertReceptionOperationPermission(user,'entry.content.edit',tx);
     await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id" = ${input.id} FOR UPDATE`;
     const current = await readEntries(tx, user).findFirst({ where: { id: input.id, deletedAt: null }, include: { hiddenFromDepartments: { select: { id: true } } } });
     if (!current) throw new NotFoundError('La novedad no existe.');

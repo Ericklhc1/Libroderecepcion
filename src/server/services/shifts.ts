@@ -126,8 +126,8 @@ export type ShiftWithDetail = Prisma.ShiftGetPayload<{ include: typeof shiftIncl
  * Incluye `ENTREGA_ENVIADA` porque quien entregó sigue siendo responsable de su
  * turno hasta que alguien lo reciba: tiene que poder verlo y corregirlo.
  */
-export async function getMyOpenShift(userId: string) {
-  return prisma.shift.findFirst({
+export async function getMyOpenShift(userId: string, client:Prisma.TransactionClient=prisma) {
+  return client.shift.findFirst({
     where: {
       status: { in: [...OCCUPYING_SHIFT_STATUSES, ShiftStatus.ENTREGA_ENVIADA] },
       assignments: {

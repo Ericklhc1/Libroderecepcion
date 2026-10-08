@@ -1,12 +1,13 @@
+import {lockSimpleNoveltiesMode,getSettingBool} from './settings';
 import {createNativeEntry,lockNativeNoveltyCreation} from '@/server/services/native-entry-creation';
 import { readEntries } from '@/server/services/entry-visibility';
-import { entryReadWhere, housekeepingEntryReadWhere, assertHousekeepingWorkDestination, assertEntryWorkDestination, assertEntryVisibleForWrite } from './entry-visibility';
+import { entryReadWhere, housekeepingEntryReadWhere, assertHousekeepingWorkDestination, assertEntryWorkDestination, assertEntryVisibleForWrite,assertNoSimpleNoveltyChain } from './entry-visibility';
 import {subjectDistributionEnabled} from './subject-distribution-gate';
 import {sourceStakeholders,notifyNativeWork} from './work-notifications';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { maintenanceAllowsContinuation } from '@/domain/housekeeping-continuity';
-import { Prisma, type Priority, type Severity } from '@prisma/client';
+import { Prisma, type Priority, type Severity, type EntryType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { ROLE_KEYS, type PermissionKey } from '@/lib/permissions';
@@ -114,6 +115,7 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput, clie
   const repeated = await db.housekeepingRequest.findUnique({ where: { requestKey: input.requestKey } });
   if (repeated) { if (repeated.createdById !== user.id) throw new ForbiddenError(); return repeated; }
   const perform = async (tx: Prisma.TransactionClient) => {
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
     if(input.sourceEntryId) await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.sourceEntryId} FOR UPDATE`;
     const retry=await tx.housekeepingRequest.findUnique({where:{requestKey:input.requestKey}});
     if(retry){if(retry.createdById!==user.id)throw new ForbiddenError();return retry;}
@@ -127,6 +129,7 @@ export async function createHkWork(user: CurrentUser, input: HkCreateInput, clie
     const source = input.sourceEntryId ? await readEntries(tx, user).findFirst({ where: { id: input.sourceEntryId, deletedAt: null, status: { notIn: ['CERRADO', 'RESUELTO'] }, ...sourceScope(user, input.departmentId, canAssign) }, select: { id: true, roomId: true } }) : null;
     if(source?.roomId&&room?.id!==source.roomId)throw new RuleError('La habitación debe coincidir con la novedad de origen.');
     if (input.sourceEntryId && !source) throw new RuleError('La novedad ya no está disponible para vincular.');
+    if(source)await assertNoSimpleNoveltyChain(tx,user,[source.id],simpleMode);
     if(source)await assertEntryWorkDestination(tx,source.id,input.departmentId,input.assignedToId);
     const request = await tx.housekeepingRequest.create({ data: { ...input, roomId: room?.id, zoneId: zone?.id, location: room?.number ?? zone?.name ?? input.location!.trim(), title: source ? null : input.title.trim(), description: source ? null : input.description.trim(), assignedToId: input.assignedToId || null, workAssignedAt: input.assignedToId ? new Date() : null, sourceEntryId: source?.id, workflowVersion: 1, requiresInspection: hkInspectionRequired(input.workKind, input.requiresInspection), createdById: user.id, events: { create: { actorId: user.id, action: 'CREAR', toStatus: 'PENDIENTE', note: 'Trabajo creado. La planificación no acredita asistencia ni modifica el PMS.' } } } });
     await record(tx, user, request.id, request.humanId, 'CREAR', 'Trabajo del día'); await notifyHkWork(tx, request, user.id, 'Nuevo trabajo',undefined,internalOnly); return request;
@@ -320,8 +323,9 @@ export async function revokeHkDelegation(user:CurrentUser,id:string){return pris
 
 export async function getHkSources(user:CurrentUser,departmentId:string,query=''){
   hasAccess(user);const assign=await hkCapability(user,departmentId,'housekeeping.assign');if(!assign&&!hkHas(user,'housekeeping.request'))throw new ForbiddenError();
+  const simpleMode=await getSettingBool('book.simpleNovelties',false);
   const number=/^#?\d+$/.test(query)?Number(query.replace('#','')):undefined;
-  return readEntries(prisma, user).findMany({where:{deletedAt:null,housekeepingRequests:{none:{departmentId,deletedAt:null}},status:{notIn:['CERRADO','RESUELTO']},...sourceScope(user,departmentId,assign),...(query.trim()?{AND:[sourceScope(user,departmentId,assign),{OR:[{title:{contains:query.trim(),mode:'insensitive'}},{room:{number:{contains:query.trim()}}},...(number&&Number.isSafeInteger(number)?[{humanId:number}]:[])]}]}:{})},select:{id:true,humanId:true,title:true,description:true,room:{select:{id:true,number:true}}},orderBy:{createdAt:'desc'},take:25});
+  return readEntries(prisma, user).findMany({where:{...(simpleMode?{type:{notIn:['NOVEDAD','INCIDENCIA'] as EntryType[]}}:{}),deletedAt:null,housekeepingRequests:{none:{departmentId,deletedAt:null}},status:{notIn:['CERRADO','RESUELTO']},...sourceScope(user,departmentId,assign),...(query.trim()?{AND:[sourceScope(user,departmentId,assign),{OR:[{title:{contains:query.trim(),mode:'insensitive'}},{room:{number:{contains:query.trim()}}},...(number&&Number.isSafeInteger(number)?[{humanId:number}]:[])]}]}:{})},select:{id:true,humanId:true,title:true,description:true,room:{select:{id:true,number:true}}},orderBy:{createdAt:'desc'},take:25});
 }
 export async function organizeLegacyHkWork(user:CurrentUser,input:{id:string;version:number;departmentId:string;workDate:string;workKind:HkWorkKind;roomId?:string;effortMinutes:number;requiresInspection:boolean;assignedToId?:string;note:string}){
   validDate(input.workDate);await requireCapability(user,input.departmentId,'housekeeping.assign');

@@ -1,5 +1,6 @@
+import {lockSimpleNoveltiesMode} from './settings';
 import { readEntries } from '@/server/services/entry-visibility';
-import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, type EntryReader } from './entry-visibility';
+import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, assertNoSimpleNoveltyChain, type EntryReader } from './entry-visibility';
 import {lockOpenSubjectForWork} from './subject-completion';
 import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
@@ -123,6 +124,7 @@ export async function createFollowUp(
   }
 
   return prisma.$transaction(async (tx) => {
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
     if(taskId)await lockEntrySourcesForRecord(tx,user,'task',taskId);
     if(input.sourceId && input.sourceEntity==='Alert')await lockEntrySourcesForRecord(tx,user,'alert',input.sourceId);
     if(input.sourceId && input.sourceEntity==='FollowUp')await lockEntrySourcesForRecord(tx,user,'followup',input.sourceId);
@@ -133,7 +135,9 @@ export async function createFollowUp(
     }
     if(input.sourceEntity==='Alert' && input.sourceId && !await tx.alert.count({where:{id:input.sourceId,deletedAt:null,AND:[alertReadWhere(user)]}})) throw new NotFoundError('La alerta de origen no existe.');
     if(input.sourceEntity==='FollowUp' && input.sourceId && !await tx.followUp.count({where:{id:input.sourceId,AND:[followUpReadWhere(user)]}})) throw new NotFoundError('El seguimiento de origen no existe.');
-    await lockOpenSubjectForWork(tx,{...input,entryId,taskId});
+    const strategic=visibility!=='OPERATIVO'&&user.permissions.includes('supervision.followup.manage')&&Boolean(input.origin?.startsWith('SUPERVISION_'));
+    const sourceIds=await lockOpenSubjectForWork(tx,{...input,entryId,taskId,...(simpleMode&&!strategic?{origin:null}:{})},simpleMode);
+    if(!strategic)await assertNoSimpleNoveltyChain(tx,user,sourceIds,simpleMode);
     if(entryId) {
       await assertEntryVisibleForWrite(tx,user,entryId);
       const owner=await tx.user.findFirst({where:{id:ownerId,active:true,deletedAt:null},select:{id:true,departmentId:true,role:{select:{key:true}}}});

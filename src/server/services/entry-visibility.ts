@@ -93,6 +93,11 @@ export async function lockEntrySourcesForRecord(tx: Prisma.TransactionClient, us
   if(rows.length && await tx.operationalEntry.count({where:{id:{in:rows.map(r=>r.id)},AND:[entryReadWhere(user)]}})!==rows.length) throw new NotFoundError('El registro de origen no está visible para tu área.');
 }
 
+/** Creating native work must not restore assignment chains in the simple trial. */
+export async function assertNoSimpleNoveltyChain(tx:Prisma.TransactionClient,user:EntryReader,entryIds:string[],simpleMode:boolean){
+  if(simpleMode&&entryIds.length&&await readEntries(tx,user).count({where:{id:{in:entryIds},type:{in:['NOVEDAD','INCIDENCIA']}}}))throw new RuleError('En novedades simples se elige el área relacionada, sin cadenas de asignación.');
+}
+
 /** Assignment must remain usable under the proposed area visibility. */
 export async function assertEntryOwnerVisibility(tx: Prisma.TransactionClient, input: {ownerId?:string|null;createdById:string;hiddenDepartmentIds:string[];receptionInternal?:boolean}) {
   if(!input.ownerId)return;

@@ -1,5 +1,6 @@
+import {lockSimpleNoveltiesMode} from './settings';
 import { readEntries } from '@/server/services/entry-visibility';
-import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, assertEntryWorkDestination, type EntryReader } from './entry-visibility';
+import { entryReadWhere, assertEntryVisibleForWrite, lockEntrySourcesForRecord, assertEntryWorkDestination, assertNoSimpleNoveltyChain, type EntryReader } from './entry-visibility';
 import {lockOpenSubjectForWork} from './subject-completion';
 import {assertTaskAssignable} from './task-assignment-access';
 import {notifyUnassignedTask,notifyNativeWork,sourceStakeholders} from './work-notifications';
@@ -180,6 +181,7 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
   });
 
   const write = async (tx: Prisma.TransactionClient) => {
+    const simpleMode=await lockSimpleNoveltiesMode(tx);
     if(input.alertId){
       await tx.$queryRaw`SELECT "id" FROM "Alert" WHERE "id"=${input.alertId} FOR UPDATE`;
       const source=await tx.alert.findUnique({where:{id:input.alertId},select:{dedupeKey:true}});
@@ -192,6 +194,8 @@ export async function createTask(user: CurrentUser, input: TaskCreateInput, clie
       await tx.$queryRaw`SELECT "id" FROM "OperationalEntry" WHERE "id"=${input.entryId} FOR UPDATE`;
       if(!await readEntries(tx, user).count({where:{id:input.entryId,deletedAt:null,status:{notIn:['RESUELTO','CERRADO']}}}))throw new RuleError('Reabre el asunto antes de solicitar trabajo nuevo.');
     }
+    const sourceIds=await lockOpenSubjectForWork(tx,input,simpleMode);
+    await assertNoSimpleNoveltyChain(tx,user,sourceIds,simpleMode);
     for(const id of participantIds)await assertTaskAssignable(id,tx);
     await assertTaskSourceRecipients(tx,new Set([user.id,...participantIds]),input,true);
     if (input.procedureOccurrenceKey) {
@@ -737,7 +741,7 @@ export async function restoreTask(
   if (!current) throw new NotFoundError('La tarea no está eliminada.');
   assertAuthorizedRevision(expectedRevision, {updatedAt:current.updatedAt,status:current.status,assigneeId:current.assigneeId,dueAt:current.dueAt});
   return prisma.$transaction(async (tx) => {
-    if(TASK_OPEN_STATUSES.includes(current.status)){await assertTaskActivationRecipients(tx,user,current);await lockOpenSubjectForWork(tx,current);}
+    if(TASK_OPEN_STATUSES.includes(current.status)){await assertTaskActivationRecipients(tx,user,current);await lockOpenSubjectForWork(tx,{...current,taskId:current.id});}
     const restored = await tx.task.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[taskFollowUpReadWhere(user)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },

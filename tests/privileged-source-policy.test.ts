@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
-import {entryReadWhere,canReadAllEntryAreas} from '@/server/services/entry-visibility';
+import {entryReadWhere,canReadAllEntryAreas,type EntryReader} from '@/server/services/entry-visibility';
 import {followUpReadWhere,taskFollowUpReadWhere,notificationReadWhere} from '@/server/services/followup-access';
-const supervisor={id:'privileged-reader',roleKey:'SUPERVISOR',permissions:['supervision.followup.manage']};
+const supervisor:EntryReader={id:'privileged-reader',roleKey:'SUPERVISOR',permissions:['supervision.followup.manage']};
 describe('proyección central de lectores con todas las áreas',()=>{
   it('omite sólo los cruces de área redundantes y conserva la privacidad ancestral',()=>{
     expect(canReadAllEntryAreas(supervisor)).toBe(true);
@@ -14,6 +14,6 @@ describe('proyección central de lectores con todas las áreas',()=>{
     const proposed={hiddenFromDepartments:{none:{id:'proposed-area'}}};expect(JSON.stringify(taskFollowUpReadWhere(supervisor,false,proposed))).toContain('proposed-area');
   });
   it('ningún rol ordinario obtiene la excepción por permisos de gestión',()=>{
-    const ordinary={...supervisor,roleKey:'GERENCIA'};expect(canReadAllEntryAreas(ordinary)).toBe(false);expect(JSON.stringify(followUpReadWhere(ordinary))).toContain('sourceEntries');expect(JSON.stringify(entryReadWhere(ordinary))).toContain('receptionInternal');
+    const ordinary:EntryReader={...supervisor,roleKey:'GERENCIA'};expect(canReadAllEntryAreas(ordinary)).toBe(false);expect(JSON.stringify(followUpReadWhere(ordinary))).toContain('sourceEntries');expect(JSON.stringify(entryReadWhere(ordinary))).toContain('receptionInternal');
   });
 });

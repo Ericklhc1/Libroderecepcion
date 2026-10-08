@@ -128,8 +128,8 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                       ) : null}
                     </div>
                     <NotificationMessage notification={{...notification,title:title??notification.title,body:body??notification.body}} />
-                    {items.length>1&&<details className="mt-1"><summary className="cursor-pointer text-xs font-semibold">×{items.length} avisos · ver originales</summary><ul>{items.map(original=><li key={original.id} className="flex flex-wrap items-center gap-2 py-1 text-xs"><span>{original.title}</span><time>{formatDateTime(original.createdAt)}</time>{original.link?<OpenNotificationButton id={original.id} href={original.link} unread={original.readAt===null}/>:original.readAt===null?<MarkOneReadForm id={original.id}/>:<span>Leído</span>}</li>)}</ul></details>}
-                    {notification.link ? (
+                    {items.length>1&&<details className="mt-1"><summary className="cursor-pointer text-xs font-semibold">×{items.length} avisos · ver originales</summary><ul>{items.map(original=><li key={original.id} data-notification-id={original.id} className="flex flex-wrap items-center gap-2 py-1 text-xs"><NotificationMessage notification={original}/><time>{formatDateTime(original.createdAt)}</time>{original.link?<OpenNotificationButton id={original.id} href={original.link} unread={original.readAt===null}/>:original.readAt===null?<MarkOneReadForm id={original.id}/>:<span>Leído</span>}</li>)}</ul></details>}
+                    {items.length===1&&notification.link ? (
                       <OpenNotificationButton
                         id={notification.id}
                         href={notification.link}
@@ -137,7 +137,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                       />
                     ) : null}
                   </div>
-                  {notification.readAt === null && !notification.link ? (
+                  {items.length===1&&notification.readAt === null && !notification.link ? (
                     <MarkOneReadForm id={notification.id} />
                   ) : null}
                 </li>

@@ -313,7 +313,7 @@ export default async function DashboardPage() {
                       Siguiente acción: {item.action}
                     </p>
                   </Link>
-                  {total>1&&<details className="px-4 pb-2"><summary className="cursor-pointer text-xs">Ver {items.length} de {total} registros</summary><ul>{items.map(original=><li key={original.id}><Link className="text-xs underline" href={original.href}>{original.title}{original.folio ? ` · #${original.folio}` : ` · ${original.kind} ${original.id.split(':').at(-1)}`}</Link></li>)}</ul>{total>items.length&&<Link className="text-xs underline" href={item.kind==='task'?`/tareas?q=${encodeURIComponent(item.title)}`:`/seguimientos?q=${encodeURIComponent(item.title)}`}>Ver todos en su bandeja</Link>}</details>}
+                  {total>1&&<details className="px-4 pb-2"><summary className="cursor-pointer text-xs">Ver {items.length} de {total} registros</summary><ul>{items.map(original=><li key={original.id}><Link className="text-xs underline" href={original.href}>{original.title}{original.folio ? ` · #${original.folio}` : ` · ${original.kind} ${original.id.split(':').at(-1)}`}</Link></li>)}</ul>{total>items.length&&<Link className="text-xs underline" href={item.kind==='task'?`/tareas?q=${encodeURIComponent(item.title)}`:`/seguimientos?q=${encodeURIComponent(item.title)}&estado=todos`}>Ver todos en su bandeja</Link>}</details>}
                 </li>
               ); })}
             </ul>

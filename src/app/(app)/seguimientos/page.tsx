@@ -26,6 +26,8 @@ export default async function FollowUpsPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
+  const pageValue=Number(params.pagina);const page=Number.isSafeInteger(pageValue)&&pageValue>0?pageValue:1;
+  const pageHref=(number:number)=>{const query=new URLSearchParams();for(const [key,value] of Object.entries(params))if(typeof value==='string'&&key!=='pagina')query.set(key,value);query.set('pagina',String(number));return `/seguimientos?${query}`;};
   refreshAlertsInBackground();
 
   const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '') : '';
@@ -55,18 +57,19 @@ export default async function FollowUpsPage({
         : {}),
   };
 
-  const [followUps, counts] = await Promise.all([
+  const [followUps, counts, total] = await Promise.all([
     prisma.followUp.findMany({
       where,
       include: followUpInclude,
-      orderBy: [{ status: 'asc' }, { scheduledAt: 'asc' }],
-      take: 150,
+      orderBy: [{ status: 'asc' }, { scheduledAt: 'asc' },{id:'asc'}],
+      skip:(page-1)*150, take: 150,
     }),
     prisma.followUp.groupBy({
       by: ['status'],
       where: { deletedAt: null, AND: [visibilityWhere] },
       _count: { _all: true },
     }),
+    prisma.followUp.count({where}),
   ]);
 
   const countByStatus = (status: FollowUpStatus) =>
@@ -232,6 +235,7 @@ export default async function FollowUpsPage({
           </CardScroll>
         )}
       </Card>
+      <nav aria-label="Páginas de seguimientos" className="flex items-center justify-between gap-2 text-sm">{page>1?<Link href={pageHref(page-1)}>← Anterior</Link>:<span/>}<span>Página {page} · {total} registros</span>{page*150<total&&<Link href={pageHref(page+1)}>Siguiente →</Link>}</nav>
     </div>
   );
 }

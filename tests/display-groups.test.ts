@@ -18,6 +18,10 @@ describe('agrupación visual de duplicados', () => {
 
 import { buildOperationalAttention } from '@/domain/operational-attention';
 import { notificationDeviceItems, groupNotificationItems } from '@/domain/notification-summary';
+it('cada seguimiento agrupado conserva una búsqueda por su propio folio',()=>{
+  const rows=buildOperationalAttention({rooms:[],alerts:[],overdueTasks:[],criticalEntries:[],followUps:[{id:'one',humanId:501,action:'Duplicado',status:'PENDIENTE'},{id:'two',humanId:502,action:'Duplicado',status:'PENDIENTE'}]});
+  expect(rows.map(row=>row.href)).toEqual(['/seguimientos?q=501&estado=todos','/seguimientos?q=502&estado=todos']);
+});
 it('agrupa los conteos de pisos por día hotelero y conserva los no leídos', () => {
   const base = { type:'FRONTI_HALLAZGO', body:null, entity:'KeyInventory', createdAt:'2026-10-08T02:00:00.000Z' };
   const rows = [ {...base,id:'a',title:'Inventario de llaves con diferencias · piso 1',entityId:'one',link:'/llaves?piso=1',readAt:'2026-10-08T02:01:00.000Z'}, {...base,id:'b',title:'Inventario de llaves con diferencias · piso 2',entityId:'two',link:'/llaves?piso=2',readAt:null} ];

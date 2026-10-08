@@ -63,7 +63,7 @@ describe('paralelismo de consultas', () => {
     */
     expect(source).not.toMatch(/\w+: await prisma\./);
     // Los dos lotes principales siguen en paralelo; los candidatos añaden su propio lote.
-    expect(source).toMatch(/followTotal,\s*\] = await Promise\.all\(\[/);
+    expect(source).toMatch(/entryTotal,\s*\] = await Promise\.all\(\[/);
     expect(source).toMatch(/liveAlerts,\s*\] = await Promise\.all\(\[/);
     for (const value of ['openEntries', 'openTasks', 'liveAlerts', 'criticalAlerts']) {
       expect(source).toContain(value);

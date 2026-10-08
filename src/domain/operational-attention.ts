@@ -186,7 +186,7 @@ export function buildOperationalAttention(
       title: followUp.action,
       reason: overdue ? 'Seguimiento vencido.' : 'Seguimiento pendiente.',
       action: overdue ? 'Ejecutar o reprogramar el seguimiento.' : 'Preparar el siguiente contacto.',
-      href: '/libro?clase=followup',
+      href: followUp.humanId ? `/seguimientos?q=${followUp.humanId}&estado=todos` : '/seguimientos',
     });
   }
 

@@ -13,6 +13,12 @@ function one(value: string | string[] | undefined): string | undefined {
   return value && value.length > 0 ? value : undefined;
 }
 
+/** Bound every list offset before multiplying it by the page size. */
+export function boundedPage(value: string | string[] | undefined): number {
+  const parsed=Number(one(value));
+  return Number.isFinite(parsed)?Math.max(1,Math.min(100000,Math.floor(parsed))):1;
+}
+
 function date(value: string | undefined, endOfDay = false): Date | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const calendar = new Date(`${value}T00:00:00.000Z`);

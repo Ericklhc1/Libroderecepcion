@@ -59,6 +59,24 @@ describe('prueba de novedades simples sobre el libro existente',()=>{
       await prisma.department.delete({where:{id:inactiveArea.id}});
     }
   });
+  for(const operation of ['create','edit'] as const)it(`destino desactivado concurrentemente no se guarda en ${operation}`,async()=>{
+    await flag(true);const author=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await activateReception(author);
+    const area=await prisma.department.create({data:{key:`CONCURRENT_${operation}`,name:'Destino concurrente'}});
+    const original=operation==='edit'?await createSimpleNovelty(author,{title:'Contexto previo',description:'Sin destino'}):null;
+    let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});let locked!:()=>void;const ready=new Promise<void>(resolve=>{locked=resolve;});
+    const deactivate=prisma.$transaction(async tx=>{await tx.department.update({where:{id:area.id},data:{active:false}});locked();await gate;});
+    let attempt:Promise<{ok:true}|{ok:false;error:unknown}>|undefined;
+    try{
+      await ready;attempt=(operation==='create'?createSimpleNovelty(author,{title:'No crear en destino desactivado',description:'Prueba concurrente',departmentId:area.id}):updateSimpleNovelty(author,{id:original!.id,title:original!.title,description:original!.description,departmentId:area.id,workNextAction:null},operationalRecordRevision('entries',original!))).then(()=>({ok:true as const}),error=>({ok:false as const,error}));
+      let waiting=false;for(let index=0;index<100&&!waiting;index++){
+        const rows=await prisma.$queryRaw<{count:bigint}[]>`SELECT COUNT(*) AS count FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM "Department"%FOR SHARE%'`;
+        waiting=Number(rows[0]?.count??0)>0;if(!waiting)await new Promise(resolve=>setTimeout(resolve,10));
+      }
+      expect(waiting).toBe(true);release();await deactivate;const outcome=await attempt;expect(outcome.ok).toBe(false);if(!outcome.ok)expect(String(outcome.error)).toMatch(/área relacionada vigente/);
+      expect(await prisma.operationalEntry.count()).toBe(original?1:0);if(original)expect((await prisma.operationalEntry.findUniqueOrThrow({where:{id:original.id}})).departmentId).toBeNull();
+    }finally{release();await deactivate;await attempt;await prisma.operationalEntry.deleteMany({where:{departmentId:area.id}});await prisma.department.delete({where:{id:area.id}});}
+  });
+
   it('busca el folio mostrado, con y sin #, y la reserva vinculada sin ampliar visibilidad',async()=>{
     await flag(true);const admin=await createUser({roleKey:ROLE_KEYS.SYSTEM_ADMIN});const reader=await createUser({roleKey:ROLE_KEYS.RECEPTIONIST});await activateReception(reader);const reservation=await prisma.reservationReference.create({data:{code:'RESERVA-NATIVA-DETALLE'}});const visible=await prisma.$transaction(tx=>createNativeEntry(tx,{data:{createdById:reader.id,type:'INCIDENCIA',title:'Asunto sin número',severity:'MEDIA',description:'Texto sin folio',reservationId:reservation.id,priority:'MEDIA'}}));
     expect((await listSimpleNovelties(reader,{q:'#9007199254740991'})).total).toBe(0);const detail=await getSubjectEntry(reader,visible.id);expect(detail.reservation?.code).toBe(reservation.code);expect(detail.reservationReference).toBeNull();for(const q of [String(visible.humanId),`#${visible.humanId}`,reservation.code]){const list=await listSimpleNovelties(reader,{q});expect(list.total).toBe(1);expect(list.general.map(row=>row.id)).toEqual([visible.id]);}

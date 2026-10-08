@@ -58,7 +58,6 @@ export async function createSimpleNovelty(user: CurrentUser, input: { title: str
   if (!await simpleNoveltiesEnabled()) throw new RuleError('La prueba de novedades simples está apagada.');
   if (!user.permissions.includes('entry.create')) throw new ForbiddenError();
   if (input.internal && !canResolveSimpleNovelty(user)) throw new ForbiddenError();
-  if (input.departmentId && !await prisma.department.count({ where: { id: input.departmentId, active: true } })) throw new RuleError('Selecciona un área relacionada vigente.');
   return createEntry(user, { ...input, type: 'NOVEDAD', priority: 'MEDIA', ownerId: null, requiresFollowUp: false, tags: [], receptionInternal: input.internal ?? false, workNextAction: input.workNextAction ?? null }, {simpleNovelty:true});
 }
 

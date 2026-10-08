@@ -705,6 +705,7 @@ model LegalAcceptance {
 // ================================= ÁREAS ==================================
 
 model Department {
+  hiddenEntries OperationalEntry[] @relation("EntryHiddenAreas")
   subjectAttentions SubjectAreaAttention[]
   operationalAutomations OperationalAutomation[]
   hkRoutines HousekeepingRoutine[]
@@ -1128,6 +1129,11 @@ model LaundryShipmentLine {
 // ================================= TURNOS =================================
 
 model Shift {
+  closureReviewRequestedAt DateTime?
+  closureReviewDecision String?
+  closureReviewNote String?
+  closureReviewedAt DateTime?
+  closureReviewedById String?
   id           String      @id @default(cuid())
   humanId             Int                   @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
   date         DateTime    @db.Date
@@ -1236,13 +1242,18 @@ model ShiftHandover {
   snapshot             Json?
   /// Barreras reales del cierre guiado. No dependen del parámetro ?paso=.
   pendingsReviewedAt   DateTime?
+  /// Eligibility changes invalidate the existing Reception summary/review.
+  receptionSummaryRevision Int @default(0)
+  receptionSummaryPreparedRevision Int @default(0)
   finalReviewAt        DateTime?
   urgentAcknowledgedAt DateTime?
   /// Barreras persistidas de la recepción guiada. El turno entrante permanece
   /// INICIADO hasta completar estas confirmaciones y la recepción final.
   receiverBriefingReviewedAt DateTime?
+  receiverBriefingSummaryKey String?
   receiverCustodyReviewedAt  DateTime?
   receiverFinalReviewAt      DateTime?
+  receiverFinalSummaryKey    String?
   receiverUrgentAcknowledgedAt DateTime?
   notes                String?
   receiverObservations String?
@@ -1392,6 +1403,23 @@ model SupervisionNote {
 // ============================ LIBRO OPERATIVO =============================
 
 model OperationalEntry {
+  scopedTaskOrigins ScopedTaskSourceEntry[]
+  scopedAlertOrigins ScopedAlertSourceEntry[]
+  scopedFollowUpOrigins ScopedFollowUpSourceEntry[]
+  scopedAlarmOrigins ScopedAlarmSourceEntry[]
+  scopedAuditOrigins ScopedAuditSourceEntry[]
+  scopedNotificationOrigins ScopedNotificationSourceEntry[]
+  nativeTaskOrigins NativeTaskSourceEntry[]
+  nativeAlertOrigins NativeAlertSourceEntry[]
+  nativeFollowUpOrigins NativeFollowUpSourceEntry[]
+  nativeAlarmOrigins NativeAlarmSourceEntry[]
+  nativeAuditOrigins NativeAuditSourceEntry[]
+  nativeNotificationOrigins NativeNotificationSourceEntry[]
+  taskSourceRows TaskSourceEntry[]
+  alertSourceRows AlertSourceEntry[]
+  followUpSourceRows FollowUpSourceEntry[]
+  includeInReceptionHandover Boolean @default(true)
+  hiddenFromDepartments Department[] @relation("EntryHiddenAreas")
   workAssignedAt DateTime?
   workAcknowledgedAt DateTime?
   workAcknowledgedById String?
@@ -1559,6 +1587,9 @@ model HousekeepingEvent {
 }
 
 model Task {
+  legacySourceEntries TaskSourceEntry[]
+  previousSourceEntries NativeTaskSourceEntry[]
+  sourceEntries ScopedTaskSourceEntry[]
   areaAttention SubjectAreaAttention?
   sourceFollowUps TaskSourceFollowUp[]
   procedureOccurrenceKey String? @unique
@@ -1686,6 +1717,9 @@ model TaskChecklistItem {
 }
 
 model FollowUp {
+  legacySourceEntries FollowUpSourceEntry[]
+  previousSourceEntries NativeFollowUpSourceEntry[]
+  sourceEntries ScopedFollowUpSourceEntry[]
   sourceFollowUps FollowUpSourceFollowUp[] @relation("derivedFollowUp")
   derivedFollowUps FollowUpSourceFollowUp[] @relation("originFollowUp")
   sourceNotifications NotificationSourceFollowUp[]
@@ -1747,6 +1781,9 @@ model FollowUp {
 }
 
 model Alert {
+  legacySourceEntries AlertSourceEntry[]
+  previousSourceEntries NativeAlertSourceEntry[]
+  sourceEntries ScopedAlertSourceEntry[]
   sourceFollowUps AlertSourceFollowUp[]
   id           String      @id @default(cuid())
   humanId      Int         @unique @default(dbgenerated("nextval('human_operational_id_seq'::regclass)"))
@@ -1978,6 +2015,8 @@ model LostFoundEvent {
 // ========================= TRAZABILIDAD Y SISTEMA =========================
 
 model AuditLog {
+  previousSourceEntries NativeAuditSourceEntry[]
+  sourceEntries ScopedAuditSourceEntry[]
   sourceFollowUps AuditSourceFollowUp[]
   id        String      @id @default(cuid())
   entity    String
@@ -2148,6 +2187,8 @@ model ChatMediaPreference {
 }
 
 model Notification {
+  previousSourceEntries NativeNotificationSourceEntry[]
+  sourceEntries ScopedNotificationSourceEntry[]
   deletedAt DateTime?
   deletedById String?
   deletionReason String?
@@ -2260,6 +2301,8 @@ model SupportRequestAttachment {
 }
 
 model OperationalAlarm {
+  previousSourceEntries NativeAlarmSourceEntry[]
+  sourceEntries ScopedAlarmSourceEntry[]
   sourceFollowUps AlarmSourceFollowUp[]
   id            String                 @id @default(cuid())
   kind          OperationalAlarmKind
@@ -3907,4 +3950,129 @@ model SubjectAreaAttention {
   @@unique([entryId, departmentId])
   @@index([departmentId, status])
   @@index([urgentContactId])
+}
+
+// Read-only entry provenance over the same native source edges, including cycles.
+view TaskSourceEntry {
+  taskId String
+  entryId String
+  task Task @relation(fields: [taskId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([taskId, entryId])
+}
+view AlertSourceEntry {
+  alertId String
+  entryId String
+  alert Alert @relation(fields: [alertId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alertId, entryId])
+}
+view FollowUpSourceEntry {
+  followUpId String
+  entryId String
+  followUp FollowUp @relation(fields: [followUpId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([followUpId, entryId])
+}
+
+view NativeTaskSourceEntry {
+  taskId String
+  entryId String
+  source Task @relation(fields: [taskId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([taskId, entryId])
+}
+
+view NativeAlertSourceEntry {
+  alertId String
+  entryId String
+  source Alert @relation(fields: [alertId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alertId, entryId])
+}
+
+view NativeFollowUpSourceEntry {
+  followUpId String
+  entryId String
+  source FollowUp @relation(fields: [followUpId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([followUpId, entryId])
+}
+
+view NativeAlarmSourceEntry {
+  alarmId String
+  entryId String
+  source OperationalAlarm @relation(fields: [alarmId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alarmId, entryId])
+}
+
+view NativeAuditSourceEntry {
+  auditLogId String
+  entryId String
+  source AuditLog @relation(fields: [auditLogId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([auditLogId, entryId])
+}
+
+view NativeNotificationSourceEntry {
+  notificationId String
+  entryId String
+  source Notification @relation(fields: [notificationId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([notificationId, entryId])
+}
+
+view ScopedTaskSourceEntry {
+  taskId String
+  entryId String
+  source Task @relation(fields: [taskId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([taskId, entryId])
+  @@map("CompleteTaskSourceEntry")
+}
+
+view ScopedAlertSourceEntry {
+  alertId String
+  entryId String
+  source Alert @relation(fields: [alertId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alertId, entryId])
+  @@map("CompleteAlertSourceEntry")
+}
+
+view ScopedFollowUpSourceEntry {
+  followUpId String
+  entryId String
+  source FollowUp @relation(fields: [followUpId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([followUpId, entryId])
+  @@map("CompleteFollowUpSourceEntry")
+}
+
+view ScopedAlarmSourceEntry {
+  alarmId String
+  entryId String
+  source OperationalAlarm @relation(fields: [alarmId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([alarmId, entryId])
+  @@map("CompleteAlarmSourceEntry")
+}
+
+view ScopedAuditSourceEntry {
+  auditLogId String
+  entryId String
+  source AuditLog @relation(fields: [auditLogId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([auditLogId, entryId])
+  @@map("CompleteAuditSourceEntry")
+}
+
+view ScopedNotificationSourceEntry {
+  notificationId String
+  entryId String
+  source Notification @relation(fields: [notificationId], references: [id])
+  entry OperationalEntry @relation(fields: [entryId], references: [id])
+  @@unique([notificationId, entryId])
+  @@map("CompleteNotificationSourceEntry")
 }

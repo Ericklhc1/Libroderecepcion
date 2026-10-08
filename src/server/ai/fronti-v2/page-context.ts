@@ -241,6 +241,9 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
     ]);
   }
 
+  const guarantee = pathname.match(/^\/caja\/garantias\/([^/]+)$/);
+  if (guarantee) return detail('caja', 'Caja', 'garantia-detalle', 'Detalle de garantía', ['consultar_contexto_pantalla', 'consultar_garantias'], 'Guarantee', guarantee[1] ?? null);
+
   const cashAudit = pathname.match(/^\/caja\/arqueos\/([^/]+)$/);
   if (cashAudit) {
     return detail('caja', 'Caja', 'arqueo-detalle', 'Detalle de arqueo', [
@@ -359,6 +362,9 @@ function matchRoute(pathname: string, filters: Record<string, string>): RouteMat
       'consultar_auditoria',
     ]);
   }
+
+  const closure = pathname.match(/^\/supervision\/cierres\/([^/]+)$/);
+  if (closure) return detail('supervision', 'Centro de Supervisión', 'cierre-detalle', 'Validación de cierre', ['consultar_contexto_pantalla', 'consultar_supervision'], 'Shift', closure[1] ?? null);
 
   if (pathname === '/supervision/documentos') return detail('supervision', 'Centro de Supervisión', 'documentos-locales', 'Revisión documental local sin persistencia central', ['consultar_contexto_pantalla']);
   if (pathname === '/supervision') {

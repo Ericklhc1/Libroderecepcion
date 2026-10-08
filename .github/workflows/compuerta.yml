@@ -124,6 +124,9 @@ jobs:
           set -o pipefail
           npm run typecheck 2>&1 | tee etapa3-typecheck.log
 
+      - name: Chromium existente para regresión de impresión
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+
       - name: Regresiones
         run: |
           npm run test
@@ -147,7 +150,6 @@ jobs:
         run: |
           node scripts/etapa1/guard.cjs
           npx tsx scripts/etapa1/fixture.mts
-          node node_modules/playwright-core/cli.js install --with-deps chromium
 
       - name: Recorridos autenticados de escritorio y móvil
         timeout-minutes: 3
@@ -182,6 +184,25 @@ jobs:
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/reception-browser.mjs; then
             journey_status=1
           fi
+          exit "$journey_status"
+
+      # Keep the same eleven journeys in three bounded groups; do not kill their local server
+      # because cold Chromium startup consumes a single three-minute budget.
+      - name: Continuidad y atención nativa de escritorio y móvil
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/native-continuity-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          journey_status=0
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/subject-browser.mjs; then
             journey_status=1
           fi
@@ -194,8 +215,31 @@ jobs:
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/intent-browser.mjs; then
             journey_status=1
           fi
+          if [ "$journey_status" -ne 0 ]; then
+            tail -60 /tmp/native-continuity-server.log
+          fi
+          exit "$journey_status"
+
+      - name: Superficies operativas y recepción del resultado de cierre
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/native-surfaces-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          journey_status=0
           if ! PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/etapa4/surfaces-browser.mjs; then
             journey_status=1
+          fi
+          if [ "$journey_status" -ne 0 ]; then
+            tail -60 /tmp/native-surfaces-server.log
           fi
           exit "$journey_status"
 

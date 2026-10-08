@@ -1,3 +1,6 @@
+import { canReadReceptionHandover,visibleHandover } from '@/server/services/handover-snapshot';
+import { assertClosureReviewer, legacyClosureAlertWhere, closureReviewState } from '@/server/services/closure-review';
+import { outstandingAmount } from '@/domain/guarantees';
 import { listAreaAttentions } from '@/server/services/subject-distribution';
 import { getChangesSinceLastShift } from '@/server/services/shift-changes';
 import {alertReadWhere} from '@/server/services/followup-access';
@@ -15,7 +18,7 @@ import { OperationalAlarmStatus } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { prisma } from '@/lib/prisma';
 import { getDashboardData } from '@/server/services/dashboard';
-import { getEntry } from '@/server/services/entries';
+import { getSubjectEntry } from '@/server/services/entries';
 import { getTask } from '@/server/services/tasks';
 import { getBookItems } from '@/server/services/book';
 import {
@@ -178,7 +181,7 @@ async function detailSnapshot(
   if (!page.entityType || !page.entityId) return null;
 
   if (page.entityType === 'OperationalEntry') {
-    const entry = await getEntry(page.entityId).catch(() => null);
+    const entry = await getSubjectEntry(user, page.entityId).catch(() => null);
     if (!entry) return { found: false };
     const room = entry.roomId
       ? await prisma.room.findUnique({
@@ -292,6 +295,21 @@ async function detailSnapshot(
     return count ? { ...count, items: count.items.map(({ room, ...item }) => ({ ...item, roomNumber: item.roomNumberSnapshot ?? room.number })) } : { found: false };
   }
 
+  if (page.entityType === 'Guarantee') {
+    requireAny(user,['cash.view'],'No tienes permiso para consultar garantías.');
+    const guarantee=await prisma.guarantee.findFirst({where:{id:page.entityId,deletedAt:null,...(user.isSystemAdmin?{}:{isDemo:false})},select:{id:true,humanId:true,kind:true,state:true,currency:true,amount:true,appliedAmount:true,penaltyAmount:true,returnedAmount:true,guestName:true,roomNumber:true,reference:true,dueAt:true,notes:true,createdAt:true,settlements:{select:{kind:true,currency:true,amount:true,reason:true,createdAt:true,createdBy:{select:{name:true}}},orderBy:{createdAt:'desc'}}}});
+    if(!guarantee)return {found:false};
+    const amounts={amount:Number(guarantee.amount),appliedAmount:Number(guarantee.appliedAmount??0),penaltyAmount:Number(guarantee.penaltyAmount??0),returnedAmount:Number(guarantee.returnedAmount??0)};
+    return {found:true,...guarantee,...amounts,outstandingAmount:outstandingAmount(amounts),settlements:guarantee.settlements.map(s=>({...s,amount:Number(s.amount)}))};
+  }
+  if (page.entityType === 'Shift') {
+    assertClosureReviewer(user);
+    const shift=await prisma.shift.findFirst({where:{id:page.entityId,...(user.isSystemAdmin?{}:{isDemo:false})},select:{id:true,humanId:true,date:true,type:true,status:true,actualEnd:true,archivedAt:true,closureReviewRequestedAt:true,closureReviewDecision:true,closureReviewNote:true,closureReviewedAt:true,handoverOut:{select:{id:true,status:true,issuedAt:true,receivedAt:true,issuedBy:{select:{name:true}},receivedBy:{select:{name:true}}}}}});
+    if(!shift)return {found:false};
+    const legacy=await prisma.alert.findFirst({where:legacyClosureAlertWhere(shift.id),select:{status:true}});
+    return {found:true,...shift,pending:closureReviewState(shift,legacy).pending,href:`/supervision/cierres/${shift.id}`,handoverHref:shift.handoverOut?`/turno/entrega/${shift.handoverOut.id}`:null};
+  }
+
   if (page.entityType === 'CashAudit') {
     requireAny(user, ['cash.view'], 'No tienes permiso para consultar arqueos.');
     const audit = await prisma.cashAudit.findUnique({
@@ -318,18 +336,16 @@ async function detailSnapshot(
   }
 
   if (page.entityType === 'ShiftHandover') {
-    requireAny(
-      user,
-      ['shift.start', 'shift.receive', 'shift.handover', 'shift.close', 'shift.manage'],
-      'No tienes permiso para consultar entregas de turno.',
-    );
-    const handover = await prisma.shiftHandover.findUnique({
-      where: { id: page.entityId },
+    if(!canReadReceptionHandover(user))throw new Error('No tienes permiso para consultar entregas de turno.');
+    const handover = await prisma.shiftHandover.findFirst({
+      where: { id: page.entityId, ...(user.isSystemAdmin?{}:{fromShift:{isDemo:false}}) },
       select: {
         id: true,
         status: true,
         issuedAt: true,
         receivedAt: true,
+        snapshot: true,
+        receiverBriefingReviewedAt:true,receiverCustodyReviewedAt:true,receiverFinalReviewAt:true,receiverUrgentAcknowledgedAt:true,
         issuedBy: { select: { name: true } },
         receivedBy: { select: { name: true } },
         fromShift: { select: { id: true, type: true, date: true, status: true } },
@@ -338,12 +354,12 @@ async function detailSnapshot(
           select: { id: true, declared: true, confirmed: true, missingReason: true, missingReportedById: true, missingApprovedAt: true, missingApprovalNote: true, updatedAt: true, elementType: { select: { name: true } } },
         },
         items: {
-          select: { id: true, level: true, title: true, detail: true, order: true },
+          select: { id: true, level: true, title: true, detail: true, order: true, section:true, refType:true, refId:true },
           orderBy: [{ level: 'asc' }, { order: 'asc' }],
         },
       },
     });
-    return handover ? { ...handover, elements: handover.elements.map(element => ({ ...element, elementId: element.id, revision: element.updatedAt.toISOString() })) } : { found: false };
+    return handover ? { ...await visibleHandover(user,handover), elements: handover.elements.map(element => ({ ...element, elementId: element.id, revision: element.updatedAt.toISOString() })) } : { found: false };
   }
 
   if (page.entityType === 'ChecklistRun') {
@@ -481,7 +497,7 @@ async function supervisionSectionSnapshot(
       requested === 'estado' || requested === 'gimnasio' || requested === 'multas'
         ? [requested]
         : ['estado', 'gimnasio', 'multas'];
-    const reports = await Promise.all(types.map((type) => buildSupervisorReport(type, range)));
+    const reports = await Promise.all(types.map((type) => buildSupervisorReport(user, type, range)));
     return {
       range,
       reports: reports.map((report) => ({

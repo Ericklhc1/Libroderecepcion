@@ -1,0 +1,105 @@
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { describe, it, expect } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { chromium } from 'playwright-core';
+import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { HandoverPrint } from '@/components/operational/handover-print';
+import { handoverPrintRows, handoverPrintCounts, closurePrintValidation } from '@/domain/handover-print';
+import { handover02Fixture, confirmedHandover02Fixture } from './fixtures/handover-02-10';
+
+const css = readFileSync('src/app/globals.css', 'utf8');
+describe('impresión de entrega 02-10-2026', () => {
+  for(const status of ['BORRADOR','ANULADA'] as const)it(`${status} no monta informe ni firmas aunque se invoque la impresión del navegador`,()=>{
+    expect(renderToStaticMarkup(<HandoverPrint {...handover02Fixture()} handoverStatus={status} />)).toBe('');
+  });
+
+  it('recuento entrante, diferencias, marcas y notas aparecen sólo tras confirmar la recepción',()=>{
+    const fixture=confirmedHandover02Fixture();fixture.cash.confirmed!.statuses=fixture.cash.confirmed!.statuses.map(s=>s.currency==='USD'?{...s,countedMinor:98765,differenceMinor:83765,balanced:false}:s);fixture.cash.confirmed!.notes='INCOMING_COUNT_ONLY';fixture.receiverObservations='RECEIVER_OBSERVATIONS_ONLY';fixture.receiver='RECEIVER_NAME_ONLY';fixture.cash.elements[0]!.confirmed=true;fixture.cash.elements[0]!.notes='DECLARED_ELEMENT_NOTE';fixture.cash.elements[0]!.missingReason='INCOMING_MISSING_ONLY';
+    const received=renderToStaticMarkup(<HandoverPrint {...fixture}/>);
+    for(const marker of ['INCOMING_COUNT_ONLY','RECEIVER_OBSERVATIONS_ONLY','RECEIVER_NAME_ONLY','INCOMING_MISSING_ONLY'])expect(received).toContain(marker);
+    expect(received).toContain('DECLARED_ELEMENT_NOTE');expect(received).toContain('Diferencia recibe − entrega');expect(received).toContain('987,65');
+    const sent=renderToStaticMarkup(<HandoverPrint {...fixture} handoverStatus="ENVIADA"/>);
+    for(const marker of ['INCOMING_COUNT_ONLY','RECEIVER_OBSERVATIONS_ONLY','RECEIVER_NAME_ONLY','INCOMING_MISSING_ONLY'])expect(sent).not.toContain(marker);
+    expect(sent).toContain('DECLARED_ELEMENT_NOTE');expect(sent).not.toContain('Diferencia recibe − entrega');expect(sent).not.toContain('987,65');expect(sent).toContain('Sin receptor confirmado');expect(sent).toContain('Sin confirmar');expect(sent).toContain('7542392');
+  });
+
+  it('la declaración sin elementos mantiene su justificación antes de recibir',()=>{
+    const fixture=handover02Fixture();fixture.cash.elements.forEach(e=>{e.declared=false;e.notes='JUSTIFICACION_EMISOR_SIN_ELEMENTOS';});
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture}/>);expect(html).toContain('JUSTIFICACION_EMISOR_SIN_ELEMENTOS');expect(html).toContain('Sin confirmar');
+  });
+  it('un faltante aprobado en un acta recibida consta como No recibido',()=>{
+    const fixture=confirmedHandover02Fixture();fixture.cash.elements.forEach(e=>e.confirmed=true);fixture.cash.elements[0]!.confirmed=false;fixture.cash.elements[0]!.missingReason='FALTANTE_APROBADO_164';fixture.cash.elements[0]!.missingApprovedAt=new Date().toISOString();
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture}/>);expect(html).toContain('No recibido');expect(html).toContain('FALTANTE_APROBADO_164');expect(html).not.toContain('Sin confirmar');
+  });
+  it('cuenta solo lo impreso y agrupa repetidos sin perder detalle ni cantidades', () => {
+    const f = handover02Fixture();
+    const rows = handoverPrintRows([...f.items, f.items[0]!]);
+    expect(rows).toHaveLength(12);
+    expect(rows[0]).toMatchObject({ priority: 'URG', ref: '1431', count: 2 });
+    expect(handoverPrintCounts(rows)).toEqual({ urgente: 5, importante: 4, informativo: 4 });
+    expect(rows.find(r => r.ref === '1424')?.due).toBe('05-10-26 11:00');
+  });
+
+  for(const declaredLegacy of [false,true])it(`entrega recibida prefiere custodia confirmada, declarada antigua=${declaredLegacy}`,()=>{
+    const fixture=confirmedHandover02Fixture();
+    fixture.cash.declared!.guaranteeSnapshotRecorded=!declaredLegacy;
+    fixture.cash.confirmed!.validatedGuarantees=[{...fixture.cash.declared!.validatedGuarantees[0]!,guestName:'Custodia confirmada distinta',reference:'CONFIRMED-164-ONLY'}];
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture} />);
+    expect(html).toContain('CONFIRMED-164-ONLY');expect(html).toContain('Custodia confirmada distinta');
+    expect(html).not.toContain('7541967');expect(html).not.toContain('Fotografía histórica de garantías no disponible');
+    expect(fixture.cash.declared!.validatedGuarantees).toHaveLength(3);
+  });
+
+  it('imprime la custodia fotografiada aunque las garantías actuales cambien', () => {
+    const fixture=handover02Fixture(); fixture.cash.cashGuarantees=[];
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture} />);
+    expect(html).toContain('7542392'); expect(html).toContain('7541967'); expect(html).toContain('Garantía hab 628');
+  });
+
+  it('una reimpresión sin fotografía no sustituye garantías históricas por actuales',()=>{
+    const fixture=handover02Fixture();fixture.cash.declared!.guaranteeSnapshotRecorded=false;
+    const html=renderToStaticMarkup(<HandoverPrint {...fixture} />);
+    expect(html).toContain('Fotografía histórica de garantías no disponible');
+    expect(html).not.toContain('7542392');expect(html).not.toContain('7541967');
+  });
+  it('observar un cierre histórico elimina la firma heredada de validación',()=>{
+    const legacy={name:'Firma antigua'};const current={name:'Firma nueva'};
+    expect(closurePrintValidation('OBSERVADA',current,legacy)).toBeNull();
+    expect(closurePrintValidation('VALIDADA',current,legacy)).toEqual(current);
+    expect(closurePrintValidation(null,current,legacy)).toEqual(legacy);
+  });
+
+  // CI cold browser startup/PDF rendering gets its own budget; all page/content assertions remain.
+  for (const confirmed of [false, true]) it(`PDF real ${confirmed ? 'recibido' : 'enviado'}: A4 horizontal, ≤2 páginas, todos los registros y firmas`, async () => {
+    const fixture = confirmed ? confirmedHandover02Fixture() : handover02Fixture();
+    const browser = await chromium.launch({ timeout:60_000, headless: true, ...(existsSync('/usr/bin/chromium') ? {executablePath:'/usr/bin/chromium'} : {}), args:['--no-sandbox'] });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><div style="min-height:100vh"><header class="no-print">MENÚ_NO_IMPRIMIR</header><main id="contenido-principal" style="padding:20px 16px 80px">${renderToStaticMarkup(<HandoverPrint {...fixture} />)}<div class="handover-screen">PANTALLA_NO_IMPRIMIR</div></main><div>AROH_PIE_GLOBAL_NO_IMPRIMIR</div></div><aside>FRONTI_NO_IMPRIMIR</aside></body></html>`);
+      await page.emulateMedia({ media: 'print' });
+      const signature = await page.locator('.handover-print-signatures section').first().boundingBox();
+      expect(signature!.height).toBeGreaterThanOrEqual(24 * 96 / 25.4 - 1);
+      expect(await page.locator('.handover-print').evaluate(el => getComputedStyle(el).fontFamily)).toContain('Arial');
+      expect(await page.locator('.handover-print').evaluate(el => getComputedStyle(el).fontSize)).toBe('10.6667px');
+      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+      const doc = await getDocument({ data: new Uint8Array(pdf), useSystemFonts: true }).promise;
+      expect(doc.numPages).toBeGreaterThan(0); expect(doc.numPages).toBeLessThanOrEqual(2);
+      const texts = [];
+      for (let i=1;i<=doc.numPages;i++) {
+        const p = await doc.getPage(i); const [left,bottom,right,top] = p.view;
+        expect(right!-left!).toBeCloseTo(841.89, 0); expect(top!-bottom!).toBeCloseTo(595.28, 0);
+        const text = (await p.getTextContent()).items.map(item => 'str' in item ? item.str : '').join(' ');
+        expect(text).toContain('Imprimir a doble cara'); expect(text).toContain(`Página ${i}/${doc.numPages}`);
+        texts.push(text);
+      }
+      const text = texts.join(' ');
+      for (const ref of ['1431','1424','1314','1435','1432','1429','1426','1402','1393','1389','1227','7542392','7541967']) expect(text).toContain(ref);
+      expect(text).toContain('falta USD 25'); expect(text).toContain('Firma:'); expect(text).toContain('Supervisión');
+      for (const hidden of ['MENÚ_NO_IMPRIMIR','PANTALLA_NO_IMPRIMIR','AROH_PIE_GLOBAL_NO_IMPRIMIR','FRONTI_NO_IMPRIMIR']) expect(text).not.toContain(hidden);
+      expect(text).not.toContain('TAREA_NO_IMPRIMIR'); expect(text).not.toContain('Validar cierre de turno');
+      if(confirmed) expect(text).toContain('− entrega: USD -25');
+      mkdirSync('work', {recursive:true}); writeFileSync(`work/handover-02-10-${confirmed ? 'recibida' : 'enviada'}.pdf`, pdf);
+      await doc.destroy();
+    } finally { await browser.close(); }
+  }, 90_000);
+});

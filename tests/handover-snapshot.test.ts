@@ -96,14 +96,14 @@ describe('resumen automático de la entrega', () => {
 
     expect(sections).toContain('Incidencias abiertas');
     expect(sections).toContain('Novedades activas');
-    expect(sections).toContain('Tareas pendientes');
+    expect(sections).not.toContain('Tareas pendientes');
     expect(sections).not.toContain('Mantenimiento');
     expect(sections).not.toContain('Solicitudes de huéspedes');
 
     // La incidencia crítica y la tarea vencida son urgentes.
     const urgentes = snapshot.filter((item) => item.level === HandoverLevel.URGENTE);
     expect(urgentes.map((i) => i.title).join(' ')).toContain('Tarjeta rechazada');
-    expect(urgentes.map((i) => i.title).join(' ')).toContain('Confirmar traslado');
+    expect(urgentes.map((i) => i.title).join(' ')).not.toContain('Confirmar traslado');
 
     // La novedad informativa no se marca como urgente.
     const ocupacion = snapshot.find((item) => item.title.includes('Ocupación'));
@@ -159,7 +159,7 @@ describe('resumen automático de la entrega', () => {
 
     expect(alertItems.some((item) => item.title.includes('Revisar comprobantes'))).toBe(false);
     expect(alertItems.some((item) => item.title.includes('Corte de energía'))).toBe(false);
-    expect(snapshot.filter((item) => item.refId === task.id)).toHaveLength(1);
+    expect(snapshot.filter((item) => item.refId === task.id)).toHaveLength(0);
     expect(snapshot.filter((item) => item.refId === incident.id)).toHaveLength(1);
   });
 

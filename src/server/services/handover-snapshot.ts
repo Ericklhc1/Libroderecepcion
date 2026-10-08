@@ -1,3 +1,5 @@
+import { isReceptionHandoverItem } from '@/domain/handover-print';
+import {closureValidationAlertWhere} from './closure-validation-policy';
 import type {CurrentUser} from '@/server/auth/current-user';
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
@@ -8,17 +10,15 @@ import {
   FollowUpStatus,
   HandoverLevel,
   ShiftStatus,
-  TaskStatus,
 } from '@prisma/client';
 import type { Prisma, Priority, Severity } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
+import {isReceptionDeskRole} from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
 import {
   ALERT_TYPE_LABEL,
   ENTRY_OPEN_STATUSES,
   ENTRY_TYPE_LABEL,
-  PRIORITY_LABEL,
-  TASK_OPEN_STATUSES,
 } from '@/domain/labels';
 import { LIVE_ALERT_WHERE } from './alert-engine';
 
@@ -31,30 +31,56 @@ export type SnapshotItem = {
   refId: string | null;
 };
 
+/** Same audience for the act and its read-only Fronti context. */
+export function canReadReceptionHandover(user:Pick<CurrentUser,'isSystemAdmin'|'roleKey'|'permissions'>){
+  return user.isSystemAdmin
+    ||(isReceptionDeskRole(user.roleKey)&&user.permissions.some(p=>['shift.start','shift.receive','shift.handover','shift.close'].includes(p)))
+    ||(user.roleKey==='SUPERVISOR'&&user.permissions.includes('shift.manage'))
+    ||user.permissions.some(p=>['supervision.center.view','management.dashboard.view','audit.view'].includes(p));
+}
+
+const receptionHandoverNoticeWhere:Prisma.OperationalEntryWhereInput={deletedAt:null,type:{in:[EntryType.NOVEDAD,EntryType.INCIDENCIA]}};
+
 /** Preserve historical evidence and controls; redact reserved content for the current reader. */
 export async function visibleSnapshotItems<T extends Pick<SnapshotItem,'refType'|'refId'|'title'|'detail'>>(user: CurrentUser, items:T[], shared=false, db:Prisma.TransactionClient=prisma):Promise<T[]> {
   const ids=(kind:string)=>items.filter(i=>i.refType===kind&&i.refId).map(i=>i.refId!);
-  const [tasks,followUps,alerts]=await Promise.all([
+  const [tasks,followUps,alerts,entries]=await Promise.all([
     db.task.findMany({where:{id:{in:ids('task')},AND:[taskFollowUpReadWhere(user,shared)]},select:{id:true}}),
     db.followUp.findMany({where:{id:{in:ids('followup')},AND:[followUpReadWhere(user,true,shared)]},select:{id:true}}),
-    db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared)]},select:{id:true}}),
+    db.alert.findMany({where:{id:{in:ids('alert')},AND:[alertReadWhere(user,shared),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}]},select:{id:true}}),
+    db.operationalEntry.findMany({where:{id:{in:ids('entry')},...receptionHandoverNoticeWhere},select:{id:true}}),
   ]);
   const allowed=new Map([['task',new Set(tasks.map(t=>t.id))],['followup',new Set(followUps.map(f=>f.id))],['alert',new Set(alerts.map(a=>a.id))]]);
-  return items.map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
+  const receptionEntries=new Set(entries.map(e=>e.id));
+  const closureAlerts=await db.alert.findMany({where:{id:{in:ids('alert')},...closureValidationAlertWhere},select:{id:true}});
+  const excludedAlerts=new Set(closureAlerts.map(a=>a.id));
+  return items.filter(item=>!shared || (isReceptionHandoverItem({...item,section:'section' in item ? String(item.section) : ''}) && !(item.refType==='entry'&&item.refId&&!receptionEntries.has(item.refId)) && !(item.refType==='alert'&&item.refId&&excludedAlerts.has(item.refId)))).map(item=>item.refId&&allowed.has(item.refType??'')&&!allowed.get(item.refType!)!.has(item.refId)
     ? {...item,title:'Asunto reservado',detail:'Requiere revisión por una persona autorizada. La evidencia original se conserva.',refType:null,refId:null}
     : item);
 }
 
 /** Sanitizes both native items and the historic JSON photograph without rewriting either. */
-export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T):Promise<T>{
-  const items=await visibleSnapshotItems(user,handover.items,true);
+export async function visibleHandover<T extends {items:SnapshotItem[];snapshot:Prisma.JsonValue|null}>(user:CurrentUser,handover:T & {status?:string},db:Prisma.TransactionClient=prisma):Promise<T>{
+  let sourceItems=handover.items;
+  const photo=handover.snapshot;
+  if(handover.status&&handover.status!=='BORRADOR'&&photo&&typeof photo==='object'&&!Array.isArray(photo)&&Array.isArray(photo.items)&&photo.items.every(i=>i&&typeof i==='object'&&!Array.isArray(i)&&typeof i.title==='string'&&typeof i.section==='string'&&typeof i.level==='string')){
+    // Retained draft evidence is not an item actually included in the signed act.
+    // Match a multiset so repeated rows keep exactly the photographed quantity.
+    const key=(i:{level?:unknown;section?:unknown;title?:unknown;detail?:unknown;refType?:unknown;refId?:unknown})=>JSON.stringify([i.level,i.section,i.title,i.detail??null,i.refType??null,i.refId??null]);
+    const remaining=new Map<string,number>();
+    for(const i of photo.items){const k=key(i as Prisma.JsonObject);remaining.set(k,(remaining.get(k)??0)+1);}
+    sourceItems=sourceItems.filter(i=>{const k=key(i);const n=remaining.get(k)??0;if(!n)return false;remaining.set(k,n-1);return true;});
+  }
+  const items=await visibleSnapshotItems(user,sourceItems,true,db);
   let snapshot=handover.snapshot;
   if(snapshot&&typeof snapshot==='object'&&!Array.isArray(snapshot)&&Array.isArray(snapshot.items)){
     const historical=snapshot.items.map(value=>{
       if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.title!=='string')return {title:'Asunto reservado',detail:'La evidencia original requiere revisión.',refType:null,refId:null};
       return {...value,title:value.title,detail:typeof value.detail==='string'?value.detail:null,refType:typeof value.refType==='string'?value.refType:null,refId:typeof value.refId==='string'?value.refId:null};
     });
-    snapshot={...snapshot,items:await visibleSnapshotItems(user,historical,true)};
+    snapshot={...snapshot,items:await visibleSnapshotItems(user,historical,true,db)};
+    const counts=snapshot.counts;
+    if(counts&&typeof counts==='object'&&!Array.isArray(counts))snapshot={...snapshot,counts:{...counts,urgente:items.filter(i=>i.level===HandoverLevel.URGENTE).length,importante:items.filter(i=>i.level===HandoverLevel.IMPORTANTE).length,informativo:items.filter(i=>i.level===HandoverLevel.INFORMATIVO).length,...('total' in counts?{total:items.length}:{})}};
   }
   return {...handover,items,snapshot};
 }
@@ -63,7 +89,6 @@ const SECTIONS = {
   resueltos: 'Resuelto en este turno',
   novedades: 'Novedades activas',
   incidencias: 'Incidencias abiertas',
-  tareas: 'Tareas pendientes',
   alertas: 'Alertas activas',
   seguimientos: 'Seguimientos próximos',
 } as const;
@@ -90,6 +115,7 @@ function fmt(date: Date | null | undefined): string {
 }
 
 type SnapshotOptions = {
+  client?: Prisma.TransactionClient;
   shiftId?: string | null;
   /**
    * Compatibilidad con llamadas antiguas. Desde v1.4.0 la entrega no agrega
@@ -102,7 +128,8 @@ type SnapshotOptions = {
  * Snapshot de entrega v1.4.0.
  *
  * La entrega resume únicamente la continuidad operacional del Libro:
- * Novedades/Incidencias, Tareas, Seguimientos y Alertas. Caja mantiene su
+ * Novedades/Incidencias, Seguimientos operativos y Alertas.
+ * Las tareas y acciones de Supervisión permanecen en sus motores, fuera del relevo. Caja mantiene su
  * propio snapshot y flujo de custodia. PMS, habitaciones, reservas, huéspedes,
  * llaves, multas y ocupación no se consultan ni se proyectan aquí.
  */
@@ -111,6 +138,7 @@ export async function buildHandoverSnapshot(
   now = new Date(),
   options: SnapshotOptions = {},
 ): Promise<SnapshotItem[]> {
+  const db=options.client??prisma;
   const soon = new Date(now.getTime() + 24 * 3600_000);
   const items: SnapshotItem[] = [];
 
@@ -118,7 +146,7 @@ export async function buildHandoverSnapshot(
     options.shiftId !== undefined
       ? options.shiftId
       : (
-          await prisma.shift.findFirst({
+          await db.shift.findFirst({
             where: {
               archivedAt: null,
               status: {
@@ -138,14 +166,12 @@ export async function buildHandoverSnapshot(
 
   const [
     entries,
-    tasks,
     alerts,
     followUps,
     resolvedEntries,
-    completedIndependentTasks,
   ] = await Promise.all([
-    prisma.operationalEntry.findMany({
-      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES } },
+    db.operationalEntry.findMany({
+      where: { deletedAt: null, status: { in: ENTRY_OPEN_STATUSES }, ...receptionHandoverNoticeWhere },
       select: {
         id: true,
         humanId: true,
@@ -161,24 +187,8 @@ export async function buildHandoverSnapshot(
       orderBy: [{ priority: 'desc' }, { occurredAt: 'desc' }],
       take: 200,
     }),
-    prisma.task.findMany({
-      where: { deletedAt: null, status: { in: TASK_OPEN_STATUSES }, AND:[taskFollowUpReadWhere(user,true)] },
-      select: {
-        id: true,
-        humanId: true,
-        title: true,
-        status: true,
-        priority: true,
-        dueAt: true,
-        entryId: true,
-        entry: { select: { humanId: true, title: true } },
-        assignee: { select: { name: true } },
-      },
-      orderBy: [{ dueAt: 'asc' }, { priority: 'desc' }],
-      take: 200,
-    }),
-    prisma.alert.findMany({
-      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true)]},
+    db.alert.findMany({
+      where: {...LIVE_ALERT_WHERE(now),AND:[alertReadWhere(user,true),{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}], taskId:null} ,
       select: {
         id: true,
         type: true,
@@ -193,12 +203,11 @@ export async function buildHandoverSnapshot(
       orderBy: [{ level: 'desc' }, { createdAt: 'desc' }],
       take: 100,
     }),
-    prisma.followUp.findMany({
+    db.followUp.findMany({
       where: {
         deletedAt: null,
         status: { in: [FollowUpStatus.PENDIENTE, FollowUpStatus.VENCIDO] },
-        AND:[followUpReadWhere(user,false,true)],
-        OR: [{ scheduledAt: null }, { scheduledAt: { lte: soon } }],
+        AND:[followUpReadWhere(user,false,true), { OR: [{ scheduledAt: null }, { scheduledAt: { lte: soon } }] }],
       },
       select: {
         id: true,
@@ -214,8 +223,9 @@ export async function buildHandoverSnapshot(
       take: 100,
     }),
     currentShiftId
-      ? prisma.operationalEntry.findMany({
+      ? db.operationalEntry.findMany({
           where: {
+            ...receptionHandoverNoticeWhere,
             shiftId: currentShiftId,
             deletedAt: null,
             status: { in: [EntryStatus.RESUELTO, EntryStatus.CERRADO] },
@@ -231,20 +241,6 @@ export async function buildHandoverSnapshot(
           },
           orderBy: [{ closedAt: 'asc' }, { updatedAt: 'asc' }],
           take: 150,
-        })
-      : Promise.resolve([]),
-    currentShiftId
-      ? prisma.task.findMany({
-          where: {
-            shiftId: currentShiftId,
-            deletedAt: null,
-            entryId: null,
-            status: TaskStatus.COMPLETADA,
-            AND:[taskFollowUpReadWhere(user,true)],
-          },
-          select: { id: true, humanId: true, title: true, completedAt: true },
-          orderBy: { completedAt: 'asc' },
-          take: 100,
         })
       : Promise.resolve([]),
   ]);
@@ -270,22 +266,9 @@ export async function buildHandoverSnapshot(
     });
   }
 
-  for (const task of completedIndependentTasks) {
-    items.push({
-      section: SECTIONS.resueltos,
-      level: HandoverLevel.INFORMATIVO,
-      title: `Tarea #${task.humanId} · ${task.title}`,
-      detail: task.completedAt
-        ? `Completada ${fmt(task.completedAt)}`
-        : 'Completada durante el turno.',
-      refType: 'task',
-      refId: task.id,
-    });
-  }
-
   for (const entry of entries) {
     const detail = [
-      entry.description.slice(0, 280),
+      entry.description,
       entry.department ? `Área: ${entry.department.name}` : null,
       entry.owner ? `Responsable: ${entry.owner.name}` : 'Sin responsable asignado',
       entry.dueAt ? `Vence: ${fmt(entry.dueAt)}` : null,
@@ -312,27 +295,6 @@ export async function buildHandoverSnapshot(
     });
   }
 
-  for (const task of tasks) {
-    const overdue = task.dueAt !== null && task.dueAt.getTime() < now.getTime();
-    items.push({
-      section: SECTIONS.tareas,
-      level: overdue ? HandoverLevel.URGENTE : PRIORITY_TO_LEVEL[task.priority],
-      title: `#${task.humanId} ${task.title}`,
-      detail: [
-        task.entry ? `Caso #${task.entry.humanId}: ${task.entry.title}` : null,
-        `Prioridad ${PRIORITY_LABEL[task.priority]}`,
-        task.assignee ? `Asignada a ${task.assignee.name}` : 'Sin asignar',
-        task.dueAt
-          ? `${overdue ? 'VENCIDA' : 'Vence'}: ${fmt(task.dueAt)}`
-          : 'Sin fecha límite',
-      ]
-        .filter(Boolean)
-        .join(' · '),
-      refType: 'task',
-      refId: task.id,
-    });
-  }
-
   for (const followUp of followUps) {
     const overdue = followUp.status === FollowUpStatus.VENCIDO;
     items.push({
@@ -356,7 +318,6 @@ export async function buildHandoverSnapshot(
 
   const listed = {
     entry: new Set(entries.map((entry) => entry.id)),
-    task: new Set(tasks.map((task) => task.id)),
     followUp: new Set(followUps.map((followUp) => followUp.id)),
   };
 
@@ -364,7 +325,6 @@ export async function buildHandoverSnapshot(
     const alreadyListed =
       alert.auto &&
       ((alert.entryId !== null && listed.entry.has(alert.entryId)) ||
-        (alert.taskId !== null && listed.task.has(alert.taskId)) ||
         (alert.followUpId !== null && listed.followUp.has(alert.followUpId)));
     if (alreadyListed) continue;
 
@@ -383,5 +343,5 @@ export async function buildHandoverSnapshot(
     });
   }
 
-  return items;
+  return items.filter(isReceptionHandoverItem);
 }

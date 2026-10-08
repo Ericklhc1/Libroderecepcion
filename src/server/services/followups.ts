@@ -1,5 +1,5 @@
 import {lockOpenSubjectForWork} from './subject-completion';
-import {followUpReadWhere,taskFollowUpReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
 import 'server-only';
 import { assertAuthorizedRevision } from '@/server/security/authorized-revision';
 import {
@@ -75,6 +75,9 @@ export async function createFollowUp(
     sourceId?: string | null;
   },
 ) {
+  let entryId=input.entryId ?? (input.sourceEntity==='OperationalEntry'?input.sourceId:null);
+  const taskId=input.taskId ?? (input.sourceEntity==='Task'?input.sourceId:null);
+  if(input.entryId && input.sourceEntity==='OperationalEntry' && input.sourceId!==input.entryId || input.taskId && input.sourceEntity==='Task' && input.sourceId!==input.taskId) throw new RuleError('La fuente transversal debe coincidir con el registro asociado.');
   const supervisionShift = await prisma.supervisionShift.findFirst({
     where: { supervisorId: user.id, status: 'ACTIVO' },
     select: { id: true },
@@ -109,17 +112,25 @@ export async function createFollowUp(
     });
     if (entry === 0) throw new NotFoundError('El registro asociado no existe.');
   }
-  if (input.taskId) {
-    const task = await prisma.task.count({ where: { id: input.taskId, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
+  if (taskId) {
+    const task = await prisma.task.count({ where: { id: taskId, deletedAt: null,AND:[taskFollowUpReadWhere(user)] } });
     if (task === 0) throw new NotFoundError('La tarea asociada no existe.');
   }
 
   return prisma.$transaction(async (tx) => {
-    await lockOpenSubjectForWork(tx,input);
+    if(taskId) {
+      const task=await tx.task.findFirst({where:{id:taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]},select:{entryId:true}});
+      if(!task)throw new NotFoundError('La tarea asociada no existe.');
+      entryId=entryId??task.entryId;
+    }
+    if(input.sourceEntity==='Alert' && input.sourceId && !await tx.alert.count({where:{id:input.sourceId,deletedAt:null,AND:[alertReadWhere(user)]}})) throw new NotFoundError('La alerta de origen no existe.');
+    if(input.sourceEntity==='FollowUp' && input.sourceId && !await tx.followUp.count({where:{id:input.sourceId,AND:[followUpReadWhere(user)]}})) throw new NotFoundError('El seguimiento de origen no existe.');
+    await lockOpenSubjectForWork(tx,{...input,entryId,taskId});
+    if(taskId && !await tx.task.count({where:{id:taskId,deletedAt:null,AND:[taskFollowUpReadWhere(user)]}})) throw new NotFoundError('La tarea asociada no existe.');
     const created = await tx.followUp.create({
       data: {
-        entryId: input.entryId ?? null,
-        taskId: input.taskId ?? null,
+        entryId: entryId ?? null,
+        taskId: taskId ?? null,
         action: input.action,
         result: input.result ?? null,
         nextAction: input.nextAction ?? null,
@@ -456,7 +467,7 @@ export async function restoreFollowUp(
   if (!current) throw new NotFoundError('El seguimiento no está eliminado.');
   assertAuthorizedRevision(expectedRevision,{updatedAt:current.updatedAt,status:current.status,ownerId:current.ownerId,scheduledAt:current.scheduledAt});
   return prisma.$transaction(async (tx) => {
-    if(['PENDIENTE','VENCIDO'].includes(current.status))await lockOpenSubjectForWork(tx,current);
+    if(['PENDIENTE','VENCIDO'].includes(current.status)){await assertDerivedFollowUpAccess(tx,user,current);await lockOpenSubjectForWork(tx,current);}
     const restored = await tx.followUp.update({
       where: { id: input.id, updatedAt: current.updatedAt,AND:[followUpReadWhere(user,true)] },
       data: { deletedAt: null, deletedById: null, deletionReason: null },

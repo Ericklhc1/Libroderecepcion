@@ -35,7 +35,7 @@ export async function sendSupervisorReportAction(
     if (invalid) throw new RuleError(`El destinatario «${invalid}» no es un correo válido.`);
 
     const range = reportDateRange(input.from, input.toDate);
-    const report = await buildSupervisorReport(input.type, range);
+    const report = await buildSupervisorReport(user, input.type, range);
     const pdf = createTextPdf({
       title: report.title,
       subtitle: `${formatDate(range.from)} a ${formatDate(range.to)}`,

@@ -69,6 +69,8 @@ function guaranteeCustodyAmount(guarantee: {
 }
 
 export type CashGuaranteeValidationSnapshot = {
+  humanId?: number;
+  dueAt?: string | null;
   id: string;
   currency: string;
   amountMinor: number;
@@ -91,6 +93,8 @@ function serializeExpectationRows(expectations: CashExpectation[]) {
 
 function guaranteeValidationSnapshot(
   guarantees: Array<{
+    humanId: number;
+    dueAt: Date | null;
     id: string;
     currency: string;
     amount: Prisma.Decimal;
@@ -103,6 +107,8 @@ function guaranteeValidationSnapshot(
   }>,
 ): CashGuaranteeValidationSnapshot[] {
   return guarantees.map((guarantee) => ({
+    humanId: guarantee.humanId,
+    dueAt: guarantee.dueAt?.toISOString() ?? null,
     id: guarantee.id,
     currency: guarantee.currency.toUpperCase(),
     amountMinor: toMinor(guaranteeCustodyAmount(guarantee), guarantee.currency),
@@ -173,6 +179,8 @@ function parseGuaranteeValidationSnapshot(
     const amountMinor = Number(item.amountMinor ?? 0);
     if (!Number.isFinite(amountMinor)) return [];
     return [{
+      humanId: typeof item.humanId === 'number' ? item.humanId : undefined,
+      dueAt: typeof item.dueAt === 'string' ? item.dueAt : null,
       id: item.id,
       currency: item.currency.toUpperCase(),
       amountMinor,
@@ -353,6 +361,7 @@ export type HandoverCashState = {
     countedAt: Date;
     notes: string | null;
     statuses: FundStatus[];
+    guaranteeSnapshotRecorded?: boolean;
     validatedGuarantees: CashGuaranteeValidationSnapshot[];
   } | null;
   confirmed: {
@@ -361,6 +370,7 @@ export type HandoverCashState = {
     countedAt: Date;
     notes: string | null;
     statuses: FundStatus[];
+    guaranteeSnapshotRecorded?: boolean;
     validatedGuarantees: CashGuaranteeValidationSnapshot[];
   } | null;
   discrepancies: Array<{
@@ -466,6 +476,7 @@ export async function getHandoverCashState(
             })),
             countedLines(count.lines),
           ),
+          guaranteeSnapshotRecorded: Boolean(count.expectedSnapshot && typeof count.expectedSnapshot === 'object' && !Array.isArray(count.expectedSnapshot) && Array.isArray(count.expectedSnapshot.guarantees)),
           validatedGuarantees: parseGuaranteeValidationSnapshot(count.expectedSnapshot),
         }
       : null;

@@ -1,5 +1,9 @@
+import { legacyClosureAlertWhere } from '@/server/services/closure-review';
+import { closurePrintValidation } from '@/domain/handover-print';
+import { HandoverPrint } from '@/components/operational/handover-print';
+import { ClosureReviewLink } from '@/components/supervision/closure-review-form';
 import { ClearHandoverDrafts } from '@/components/operational/form-draft-session';
-import {visibleSnapshotItems} from '@/server/services/handover-snapshot';
+import {canReadReceptionHandover,visibleHandover} from '@/server/services/handover-snapshot';
 import { handoverElementPending } from '@/domain/handover-custody';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -57,6 +61,7 @@ export default async function HandoverPage({
   searchParams: Promise<{ paso?: string }>;
 }) {
   const user = await requirePageUser();
+  if (!canReadReceptionHandover(user)) notFound();
   const { id } = await params;
   const query = await searchParams;
 
@@ -76,22 +81,24 @@ export default async function HandoverPage({
     },
   });
   if (!handover) notFound();
-  handover.items=await visibleSnapshotItems(user,handover.items,true);
+  Object.assign(handover,await visibleHandover(user,handover));
 
-  const [history, cashState, denominations, formalCashClosure, closureValidation] = await Promise.all([
+  const [history, cashState, denominations, formalCashClosure, legacyValidation, closureReviewer] = await Promise.all([
     getHistory({ entity: 'ShiftHandover', entityId: handover.id },user),
     getHandoverCashState(handover.id),
     listDenominations(),
     getShiftCashClosure(handover.fromShiftId),
-    prisma.alert.findUnique({
-      where: { dedupeKey: `shift-validation:${handover.fromShiftId}` },
+    prisma.alert.findFirst({
+      where: { ...legacyClosureAlertWhere(handover.fromShiftId), status:'RESUELTA' },
       select: {
         status: true,
         resolvedAt: true,
         resolvedBy: { select: { name: true } },
       },
     }),
+    handover.fromShift.closureReviewedById ? prisma.user.findUnique({where:{id:handover.fromShift.closureReviewedById},select:{name:true}}) : Promise.resolve(null),
   ]);
+  const closureValidation = closurePrintValidation(handover.fromShift.closureReviewDecision,{status:'RESUELTA' as const,resolvedBy:closureReviewer,resolvedAt:handover.fromShift.closureReviewedAt},legacyValidation);
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
   const linkedReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;
@@ -108,6 +115,7 @@ export default async function HandoverPage({
     linkedReceiver ||
     handover.receivedBy?.id === user.id;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
+  const canPrint = handover.status === HandoverStatus.ENVIADA || handover.status === HandoverStatus.RECIBIDA;
   const canEdit = isDraft && isIssuer && user.permissions.includes('shift.handover');
   const canFinalizeClose = Boolean(
     isIssuer &&
@@ -238,12 +246,18 @@ export default async function HandoverPage({
       : formatCalendarDate(shiftStartDate);
   const shiftParticipants =
     new Intl.ListFormat('es-CL', { style: 'long', type: 'conjunction' }).format(
-      handover.fromShift.assignments.map((assignment) => assignment.user.name),
+      handover.fromShift.assignments.filter(assignment=>!assignment.removedExplicitly).map((assignment) => assignment.user.name),
     ) || handover.issuedBy.name;
   const shiftTypeTitle = SHIFT_TYPE_LABEL[handover.fromShift.type].toUpperCase();
 
   return (
-    <div className="print-report mx-auto max-w-5xl space-y-4">
+    <>
+      {canPrint && <HandoverPrint handoverStatus={handover.status} title={`Entrega de turno ${shiftTypeTitle} · ${shiftPeriod}`} participants={shiftParticipants} issuer={handover.issuedBy.name}
+        issuedAt={handover.issuedAt ? formatDateTime(handover.issuedAt) : 'Sin enviar'} status={HANDOVER_STATUS_LABEL[handover.status]}
+        receiver={handover.receivedBy?.name ?? null} receivedAt={handover.receivedAt ? formatDateTime(handover.receivedAt) : null}
+        supervisor={closureValidation?.resolvedBy?.name ?? null} items={handover.items} cash={cashState}
+        notes={handover.notes} receiverObservations={handover.receiverObservations} />}
+      <div className="print-report handover-screen mx-auto max-w-5xl space-y-4">
       {handover.status !== HandoverStatus.BORRADOR && !receptionInProgress && <ClearHandoverDrafts handoverId={handover.id} />}
       <div className="flex flex-wrap items-center justify-between gap-2 no-print">
         <Link
@@ -253,15 +267,16 @@ export default async function HandoverPage({
           <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Volver al turno
         </Link>
-        {handover.status === HandoverStatus.RECIBIDA ? (
+        {canPrint ? (
           <PrintButton label="Imprimir informe de turno" />
         ) : (
           <span className="text-xs font-medium text-slate-500">
-            El acta final se imprime después de que el entrante recuente Caja y confirme la recepción.
+            Impresión disponible para entregas enviadas o recibidas.
           </span>
         )}
       </div>
 
+      {user.permissions.includes('shift.manage') && (user.isSystemAdmin || user.roleKey === 'SUPERVISOR') && handover.fromShift.status === ShiftStatus.CERRADO ? <ClosureReviewLink shiftId={handover.fromShiftId} /> : null}
       <Card>
         <div className="px-4 py-4">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -953,7 +968,7 @@ export default async function HandoverPage({
                 <p className="mt-1 text-xs text-slate-600">
                   {closureValidation?.resolvedBy?.name
                     ? `Validado por ${closureValidation.resolvedBy.name}`
-                    : 'Erick Herrera o auditor designado'}
+                    : 'Supervisión / Administrador de sistema'}
                 </p>
                 <p className="mt-1 text-[0.7rem] text-slate-500">
                   {closureValidation?.resolvedAt
@@ -984,5 +999,6 @@ export default async function HandoverPage({
       </div>
       ) : null}
     </div>
+    </>
   );
 }

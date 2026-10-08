@@ -11,7 +11,7 @@
  * cambio no desplace el contenido cuando llegan los datos reales.
  */
 function Block({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-slate-200 ${className}`} />;
+  return <div className={`animate-pulse max-w-full rounded bg-slate-200 ${className}`} />;
 }
 
 export default function Loading() {

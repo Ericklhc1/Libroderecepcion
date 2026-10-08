@@ -1,3 +1,4 @@
+import { listPendingClosureReviews } from './closure-review';
 import 'server-only';
 import {
   AlertLevel,
@@ -43,6 +44,12 @@ export type SupervisionBlock = {
   rows: SupervisionRow[];
 };
 
+/** Mandatory closure review has its own counter, rather than masquerading as an alert. */
+export function supervisionAttentionCounts(blocks:SupervisionBlock[]){
+  return {critical:blocks.filter(b=>b.tone==='critico'&&b.key!=='cierres-validacion').reduce((n,b)=>n+b.rows.length,0),pendingClosures:blocks.find(b=>b.key==='cierres-validacion')?.rows.length??0};
+}
+
+
 function shiftText(shift: { type: string; date: Date } | null | undefined): string | null {
   if (!shift) return null;
   return `${shift.type} · ${formatCalendarDate(shift.date)}`;
@@ -87,6 +94,7 @@ export async function getSupervisionData(
     pendingClosures,
     cashAudits,
     keyCounts,
+    closureReviews,
   ] = await Promise.all([
     prisma.operationalEntry.findMany({
       where: {
@@ -166,13 +174,14 @@ export async function getSupervisionData(
       take: take(20),
     }),
     prisma.alert.findMany({
-      where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA,AND:[alertReadWhere(user)] },
+      where: { ...LIVE_ALERT_WHERE(now), level: AlertLevel.CRITICA,AND:[alertReadWhere(user), { OR: [{ dedupeKey: null }, { NOT: { dedupeKey: { startsWith: 'shift-validation:' } } }] }] },
       select: {
         id: true,
         title: true,
         message: true,
         dueAt: true,
         entry: { select: { id: true } },
+        dedupeKey: true, handoverId: true, guarantee: { select: { id: true } },
       },
       orderBy: { createdAt: 'asc' },
       take: take(20),
@@ -324,6 +333,7 @@ export async function getSupervisionData(
       orderBy: { countedAt: 'desc' },
       take: take(12),
     }),
+    user.permissions.includes('shift.manage') && (user.isSystemAdmin || user.roleKey === 'SUPERVISOR') ? listPendingClosureReviews(user) : Promise.resolve([]),
   ]);
 
   const latestCashByCurrency = new Map<string, (typeof cashAudits)[number]>();
@@ -354,6 +364,15 @@ export async function getSupervisionData(
 
   const blocks: SupervisionBlock[] = [
     {
+      key: 'cierres-validacion', title: 'Cierres pendientes de validación',
+      hint: 'Cada acción corresponde a un cierre concreto; observar conserva el pendiente.', tone: 'critico',
+      rows: closureReviews.map(shift => ({
+        id: shift.id, ref: `#${shift.humanId} · ${shiftText(shift)}`,
+        title: 'Validar cierre de turno', detail: shift.closureReviewNote,
+        href: `/supervision/cierres/${shift.id}`, meta: shift.closureReviewDecision === 'OBSERVADA' ? 'Observado · pendiente' : 'Pendiente',
+      })),
+    },
+    {
       key: 'incidencias',
       title: 'Incidencias críticas abiertas',
       hint: 'Gravedad o prioridad crítica sin cerrar. Requieren decisión y seguimiento.',
@@ -379,7 +398,7 @@ export async function getSupervisionData(
         ref: 'Alerta',
         title: row.title,
         detail: row.message,
-        href: row.entry ? `/libro/${row.entry.id}` : `/alertas?alerta=${row.id}`,
+        href: row.handoverId ? `/turno/entrega/${row.handoverId}` : row.guarantee ? `/caja/garantias/${row.guarantee.id}` : row.entry ? `/libro/${row.entry.id}` : `/alertas/sistema?alerta=${row.id}`,
         meta: dueText(row.dueAt, now),
         sourceEntity: 'Alert',
         sourceId: row.id,
@@ -405,7 +424,7 @@ export async function getSupervisionData(
           ref: guarantee.reference ?? `GAR-${guarantee.id.slice(-6).toUpperCase()}`,
           title: `${label} · ${guarantee.currency} ${outstanding}`,
           detail: GUARANTEE_STATE_ACTIONS[guarantee.state as GuaranteeStateValue],
-          href: '/caja?seccion=garantias',
+          href: `/caja/garantias/${guarantee.id}`,
           meta: [
             GUARANTEE_STATE_LABELS[guarantee.state as GuaranteeStateValue],
             guarantee.roomNumber ? `hab. ${guarantee.roomNumber}` : null,
@@ -434,7 +453,7 @@ export async function getSupervisionData(
           ref: `GAR-${guarantee.id.slice(-6).toUpperCase()}`,
           title: `${label} · ${guarantee.currency} ${Number(guarantee.amount).toLocaleString('es-CL')}`,
           detail: `Estado ${guarantee.state.toLocaleLowerCase('es-CL')} sin movimiento GARANTIA_DEVOLUCION asociado. Requiere revisión histórica; no se corrige automáticamente.`,
-          href: '/caja?seccion=garantias',
+          href: `/caja/garantias/${guarantee.id}`,
           meta: guarantee.roomNumber ? `Hab. ${guarantee.roomNumber}` : null,
           sourceEntity: 'Guarantee',
           sourceId: guarantee.id,
@@ -451,7 +470,7 @@ export async function getSupervisionData(
         ref: `Caja ${audit.currency}`,
         title: `Diferencia ${Number(audit.difference).toLocaleString('es-CL')} ${audit.currency}`,
         detail: `Esperado ${Number(audit.expectedAmount).toLocaleString('es-CL')} · contado ${Number(audit.countedAmount).toLocaleString('es-CL')}`,
-        href: '/caja',
+        href: `/caja/arqueos/${audit.id}`,
         meta: `${audit.countedBy.name} · ${formatCalendarDate(audit.createdAt)}`,
         sourceEntity: 'CashAudit',
         sourceId: audit.id,

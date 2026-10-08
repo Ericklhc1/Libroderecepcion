@@ -1,6 +1,11 @@
+import {closureValidationAlertWhere} from './closure-validation-policy';
 import 'server-only';
 import { Prisma } from '@prisma/client';
 import type { CurrentUser } from '@/server/auth/current-user';
+function canReadClosureSignal(user:Pick<CurrentUser,'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'isSystemAdmin'>>){
+  return user.permissions.includes('shift.manage')&&(user.isSystemAdmin||user.roleKey==='SUPERVISOR');
+}
+
 // The source's reserved visibility is checked before projecting any linked work.
 function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, includeDeleted = false, shared = false): Prisma.FollowUpWhereInput {
   const manager = user.permissions.includes('supervision.followup.manage');
@@ -13,17 +18,17 @@ function directFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, 
 }
 
 export function followUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, includeDeleted = false, shared = false): Prisma.FollowUpWhereInput {
-  return {AND:[directFollowUpReadWhere(user,includeDeleted,shared),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
+  return {AND:[{OR:[{taskId:null},{task:taskFollowUpReadWhere(user,shared)}]},directFollowUpReadWhere(user,includeDeleted,shared),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
 }
 
 // An archived origin retains its authorization; active work does not disappear.
 // The views resolve every native source edge, including old chains and cycles.
 export function taskFollowUpReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, shared=false): Prisma.TaskWhereInput {
-  return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}};
+  return {AND:[{OR:[{alertId:null},{sourceAlert:{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}}]},{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
 }
 
-export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, shared=false): Prisma.AlertWhereInput {
-  return {sourceFollowUps: {none: {followUp: {NOT: directFollowUpReadWhere(user,true,shared)}}}};
+export function alertReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'isSystemAdmin'>>, shared=false): Prisma.AlertWhereInput {
+  return {AND:[...(shared||!canReadClosureSignal(user)?[{OR:[{dedupeKey:null},{NOT:closureValidationAlertWhere}]}]:[]),{sourceFollowUps:{none:{followUp:{NOT:directFollowUpReadWhere(user,true,shared)}}}}]};
 }
 
 export function operationalAlarmReadWhere(user: Pick<CurrentUser, 'id' | 'permissions'>, shared=false): Prisma.OperationalAlarmWhereInput {
@@ -50,13 +55,13 @@ export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>, i
 }
 
 export function taskFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
-  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
+  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "Alert" a WHERE a.id=t."alertId" AND a."dedupeKey" LIKE 'shift-validation:%') AND NOT EXISTS (SELECT 1 FROM "TaskSourceFollowUp" origin
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."taskId"=t.id AND NOT (${directFollowUpReadSql(user,true)}))`;
 }
 
-export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>) {
-  return Prisma.sql`NOT EXISTS (SELECT 1 FROM "AlertSourceFollowUp" origin
+export function alertReadSql(user: Pick<CurrentUser, 'id' | 'permissions'> & Partial<Pick<CurrentUser,'roleKey'|'isSystemAdmin'>>) {
+  return Prisma.sql`(${canReadClosureSignal(user)} OR a."dedupeKey" IS NULL OR a."dedupeKey" NOT LIKE 'shift-validation:%') AND NOT EXISTS (SELECT 1 FROM "AlertSourceFollowUp" origin
     JOIN "FollowUp" f ON f.id=origin."followUpId"
     WHERE origin."alertId"=a.id AND NOT (${directFollowUpReadSql(user,true)}))`;
 }

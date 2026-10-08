@@ -1,3 +1,5 @@
+> Vigente desde 1.64.0: la validación posterior es una acción del mismo Shift en el Centro de Supervisión, no una tarea/alerta operativa. Recepción no hereda tareas ni acciones de Supervisión; la visibilidad configurable de novedades queda fuera de este bloque. Diseño y pruebas de impresión: [IMPRESION_ENTREGA_1_64.md](IMPRESION_ENTREGA_1_64.md).
+
 # Cierre Operativo — contrato vigente de Recepción
 
 Estado: **vigente para Libro 1.14.9**.  
@@ -61,8 +63,8 @@ saliente se presenta como un recorrido secuencial y reversible hasta el envío:
 
 1. **Caja y custodia:** arqueo, garantías y elementos físicos; Caja debe quedar
    formalmente cerrada.
-2. **Pendientes:** Novedades, incidencias, tareas y demás asuntos que siguen
-   vigentes. El sistema los reúne; el recepcionista no inventa una lista.
+2. **Pendientes:** Novedades, incidencias, seguimientos operativos y alertas
+   vigentes para Recepción; sin tareas ni acciones de Supervisión. El sistema los reúne; el recepcionista no inventa una lista.
 3. **Revisión final:** fotografía legible de Caja, custodia y puntos de entrega.
 4. **Enviar entrega:** requiere confirmación explícita y constituye el punto de
    no retorno del cierre normal.
@@ -100,13 +102,15 @@ El recuento de Caja por sí solo no activa el turno entrante.
 
 ## Informe de Caja · entrega/recepción
 
-Después de que el entrante confirma la recepción se habilita la impresión del
-informe final de entrega/recepción.
+Desde que la entrega está enviada se habilita su impresión, aun sin receptor
+confirmado; el documento identifica explícitamente ese estado. Al confirmar la
+recepción, la impresión incorpora el recuento y la identidad del entrante. Un
+borrador todavía no se imprime.
 
 Debe identificar y dejar espacio de firma para:
 - **Recepcionista saliente**;
 - **Recepcionista entrante**;
-- **Validación / auditoría de cierre**: Erick Herrera o auditor designado por él.
+- **Validación / auditoría de cierre**: Supervisión o auditor designado por Supervisión.
 
 El informe conserva la evidencia de Caja, garantías, responsables, fechas y
 trazabilidad de la entrega. La validación administrativa puede ser posterior y
@@ -114,9 +118,11 @@ no bloquea el inicio del siguiente turno una vez terminada la recepción.
 
 ## Validación de cierre
 
-Cada cierre genera la validación posterior existente de prioridad crítica,
-asignada a Erick Herrera. La validación/auditoría no se publica como una
-“Novedad” de Recepción.
+Cada cierre registra una acción posterior pendiente en el Shift existente,
+con auditoría, visible en el Centro de Supervisión para Supervisor/SysAdmin
+autorizados. Se identifica por fecha, turno y folio; no tiene responsable
+nominal fijo ni se publica como tarea, alerta o novedad de Recepción.
+Validar la retira de pendientes; Observar la mantiene.
 
 Un auditor designado puede efectuar la revisión física/documental según la
 delegación operativa de Supervisión; el informe impreso dispone del espacio
@@ -126,8 +132,11 @@ correspondiente para firma y fecha.
 
 La vista operativa de Novedades para Recepción contiene únicamente:
 - registros tipo `NOVEDAD` o `INCIDENCIA`;
-- creados por un recepcionista;
+- sin restringir el rol del autor (las novedades de Supervisión también se incluyen);
 - todavía abiertos / en gestión.
+
+La visibilidad configurable por área y la exclusión individual de entrega quedan
+fuera de 1.64.0; se retomarán con el rediseño de novedades en UI/UX.
 
 Procesos internos, alertas técnicas y validaciones de cierre no deben mezclarse
 con Novedades. Los registros resueltos permanecen disponibles en Historial.

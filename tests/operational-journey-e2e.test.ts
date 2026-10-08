@@ -85,7 +85,7 @@ describe('jornada operativa transversal de punta a punta', () => {
       roleKey: ROLE_KEYS.SUPERVISOR,
       name: 'Supervisión E2E',
     });
-    const admin = await createUser({
+    await createUser({
       roleKey: ROLE_KEYS.SYSTEM_ADMIN,
       name: 'Administrador E2E',
       username: 'EHerrera',
@@ -212,7 +212,8 @@ describe('jornada operativa transversal de punta a punta', () => {
       where: { shiftId: dayShift.id, title: 'Validar cierre de turno' },
       orderBy: { createdAt: 'desc' },
     });
-    expect(validationTask?.assigneeId).toBe(admin.id);
+    expect(validationTask).toBeNull();
+    expect((await prisma.shift.findUniqueOrThrow({where:{id:dayShift.id}})).closureReviewRequestedAt).not.toBeNull();
 
     // 8. Supervisión puede entrar a su centro después del relevo sin afectar Recepción.
     const supervisionShift = await startSupervisionShift(supervisor, {

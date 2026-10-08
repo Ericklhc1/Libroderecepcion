@@ -10,9 +10,7 @@ import {
   HandoverLevel,
   HandoverStatus,
   NotificationType,
-  Priority,
   ShiftStatus,
-  TaskOrigin,
 } from '@prisma/client';
 // `ShiftType` sólo se usa como tipo: los valores los da `shiftTypeAt`.
 import type { Prisma, ShiftType } from '@prisma/client';
@@ -118,65 +116,6 @@ export const shiftInclude = {
 
 export type ShiftWithDetail = Prisma.ShiftGetPayload<{ include: typeof shiftInclude }>;
 
-
-const CLOSURE_VALIDATOR_USERNAME = 'EHerrera';
-
-async function ensureClosureValidationTask(
-  tx: Prisma.TransactionClient,
-  shiftId: string,
-  createdById: string,
-) {
-  const [alert, validator] = await Promise.all([
-    tx.alert.findUnique({
-      where: { dedupeKey: `shift-validation:${shiftId}` },
-      select: { id: true, title: true, message: true },
-    }),
-    tx.user.findFirst({
-      where: {
-        username: { equals: CLOSURE_VALIDATOR_USERNAME, mode: 'insensitive' },
-        active: true,
-        deletedAt: null,
-      },
-      select: { id: true },
-    }),
-  ]);
-
-  if (!alert || !validator) return;
-
-  const existing = await tx.task.findFirst({
-    where: { alertId: alert.id, deletedAt: null },
-    select: { id: true },
-  });
-
-  if (existing) {
-    await tx.task.update({
-      where: { id: existing.id },
-      data: {
-        assigneeId: validator.id,
-        priority: Priority.CRITICA,
-        origin: TaskOrigin.ALERTA,
-      },
-    });
-    return;
-  }
-
-  await tx.task.create({
-    data: {
-      title: 'Validar cierre de turno',
-      description:
-        alert.message ??
-        'Revisión posterior obligatoria del cierre: Caja, pendientes, entrega y trazabilidad.',
-      status: 'PENDIENTE',
-      priority: Priority.CRITICA,
-      origin: TaskOrigin.ALERTA,
-      assigneeId: validator.id,
-      createdById,
-      shiftId,
-      alertId: alert.id,
-      tags: ['cierre-turno', 'validacion-jefatura'],
-    },
-  });
-}
 
 /**
  * Turno que el usuario tiene abierto ahora mismo, si alguno.
@@ -1469,7 +1408,7 @@ export async function confirmReceptionReviewStep(
           },
         },
       },
-      items: { select: { level: true } },
+      items: true,
     },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
@@ -1578,7 +1517,7 @@ export async function confirmReceptionReviewStep(
     throw new RuleError('Quedan elementos físicos declarados sin confirmar.');
   }
 
-  const hasUrgent = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgent = (await visibleHandover(user,handover)).items.some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgent && !params.urgentAcknowledged) {
     throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
   }
@@ -1586,6 +1525,10 @@ export async function confirmReceptionReviewStep(
   return prisma.$transaction(async (tx) => {
       await lockHandover(tx, handover.id);
       const current = await assertElementActor(tx, user, handover.id, 'confirmed');
+      const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id},include:{items:true}});
+      const visible=await visibleHandover(user,fresh,tx);
+      const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
+      if(currentHasUrgent&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste.');
       const now = new Date();
       if (params.step !== 'BRIEFING') {
         if (!current.receiverBriefingReviewedAt) throw new RuleError('Primero revisa la entrega.');
@@ -1597,7 +1540,7 @@ export async function confirmReceptionReviewStep(
       where: { id: handover.id },
       data: {
         receiverFinalReviewAt: now,
-        receiverUrgentAcknowledgedAt: hasUrgent ? now : null,
+        receiverUrgentAcknowledgedAt: currentHasUrgent ? now : null,
       },
     });
     await recordAudit(
@@ -1605,14 +1548,14 @@ export async function confirmReceptionReviewStep(
         entity: 'ShiftHandover',
         entityId: handover.id,
         action: AuditAction.CAMBIO_ESTADO,
-        summary: hasUrgent
+        summary: currentHasUrgent
           ? `Revisión final de recepción confirmada por ${user.name}, con puntos urgentes reconocidos`
           : `Revisión final de recepción confirmada por ${user.name}`,
         user,
         after: {
           receptionStep: 'FINAL',
           reviewedAt: now,
-          urgentAcknowledged: hasUrgent,
+          urgentAcknowledged: currentHasUrgent,
         },
       },
       tx,
@@ -2190,7 +2133,7 @@ export async function receiveHandover(
   if (!incoming.receiverFinalReviewAt) {
     throw new RuleError('Primero confirma la revisión final de la recepción.');
   }
-  const hasUrgentItems = incoming.items.some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgentItems = (await visibleHandover(user,incoming)).items.some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgentItems && !incoming.receiverUrgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso en la recepción.');
   }
@@ -2213,8 +2156,11 @@ export async function receiveHandover(
   await prisma.$transaction(async (tx) => {
     await lockHandover(tx, incoming.id);
     const current = await assertElementActor(tx, user, incoming.id, 'confirmed');
+    const fresh = await tx.shiftHandover.findUniqueOrThrow({where:{id:incoming.id},include:{items:true}});
+    const visible=await visibleHandover(user,fresh,tx);
+    const currentHasUrgent=visible.items.some(item=>item.level===HandoverLevel.URGENTE);
     if (!current.receiverBriefingReviewedAt || !current.receiverCustodyReviewedAt || !current.receiverFinalReviewAt ||
-      (hasUrgentItems && !current.receiverUrgentAcknowledgedAt)) {
+      (currentHasUrgent && !current.receiverUrgentAcknowledgedAt)) {
       throw new RuleError('La custodia cambió. Revisa de nuevo la recepción antes de continuar.');
     }
     const blockers = await cashBlockersForReceiving(incoming.id, tx);
@@ -2341,7 +2287,6 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
     assertTransition(shift.status, ShiftStatus.PREPARANDO_ENTREGA);
   }
 
-  const snapshot = await buildHandoverSnapshot(user);
   /*
     El destino queda NULO a propósito: cuando alguien entrega, el turno que va
     a recibir todavía no existe —se crea cuando el relevo llega al mesón—. La
@@ -2351,10 +2296,14 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
   */
 
   return prisma.$transaction(async (tx) => {
-    const handover = shift.handoverOut
-      ? shift.handoverOut.status === HandoverStatus.ANULADA
+    let existing=shift.handoverOut?await tx.shiftHandover.findUniqueOrThrow({where:{id:shift.handoverOut.id}}):null;
+    if(existing){await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${existing.id} FOR UPDATE`;existing=await tx.shiftHandover.findUniqueOrThrow({where:{id:existing.id}});}
+    if(existing&&!['BORRADOR','ANULADA'].includes(existing.status))throw new RuleError('Este turno ya envió su entrega.');
+    const snapshot=await buildHandoverSnapshot(user,new Date(),{client:tx,shiftId:shift.id});
+    const handover = existing
+      ? existing.status === HandoverStatus.ANULADA
         ? await tx.shiftHandover.update({
-            where: { id: shift.handoverOut.id },
+            where: { id: existing.id },
             data: {
               status: HandoverStatus.BORRADOR,
               toShiftId: null,
@@ -2371,7 +2320,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
               urgentAcknowledgedAt: null,
             },
           })
-        : shift.handoverOut
+        : existing
       : await tx.shiftHandover.create({
           data: {
             fromShiftId: shift.id,
@@ -2384,12 +2333,13 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
 
     // Cualquier regeneración cambia el contenido que la persona debe revisar:
     // las confirmaciones anteriores dejan de ser válidas.
-    await tx.shiftHandover.update({
+    const prepared=await tx.shiftHandover.update({
       where: { id: handover.id },
       data: {
         pendingsReviewedAt: null,
         finalReviewAt: null,
         urgentAcknowledgedAt: null,
+        issuedById:user.id,
       },
     });
 
@@ -2439,7 +2389,7 @@ export async function prepareHandover(user: CurrentUser, shiftId: string) {
       );
     }
 
-    return handover;
+    return prepared;
   });
 }
 
@@ -2461,7 +2411,7 @@ export async function confirmHandoverReviewStep(
     where: { id: params.handoverId },
     include: {
       fromShift: { include: { assignments: true } },
-      items: { select: { level: true } },
+      items: true,
     },
   });
   if (!handover) throw new NotFoundError('La entrega no existe.');
@@ -2483,16 +2433,21 @@ export async function confirmHandoverReviewStep(
   if (await isCashEnabled()) await assertShiftCashClosed(handover.fromShiftId);
 
   const now = new Date();
-  const hasUrgent = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
 
   if (params.step === 'FINAL' && !handover.pendingsReviewedAt) {
     throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
   }
-  if (params.step === 'FINAL' && hasUrgent && !params.urgentAcknowledged) {
-    throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste antes de continuar.');
-  }
 
   const updated = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
+    const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
+    if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
+    if(fresh.issuedById!==user.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
+    if(params.step==='FINAL'&&!fresh.pendingsReviewedAt)throw new RuleError('Primero confirma que revisaste los pendientes que continuarán al siguiente turno.');
+    const freshItems=await tx.handoverItem.findMany({where:{handoverId:handover.id}});
+    const hasUrgent=(await visibleSnapshotItems(user,freshItems,true,tx)).some(i=>i.level===HandoverLevel.URGENTE);
+    if(params.step==='FINAL'&&hasUrgent&&!params.urgentAcknowledged)throw new RuleError('Hay puntos urgentes. Confirma expresamente que los revisaste antes de continuar.');
+
     const row = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },
       data:
@@ -2573,18 +2528,25 @@ export async function sendHandover(
   if (!handover.finalReviewAt) {
     throw new RuleError('Antes de enviar, confirma la revisión final de la entrega.');
   }
-  const hasUrgentItems = handover.items.some((item) => item.level === HandoverLevel.URGENTE);
+  const hasUrgentItems = (await visibleSnapshotItems(user,handover.items,true)).some((item) => item.level === HandoverLevel.URGENTE);
   if (hasUrgentItems && !handover.urgentAcknowledgedAt) {
     throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
   }
 
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id=${handover.id} FOR UPDATE`;
+    const fresh=await tx.shiftHandover.findUniqueOrThrow({where:{id:handover.id}});
+    if(fresh.status!=='BORRADOR')throw new RuleError('La entrega ya no está en preparación.');
+    if(fresh.issuedById!==user.id)throw new RuleError('Regenera el resumen con tu cuenta antes de revisar o enviar esta entrega.');
+    if(!fresh.pendingsReviewedAt||!fresh.finalReviewAt)throw new RuleError('Confirma de nuevo la revisión de pendientes y la revisión final antes de enviar.');
+
     // Sanitize old drafts at the shared boundary, preserving original item evidence.
     const originalItems = await tx.handoverItem.findMany({
       where: { handoverId: handover.id },
       orderBy: [{ level: 'asc' }, { order: 'asc' }],
     });
     const items = await visibleSnapshotItems(user, originalItems, true, tx);
+    if(items.some(item=>item.level===HandoverLevel.URGENTE)&&!fresh.urgentAcknowledgedAt)throw new RuleError('Hay puntos urgentes sin reconocimiento expreso. Vuelve a la revisión final.');
     const now = new Date();
     const sent = await tx.shiftHandover.update({
       where: { id: handover.id, status: HandoverStatus.BORRADOR },
@@ -2593,7 +2555,7 @@ export async function sendHandover(
         issuedAt: now,
         issuedById: user.id,
         issuerSessionId: user.sessionId,
-        notes: params.notes ?? handover.notes,
+        notes: params.notes ?? fresh.notes,
         // El destino sigue nulo al enviar; se enlaza sólo después de recibir.
         // Fotografía inmutable de lo entregado.
         snapshot: {
@@ -2610,9 +2572,9 @@ export async function sendHandover(
             informativo: items.filter((i) => i.level === HandoverLevel.INFORMATIVO).length,
           },
           review: {
-            pendingsReviewedAt: handover.pendingsReviewedAt?.toISOString() ?? null,
-            finalReviewAt: handover.finalReviewAt?.toISOString() ?? null,
-            urgentAcknowledgedAt: handover.urgentAcknowledgedAt?.toISOString() ?? null,
+            pendingsReviewedAt: fresh.pendingsReviewedAt?.toISOString() ?? null,
+            finalReviewAt: fresh.finalReviewAt?.toISOString() ?? null,
+            urgentAcknowledgedAt: fresh.urgentAcknowledgedAt?.toISOString() ?? null,
           },
           items: items.map((i) => ({
             level: i.level,
@@ -2698,7 +2660,7 @@ export async function sendHandover(
         `Urgentes: ${items.filter((item) => item.level === HandoverLevel.URGENTE).length}`,
         `Importantes: ${items.filter((item) => item.level === HandoverLevel.IMPORTANTE).length}`,
         `Informativos: ${items.filter((item) => item.level === HandoverLevel.INFORMATIVO).length}`,
-        `Nota general: ${params.notes ?? handover.notes ?? 'sin nota adicional'}`,
+        `Nota general: ${params.notes ?? fresh.notes ?? 'sin nota adicional'}`,
         '',
         'PUNTOS DE ENTREGA',
         ...(items.length === 0
@@ -2866,7 +2828,6 @@ export async function closeShift(
       },
       tx,
     );
-    await ensureClosureValidationTask(tx, shift.id, user.id);
     return tx.shift.findUniqueOrThrow({ where: { id: shift.id } });
   });
 }

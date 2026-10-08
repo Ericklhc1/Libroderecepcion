@@ -78,6 +78,9 @@ export const OPEN_GUARANTEE_STATES: GuaranteeStateValue[] = [
   'APLICADA_PARCIALMENTE',
 ];
 
+/** Cash may only settle a guarantee already taken, with remaining balance. */
+export const CASH_SETTLEMENT_GUARANTEE_STATES:readonly GuaranteeStateValue[]=['VIGENTE','APLICADA_PARCIALMENTE'];
+
 /** Estados en los que ya no hay nada que hacer. */
 export const SETTLED_GUARANTEE_STATES: GuaranteeStateValue[] = [
   'DEVUELTA',

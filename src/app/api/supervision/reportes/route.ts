@@ -10,14 +10,14 @@ export const dynamic = 'force-dynamic';
 const TYPES = new Set<SupervisorReportType>(['gimnasio', 'multas', 'estado']);
 
 async function GETHandler(request: NextRequest) {
-  await requirePermission('supervision.view');
+  const user = await requirePermission('supervision.view');
   const url = new URL(request.url);
   const rawType = url.searchParams.get('tipo') as SupervisorReportType | null;
   if (!rawType || !TYPES.has(rawType)) {
     return new Response('Tipo de informe no válido.', { status: 400 });
   }
   const range = reportDateRange(url.searchParams.get('desde'), url.searchParams.get('hasta'));
-  const report = await buildSupervisorReport(rawType, range);
+  const report = await buildSupervisorReport(user, rawType, range);
   const pdf = createTextPdf({
     title: report.title,
     subtitle: `${formatDate(range.from)} a ${formatDate(range.to)}`,

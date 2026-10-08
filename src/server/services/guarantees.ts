@@ -16,6 +16,7 @@ import { isOperationalRoomNumber } from '@/domain/room-catalog';
 import {
   GUARANTEE_STATE_LABELS,
   OPEN_GUARANTEE_STATES,
+  CASH_SETTLEMENT_GUARANTEE_STATES,
   canTransition,
   deriveReservationGuaranteeSummary,
   outstandingAmount,
@@ -791,7 +792,7 @@ export async function settleGuarantee(
       },
     });
     if (!guarantee) throw new NotFoundError('Esa garantía no existe.');
-    if (guarantee.state !== GuaranteeState.VIGENTE && guarantee.state !== GuaranteeState.APLICADA_PARCIALMENTE) {
+    if (!CASH_SETTLEMENT_GUARANTEE_STATES.includes(guarantee.state)) {
       throw new RuleError('Esa garantía no admite otra devolución o cobro.');
     }
 

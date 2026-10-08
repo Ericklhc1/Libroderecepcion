@@ -81,7 +81,8 @@ describe('AROH Simple · continuidad derivada y avisos históricos',()=>{
     const hidden=await prisma.followUp.create({data:{action:'E4_PRIVADO',visibility:'PRIVADO',ownerId:f.owner.id,createdById:f.owner.id}});
     const snapshot=await buildHandoverSnapshot(reception,new Date(),{shiftId:null});
     expect(snapshot.some(item=>item.refType==='followup'&&item.refId===f.source.id)).toBe(true);
-    expect(snapshot.some(item=>item.refType==='task'&&item.refId===f.task.id)).toBe(true);
+    expect(snapshot.some(item=>item.refType==='task'&&item.refId===f.task.id)).toBe(false);
+    expect(await prisma.task.findUnique({where:{id:f.task.id}})).not.toBeNull();
     expect(JSON.stringify(snapshot)).not.toContain('E4_PRIVADO');
     const visible=await visibleSnapshotItems(reception,[{refType:'followup',refId:f.source.id,title:'Continuidad de un compañero',detail:''},{refType:'followup',refId:hidden.id,title:'E4_PRIVADO',detail:''}],true);
     const historical={items:[{section:'continuidad',level:'INFORMATIVO' as const,refType:'followup',refId:hidden.id,title:'E4_PRIVADO',detail:''}],snapshot:{items:[{refType:'followup',refId:hidden.id,title:'E4_PRIVADO',detail:''}]}};

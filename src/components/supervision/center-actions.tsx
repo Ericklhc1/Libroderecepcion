@@ -141,13 +141,15 @@ export function FollowSupervisionSourceForm({
   sourceId: string;
 }) {
   return (
-    <ActionForm action={followSupervisionSourceAction} hideSuccess refreshOnSuccess className="space-y-0">
+    <Dialog title="Crear seguimiento de Supervisión" description="Se creará un seguimiento pendiente a tu nombre, vinculado a este registro." trigger="Crear seguimiento" triggerVariant="secondary" triggerSize="sm" width="sm">
+    <ActionForm action={followSupervisionSourceAction} closeOnSuccess refreshOnSuccess className="space-y-0">
       <input type="hidden" name="sourceEntity" value={sourceEntity} />
       <input type="hidden" name="sourceId" value={sourceId} />
-      <SubmitButton variant="secondary" size="sm" pendingLabel="Siguiendo…">
-        Seguir
+      <SubmitButton variant="secondary" size="sm" pendingLabel="Creando…">
+        Confirmar creación
       </SubmitButton>
     </ActionForm>
+    </Dialog>
   );
 }
 

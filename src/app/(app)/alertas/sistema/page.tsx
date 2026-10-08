@@ -1,3 +1,4 @@
+import {listPendingClosureReviews} from '@/server/services/closure-review';
 import {alertReadWhere} from '@/server/services/followup-access';
 import Link from 'next/link';
 import { AlertStatus } from '@prisma/client';
@@ -43,9 +44,10 @@ export default async function AlertsPage({
   const params = await searchParams;
   const canManage = user.permissions.includes('alert.manage');
   const canApproveCash = user.permissions.includes('cash.approve');
-  const canValidateShift = user.roleKey === 'SUPERVISOR' || user.isSystemAdmin;
+  const canValidateShift = (user.roleKey === 'SUPERVISOR' || user.isSystemAdmin) && user.permissions.includes('shift.manage');
+  const canValidateElements = user.roleKey === 'SUPERVISOR' || user.isSystemAdmin;
 
-  if (!canManage && !canApproveCash && !canValidateShift) {
+  if (!canManage && !canApproveCash && !canValidateShift && !canValidateElements) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl bg-white p-6 text-sm text-slate-600 ring-1 ring-slate-200">
         No tienes acciones internas pendientes habilitadas para tu perfil.
@@ -66,20 +68,23 @@ export default async function AlertsPage({
           { dedupeKey: { startsWith: 'cash-manual:' } },
         ]
       : []),
-    ...(canValidateShift
-      ? [
-          { dedupeKey: { startsWith: 'handover-elements-none:' } },
-          { dedupeKey: { startsWith: 'shift-validation:' } },
-        ]
-      : []),
+    ...(canValidateElements ? [{dedupeKey:{startsWith:'handover-elements-none:'}}] : []),
+    ...(canValidateShift ? [{dedupeKey:{startsWith:'shift-validation:'}}] : []),
   ];
   const accessFilter: Prisma.AlertWhereInput | null = canManage
     ? null
     : { OR: restrictedKinds };
 
+  const readableSignals: Prisma.AlertWhereInput = canValidateShift
+    ? { OR: [alertReadWhere(user), { dedupeKey: { startsWith: 'shift-validation:' } }] }
+    : alertReadWhere(user);
+
+  const pendingClosureKeys=new Set(canValidateShift?(await listPendingClosureReviews(user)).map(s=>`shift-validation:${s.id}`):[]);
+  const liveSignals:Prisma.AlertWhereInput={OR:[{dedupeKey:null},{NOT:{dedupeKey:{startsWith:'shift-validation:'}}},{dedupeKey:{in:[...pendingClosureKeys]}}]};
+
   const where: Prisma.AlertWhereInput = {
     deletedAt: null,
-    AND:[alertReadWhere(user),...(accessFilter?[accessFilter]:[])],
+    AND:[readableSignals,...(accessFilter?[accessFilter]:[]),...(['activas','pospuestas'].includes(estado)?[liveSignals]:[])],
     ...(estado === 'activas'
       ? {
           OR: [
@@ -122,7 +127,7 @@ export default async function AlertsPage({
       by: ['status'],
       where: {
         deletedAt: null,
-        AND:[alertReadWhere(user),...(accessFilter?[accessFilter]:[])],
+        AND:[readableSignals,...(accessFilter?[accessFilter]:[]),{OR:[{status:AlertStatus.RESUELTA},liveSignals]}],
       },
       _count: { _all: true },
     }),
@@ -222,7 +227,7 @@ export default async function AlertsPage({
                     </Badge>
                     <Chip>{ALERT_TYPE_LABEL[alert.type]}</Chip>
                     <Badge tone={ALERT_STATUS_TONE[alert.status]}>
-                      {ALERT_STATUS_LABEL[alert.status]}
+                      {alert.dedupeKey?.startsWith('shift-validation:')&&!pendingClosureKeys.has(alert.dedupeKey)?'Evidencia histórica':ALERT_STATUS_LABEL[alert.status]}
                     </Badge>
                     {alert.auto ? <Chip>Automática</Chip> : <Chip>Manual</Chip>}
                     {alert.department ? <Chip>{alert.department.name}</Chip> : null}
@@ -279,8 +284,11 @@ export default async function AlertsPage({
                   </div>
                 </div>
 
-                {canManage && alert.status !== AlertStatus.RESUELTA ? (
+                {(alert.dedupeKey?.startsWith('shift-validation:') ? canValidateShift : canManage) && alert.status !== AlertStatus.RESUELTA ? (
                   <div className="flex flex-wrap items-end gap-2 border-t border-slate-200 px-4 py-3 no-print">
+                    {alert.dedupeKey?.startsWith('shift-validation:') ? (
+                      <Link className="font-medium text-petrol-600 hover:underline" href={`/supervision/cierres/${alert.dedupeKey.slice('shift-validation:'.length)}`}>{pendingClosureKeys.has(alert.dedupeKey)?'Abrir cierre · Validar / Observar':'Ver cierre'}</Link>
+                    ) : <>
                     {alert.status === AlertStatus.NUEVA ? (
                       <AcknowledgeAlertForm alertId={alert.id} />
                     ) : null}
@@ -302,6 +310,7 @@ export default async function AlertsPage({
                         />
                       </Dialog>
                     ) : null}
+                    </>}
                   </div>
                 ) : null}
 

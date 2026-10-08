@@ -525,6 +525,7 @@ export async function returnCashGuaranteeAction(
     }, revisionFromForm(formData));
     await tryDeliverOperationalMail(result.eventKey);
 
+    revalidatePath(`/caja/garantias/${input.guaranteeId}`);
     revalidatePath('/caja');
     revalidatePath('/turno');
     revalidatePath('/libro');
@@ -585,6 +586,7 @@ export async function chargeCashGuaranteeAction(
     }, revisionFromForm(formData));
     await tryDeliverOperationalMail(result.eventKey);
 
+    revalidatePath(`/caja/garantias/${input.guaranteeId}`);
     revalidatePath('/caja');
     revalidatePath('/turno');
     revalidatePath('/libro');

@@ -68,9 +68,9 @@ describe('sistema visual corporativo · cobertura total de pantallas', () => {
 
     expect(config).toContain("50: '#f8fafc'");
     expect(config).toContain("100: '#f1f5f9'");
-    expect(config).toContain("lg: '8px'");
+    expect(config).toContain("lg: '0px'");
     expect(config).toContain('plugins: [appearanceUtilities]');
-    expect(css).toContain('border border-slate-200 bg-white shadow-card');
+    expect(css).toContain('border border-slate-300 bg-white shadow-card');
     expect(css).toContain('background-color: var(--aroh-subtle)');
   });
 });

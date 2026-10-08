@@ -108,7 +108,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex min-h-screen min-w-0">
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="aroh-topbar sticky top-0 z-30 border-b no-print">
-            <div className="mx-auto flex w-full max-w-[1680px] min-w-0 items-center gap-2 px-4 py-2 flex-wrap lg:gap-3 xl:flex-nowrap">
+            <div className="mx-auto flex w-full max-w-none min-w-0 items-center gap-2 px-4 py-2 flex-wrap lg:gap-3 xl:flex-nowrap">
               <Link href="/" className="min-w-0 max-w-[min(12rem,45vw)] shrink-0" title={'AROH Central IA · ' + hotelName}>
                 <span className="block text-sm font-semibold text-petrol-950">AROH <span className="text-gold-600">Central IA</span></span>
                 <span className="block truncate text-xs text-petrol-700">{hotelName}</span>
@@ -154,14 +154,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
               </div>
             </div>
-            <div className="mx-auto flex w-full max-w-[1680px] flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 pb-2 text-xs text-slate-600" aria-label="Contexto operativo">
+            <div className="mx-auto flex w-full max-w-none flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 pb-2 text-xs text-slate-600" aria-label="Contexto operativo">
               <p>Fecha operativa: <time dateTime={businessDate.toISOString().slice(0, 10)} className="font-semibold tabular text-petrol-900">{formatCalendarDate(businessDate)}</time></p>
               <p className="min-w-0 truncate" title={user.roleName}>{user.roleName}</p>
             </div>
             <DesktopNav groups={groups} badges={badges} />
             <MobileNav items={items} groups={groups} badges={badges} hotelName={hotelName} roleName={user.roleName} />
             <noscript>
-              <details className="mx-auto w-full max-w-[1680px] border-t border-slate-200 px-4 py-3">
+              <details className="mx-auto w-full max-w-none border-t border-slate-200 px-4 py-3">
                 <summary className="cursor-pointer text-sm font-semibold text-petrol-900">Abrir módulos disponibles</summary>
                 <nav aria-label="Módulos sin JavaScript" className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {groups.map((group, index) => <section key={index}>
@@ -173,14 +173,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </noscript>
           </header>
 
-          <main id="contenido-principal" tabIndex={-1} className="mx-auto min-w-0 w-full max-w-[1680px] flex-1 px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] pt-5 lg:pb-8">
+          <main id="contenido-principal" tabIndex={-1} className="operational-workspace mx-auto min-w-0 w-full max-w-none flex-1 px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] pt-3 lg:pb-6">
             {/* Keep streamed route content on its own fiber. React bundled with
                 Next 15 can replay a claimed host before rewinding hydration. A
                 constant keyed Fragment preserves HTML and route/shell identity. */}
             <Fragment key="aroh-route-content"><FormDraftSession userId={user.id} />{children}</Fragment>
           </main>
 
-          <div className="mx-auto w-full max-w-[1680px] px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] lg:pb-4">
+          <div className="mx-auto w-full max-w-none px-4 pb-[calc(var(--mobile-nav-height)+1.5rem)] lg:pb-4">
             <AiAttribution />
             <p className="mt-1 text-center text-[0.65rem] text-slate-400">
               AROH Central IA v{packageJson.version}

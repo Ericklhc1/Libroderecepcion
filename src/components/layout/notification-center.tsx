@@ -517,7 +517,7 @@ export function NotificationCenter({
       <button
         type="button"
         onClick={toggleSound}
-        className={`rounded-lg p-2 transition-colors ${
+        className={`inline-flex flex-col items-center rounded-lg p-2 transition-colors ${
           audioReady && muted
             ? 'text-slate-400 hover:bg-slate-100'
             : 'text-petrol-700 hover:bg-petrol-50'
@@ -530,13 +530,14 @@ export function NotificationCenter({
         ) : (
           <Volume2 className="h-5 w-5" aria-hidden="true" />
         )}
+        <span className="text-[0.6rem] leading-tight">Sonido</span>
       </button>
 
       {devicePermission !== 'unsupported' ? (
         <button
           type="button"
           onClick={() => void toggleDeviceNotifications()}
-          className={`relative rounded-lg p-2 transition-colors ${
+          className={`relative inline-flex flex-col items-center rounded-lg p-2 transition-colors ${
             deviceEnabled
               ? 'text-emerald-700 hover:bg-emerald-50'
               : 'text-slate-400 hover:bg-slate-100'
@@ -560,7 +561,7 @@ export function NotificationCenter({
                   : 'Activar push del sistema'
           }
         >
-          <BellRing className="h-5 w-5" aria-hidden="true" />
+          <BellRing className="h-5 w-5" aria-hidden="true" /><span className="text-[0.6rem] leading-tight">Push</span>
           {deviceEnabled ? (
             <span
               className="absolute right-1 top-1 h-2 w-2 rounded-full bg-emerald-500 ring-1 ring-white"
@@ -576,12 +577,12 @@ export function NotificationCenter({
           setOpen(true);
           setToast(null);
         }}
-        className="relative rounded-lg p-2 text-petrol-700 transition-colors hover:bg-petrol-50"
+        className="relative inline-flex flex-col items-center rounded-lg p-2 text-petrol-700 transition-colors hover:bg-petrol-50"
         aria-label={`Notificaciones${unread > 0 ? ` (${unread} sin leer)` : ''}`}
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <Bell className="h-5 w-5" aria-hidden="true" />
+        <Bell className="h-5 w-5" aria-hidden="true" /><span className="text-[0.6rem] leading-tight">Avisos</span>
         {unread > 0 ? (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[0.6rem] font-semibold tabular text-white">
             {unread > 99 ? '99+' : unread}

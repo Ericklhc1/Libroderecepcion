@@ -98,12 +98,12 @@ export default async function HousekeepingPage({searchParams}:{searchParams:Prom
     {board.teamVisible&&<section className="card space-y-3 p-4" aria-label="Tablero de habitaciones">
       <h2 className="font-semibold text-petrol-900">Tablero de habitaciones</h2>
       <p className="text-xs text-slate-600">Estado según las limpiezas registradas para este día y sus pendientes anteriores. Sin registro no acredita limpieza.</p>
-      {(['SUCIA','PENDIENTE_INSPECCION','LIMPIA','SIN_REGISTRO'] as HkRoomState[]).map(state=>{
+      <div className="grid gap-3 lg:grid-cols-4">{(['SUCIA','PENDIENTE_INSPECCION','LIMPIA','SIN_REGISTRO'] as HkRoomState[]).map(state=>{
         const rooms=board.roomBoard.filter(room=>room.state===state&&(!params.piso||String(room.floor)===params.piso));
-        return <details key={state} open={state!=='SIN_REGISTRO'}><summary className="cursor-pointer font-medium">{HK_ROOM_LABELS[state]} · {rooms.length}</summary>
-          <ul className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-4">{rooms.map(room=><li key={room.id} className="rounded-lg border border-slate-200 p-3 text-sm"><strong>Piso {room.floor??room.number[0]} · {room.number}</strong><div className="mt-1 flex flex-wrap gap-2">{room.work.map(work=><Link key={work.id} className="text-petrol-700 underline" href={operationalListHref('/housekeeping',{fecha:board.date,area:board.departmentId,aviso:String(work.humanId)})}>Trabajo #{work.humanId}</Link>)}</div></li>)}</ul>
+        return <details key={state} open><summary className="cursor-pointer font-medium">{HK_ROOM_LABELS[state]} · {rooms.length}</summary>
+          <ul className="mt-2 grid gap-2">{rooms.map(room=><li key={room.id} className="rounded-lg border border-slate-200 p-3 text-sm"><strong>Piso {room.floor??room.number[0]} · {room.number}</strong><div className="mt-1 flex flex-wrap gap-2">{room.work.map(work=><Link key={work.id} className="text-petrol-700 underline" href={operationalListHref('/housekeeping',{fecha:board.date,area:board.departmentId,aviso:String(work.humanId)})}>Trabajo #{work.humanId}</Link>)}</div></li>)}</ul>
         </details>;
-      })}
+      })}</div>
     </section>}
     {board.canWork&&<section className="rounded-xl border border-slate-200 bg-white p-4" aria-label="Material asignado">
       <div className="flex flex-wrap items-start justify-between gap-3">

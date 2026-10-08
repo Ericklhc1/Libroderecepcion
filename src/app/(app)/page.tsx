@@ -1,3 +1,4 @@
+import { groupDisplayRows } from '@/domain/display-groups';
 import Link from 'next/link';
 import {redirect} from 'next/navigation';
 import {prisma} from '@/lib/prisma';
@@ -36,6 +37,7 @@ export default async function DashboardPage() {
   const landing=operationalLanding(user,area?.key);
   if(landing)redirect(landing);
   const data = await getDashboardData(user);
+  const attentionGroups = groupDisplayRows(data.attention, item => JSON.stringify([item.kind, item.tone, item.title, item.reason, item.action]));
   const shift = data.myShift;
   const immediate = data.attention.filter((item) => item.tone === 'critico').length;
   const myOverdue = data.myTasks.filter(
@@ -292,7 +294,7 @@ export default async function DashboardPage() {
         ) : (
           <>
             <ul className="divide-y divide-slate-100">
-              {data.attention.slice(0, 8).map((item) => (
+              {attentionGroups.slice(0, 8).map(({row: item, items}) => (
                 <li key={item.id}>
                   <Link href={item.href} className="block px-4 py-3 hover:bg-slate-50">
                     <div className="flex flex-wrap items-center gap-2">
@@ -304,7 +306,7 @@ export default async function DashboardPage() {
                             : 'Pendiente'}
                       </Badge>
                       <span className="text-sm font-semibold text-petrol-900">
-                        {item.title}
+                        {item.title}{items.length > 1 && <span className="ml-2 tabular">×{items.length}</span>}
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-slate-600">{item.reason}</p>
@@ -312,10 +314,11 @@ export default async function DashboardPage() {
                       Siguiente acción: {item.action}
                     </p>
                   </Link>
+                  {items.length>1&&<details className="px-4 pb-2"><summary className="cursor-pointer text-xs">Ver los {items.length} registros</summary><ul>{items.map(original=><li key={original.id}><Link className="text-xs underline" href={original.href}>{original.title}</Link></li>)}</ul></details>}
                 </li>
               ))}
             </ul>
-            {data.attention.length > 8 ? (
+            {attentionGroups.length > 8 ? (
               <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
                 Se muestran las 8 prioridades más altas. El resto queda disponible en el Libro.
               </p>

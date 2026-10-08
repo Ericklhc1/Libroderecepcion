@@ -316,6 +316,23 @@ jobs:
           done
           exit "$journey_status"
 
+      - name: Planilla operativa de escritorio y móvil
+        if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          NODE_ENV: production
+        run: |
+          node scripts/etapa1/guard.cjs
+          npx tsx scripts/etapa1/fixture.mts
+          NODE_OPTIONS="--require=$PWD/scripts/etapa1/no-external.cjs" node node_modules/next/dist/bin/next start --hostname localhost > /tmp/operational-sheet-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/login > /dev/null; then break; fi
+            sleep 1
+          done
+          PLAYWRIGHT_MODULE="$PWD/node_modules/playwright-core/index.mjs" node scripts/ui/operational-sheet-browser.mjs
+
       - name: Custodia y consulta con contexto
         if: ${{ !cancelled() && steps.production_build.outcome == 'success' }}
         timeout-minutes: 4
@@ -422,6 +439,7 @@ jobs:
             etapa4-surfaces-browser-results.json
             etapa3-typecheck.log
             appearance-browser-results.json
+            operational-sheet-browser-results.json
             /tmp/list-context-browser-results.json
             substitution-candidates-browser-results.json
             module-navigation-browser-results.json

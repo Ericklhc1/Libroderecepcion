@@ -272,7 +272,7 @@ describe('shell corporativo con módulos horizontales', () => {
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('text-petrol-200 hover:border-petrol-700 hover:bg-petrol-900');
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain("compact ? 'w-16' : 'w-56'");
     expect(readFileSync('src/components/layout/app-sidebar.tsx', 'utf8')).toContain('text-gold-400');
-    expect(layout).toContain('max-w-[1680px]');
+    expect(layout).toContain('max-w-none');
   });
 });
 

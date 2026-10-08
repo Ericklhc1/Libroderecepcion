@@ -135,9 +135,7 @@ export default async function KeysPage({
           </p>
         </div>
 
-        {canStock ? (<details className="group/key-admin no-print">
-          <summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-medium">Más ···</summary>
-          <div className="mt-2 hidden group-open/key-admin:block">
+        {canStock ? (<div className="no-print">
           <Dialog
             title="Ingresar llave al inventario"
             description="Asocia la llave física a una habitación. No crea reservas ni estadías."
@@ -183,7 +181,7 @@ export default async function KeysPage({
               </SubmitButton>
             </ActionForm>
           </Dialog>
-          </div></details>) : null}
+          </div>) : null}
       </header>
 
       <nav className="flex flex-wrap gap-2" aria-label="Intención de Llaves">
@@ -265,7 +263,7 @@ export default async function KeysPage({
         />
       </div>
 
-      <Link className="inline-flex rounded border bg-white px-3 py-2 text-sm font-semibold" href="/llaves/personal">Áreas · Entregar a personal · Mi stock</Link>
+      <Link className="inline-flex rounded border bg-white px-3 py-2 text-sm font-semibold" href="/llaves/personal">Llaves de áreas: entregar a personal / consultar mi stock</Link>
 
       {section === 'inventario' && canInventory && <Card><CardHeader title="Inventario completo · Pisos 4, 5 y 6" /><CompleteKeyInventory draftOwner={user.id} rooms={completeFloors.flatMap(f => f.rooms).map(r => ({...r,custody:custody.filter(c => c.destinationId === r.roomId).map(c => c.label)}))} areas={areas.map(a => ({roomId:a.id,roomNumber:a.name,floor:0,expected:a.keys.filter(k => k.movements[0]?.action !== 'BAJA').length,keys:a.keys,custody:custody.filter(c => c.destinationId === a.id).map(c => c.label)}))} initialFloor={floorParam} /></Card>}
 

@@ -23,7 +23,8 @@ export type ContextWorklistRow = {
   fragmentTargets?: readonly string[];
 };
 
-export function ContextWorklist({ href, scope, label, rows, emptyMessage = 'No hay asuntos para estos filtros.', initialOpenId }: {
+export function ContextWorklist({ href, scope, label, rows, emptyMessage = 'No hay asuntos para estos filtros.', initialOpenId, compact = false }: {
+  compact?: boolean;
   href: string;
   scope: string;
   label: string;
@@ -169,7 +170,7 @@ export function ContextWorklist({ href, scope, label, rows, emptyMessage = 'No h
     target.focus({ preventScroll: true });
   }
   return (
-    <section aria-label={label} data-context-worklist className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <section aria-label={label} data-context-worklist data-compact={compact || undefined} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <header className="border-b border-slate-200 bg-slate-50 px-4 py-3">
         <h2 className="text-sm font-semibold text-petrol-900">{label}</h2>
         <p className="mt-1 text-xs text-slate-600">Consulta el contexto y continúa en el trabajo vinculado.</p>

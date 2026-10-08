@@ -14,7 +14,7 @@ describe('alineación visual transversal AROH', () => {
     expect(roomPage).toContain("metrics.length % 2 === 1");
     expect(roomPage).toContain("'col-span-2'");
     expect(roomPage).toContain('items-center justify-between');
-    expect(roomPage).toContain('text-center text-xs font-medium text-slate-400');
+    expect(roomPage).not.toContain('Sin contexto abierto');
   });
 
   it('mantiene geometría estable en los controles compartidos', () => {
@@ -30,17 +30,17 @@ describe('alineación visual transversal AROH', () => {
     expect(badge).toContain('min-h-5 items-center justify-center');
     expect(badge).toContain('leading-none');
 
-    expect(css).toContain('@apply min-h-10 w-full rounded-md');
-    expect(css).toContain('@apply min-w-0 rounded-lg border');
-    expect(css).toContain('@apply flex min-h-11 items-center justify-between');
+    expect(css).toContain('@apply min-h-9 w-full rounded-none');
+    expect(css).toContain('@apply min-w-0 rounded-none border');
+    expect(css).toContain('@apply flex min-h-9 items-center justify-between');
   });
 
   it('alinea el shell y conserva diálogos centrados respecto del viewport', () => {
     const layout = source('src/app/(app)/layout.tsx');
     const dialog = source('src/components/ui/dialog.tsx');
 
-    expect(layout).toContain('max-w-[1680px] min-w-0 items-center gap-2 px-4 py-2');
-    expect(layout).toContain('max-w-[1680px] flex-1 px-4');
+    expect(layout).toContain('max-w-none min-w-0 items-center gap-2 px-4 py-2');
+    expect(layout).toContain('max-w-none flex-1 px-4');
 
     expect(dialog).toContain('50vw');
     expect(dialog).toContain('50dvh');

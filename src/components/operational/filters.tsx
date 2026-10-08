@@ -223,14 +223,14 @@ export function Filters({
   };
 
   return (
-    <form action={action} className="card px-4 py-3">
+    <form action={action} className="card flex flex-wrap items-end gap-2 px-3 py-2">
       {extraHidden
         ? Object.entries(extraHidden).map(([key, value]) => (
             <input key={key} type="hidden" name={key} value={value} />
           ))
         : null}
 
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="contents">
         {fields.filter((field) => PRIMARY_FIELDS.has(field)).map(control)}
 
         <div className="flex items-center gap-2 pb-0.5">
@@ -254,12 +254,12 @@ export function Filters({
       </div>
 
       {secondary.length > 0 ? (
-        <details className="mt-3 border-t border-slate-100 pt-2" open={secondary.some((field) => Boolean(values[field]))}>
+        <details className="responsive-disclosure filter-disclosure" open={secondary.some((field) => Boolean(values[field]))}>
           <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-medium text-petrol-700">
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
             Más filtros
           </summary>
-          <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div className="responsive-disclosure-content flex-wrap items-end gap-2">
             {secondary.map(control)}
           </div>
         </details>

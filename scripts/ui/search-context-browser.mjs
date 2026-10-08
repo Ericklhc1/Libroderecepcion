@@ -109,7 +109,7 @@ async function journey(page, q, detailRoot) {
   stage('edit-and-cancel');
   const detailBeforeCancel = page.url();
   const actions = page.locator('[aria-label="Acciones del asunto"]');
-  await actions.getByText('Más ···', { exact: true }).click();
+  if (width < 1024) await actions.getByText('Más ···', { exact: true }).click();
   await actions.getByRole('button', { name: 'Editar', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('input[name=title]').fill('SEARCH_UNSAVED_NEVER_PERSISTED');

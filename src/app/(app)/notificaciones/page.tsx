@@ -1,3 +1,4 @@
+import { groupDisplayRows } from '@/domain/display-groups';
 import {NoticeNavigation} from '@/components/operational/notice-navigation';
 import Link from 'next/link';
 import { Bell, Search } from 'lucide-react';
@@ -49,6 +50,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
     orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
     take: 150,
   });
+  const groups = groupDisplayRows(notifications, item => JSON.stringify([item.type,item.title,item.body,item.entity,item.entityId,item.link,formatDateTime(item.createdAt).split(' ')[0]]));
   const unread = notifications.filter((item) => item.readAt === null);
 
   return (
@@ -106,7 +108,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         ) : (
           <CardScroll>
             <ul className="divide-y divide-slate-100">
-              {notifications.map((notification) => (
+              {groups.map(({row: notification, items}) => (
                 <li
                   key={notification.id}
                   className={`flex flex-wrap items-start gap-3 px-4 py-3 ${
@@ -126,6 +128,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                       ) : null}
                     </div>
                     <NotificationMessage notification={notification} />
+                    {items.length>1&&<details className="mt-1"><summary className="cursor-pointer text-xs font-semibold">×{items.length} avisos · ver originales</summary><ul>{items.map(original=><li key={original.id} className="flex flex-wrap items-center gap-2 py-1 text-xs"><time>{formatDateTime(original.createdAt)}</time>{original.link?<OpenNotificationButton id={original.id} href={original.link} unread={original.readAt===null}/>:original.readAt===null?<MarkOneReadForm id={original.id}/>:<span>Leído</span>}</li>)}</ul></details>}
                     {notification.link ? (
                       <OpenNotificationButton
                         id={notification.id}

@@ -73,7 +73,7 @@ export function HelpCenter({
       aria-label={open ? 'Central de ayuda' : 'Abrir la central de ayuda'}
     >
       <CircleHelp className="h-4 w-4" aria-hidden="true" />
-      <span className="hidden xl:inline">Ayuda</span>
+      <span className="text-xs">Ayuda</span>
     </button>
   );
 

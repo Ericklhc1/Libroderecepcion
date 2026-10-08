@@ -41,12 +41,12 @@ export function ListFilterBar({
         </span>
       </label>
 {children && collapseChildren ? (
-        <details className="w-full border-t border-slate-100 pt-2">
+        <details className="responsive-disclosure filter-disclosure">
           <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-medium text-petrol-700">
             <ChevronDown className="h-4 w-4" aria-hidden="true" />
             Más filtros
           </summary>
-          <div className="mt-3 flex flex-wrap items-end gap-2">{children}</div>
+          <div className="responsive-disclosure-content flex-wrap items-end gap-2">{children}</div>
         </details>
       ) : children}
       <button

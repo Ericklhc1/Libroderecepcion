@@ -6,16 +6,16 @@ describe('sistema visual corporativo AROH', () => {
     const config = readFileSync('tailwind.config.ts', 'utf8');
     expect(config).toContain("500: '#06b6d4'");
     expect(config).toContain("950: '#091820'");
-    expect(config).toContain("lg: '8px'");
-    expect(config).toContain("'2xl': '12px'");
+    expect(config).toContain("lg: '0px'");
+    expect(config).toContain("'2xl': '0px'");
   });
 
   it('usa superficies estructuradas y fondo frío', () => {
     const css = readFileSync('src/app/globals.css', 'utf8');
     expect(css).toContain('background: var(--aroh-canvas)');
-    expect(css).toContain('--aroh-canvas: #f2f6f9');
+    expect(css).toContain('--aroh-canvas: #eef0f2');
     expect(css).toContain('--aroh-canvas: #0b1c29');
-    expect(css).toContain('border border-slate-200 bg-white shadow-card');
+    expect(css).toContain('border border-slate-300 bg-white shadow-card');
     expect(css).toContain('background-color: var(--aroh-subtle)');
   });
 

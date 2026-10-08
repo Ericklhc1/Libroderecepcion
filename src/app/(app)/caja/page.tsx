@@ -244,9 +244,6 @@ export default async function LiveCashPage({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-petrol-900">Caja</h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-600">
-            Revisa el fondo y el efectivo esperado. Registra dinero, custodia o una diferencia según lo que ocurrió físicamente.
-          </p>
         </div>
 
         <div className="w-full md:w-auto" aria-label="Acciones de Caja">
@@ -254,10 +251,10 @@ export default async function LiveCashPage({
         </div>
       </header>
 
-      <section aria-label="Estado actual de Caja" className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
+      <section aria-label="Estado actual de Caja" className="flex flex-wrap items-center gap-x-4 gap-y-1 border border-slate-300 bg-white px-3 py-2 text-sm">
         <p className="font-semibold">{canOperateCash ? 'Caja operativa' : canReturnDuringClosing ? 'Caja durante cierre' : 'Caja en consulta'}</p>
-        <p className="mt-1">Siguiente acción: {canOperateCash ? 'revisar el efectivo esperado y registrar lo ocurrido; el arqueo confirma el conteo físico.' : canReturnDuringClosing ? 'devolver únicamente una garantía en efectivo que deba salir físicamente antes de terminar el cierre.' : 'continuar el paso pendiente de Mi turno.'}</p>
-        <div className="mt-2 flex flex-wrap gap-3"><Link className="underline" href="/caja?seccion=auditorias">Revisar arqueos y diferencias</Link><Link className="underline" href="/caja?seccion=movimientos">Ver movimientos registrados</Link>{hasReturnToHandover ? <Link className="font-semibold underline" href={returnHref}>Volver al cierre</Link> : !canOperateCash ? <Link className="font-semibold underline" href="/turno">Continuar Mi turno</Link> : null}</div>
+        <p className="sr-only">Siguiente acción: {canOperateCash ? 'revisar el efectivo esperado y registrar lo ocurrido; el arqueo confirma el conteo físico.' : canReturnDuringClosing ? 'devolver únicamente una garantía en efectivo que deba salir físicamente antes de terminar el cierre.' : 'continuar el paso pendiente de Mi turno.'}</p>
+        <div className="flex flex-wrap gap-3"><Link className="underline" href="/caja?seccion=auditorias">Revisar arqueos y diferencias</Link><Link className="underline" href="/caja?seccion=movimientos">Ver movimientos registrados</Link>{hasReturnToHandover ? <Link className="font-semibold underline" href={returnHref}>Volver al cierre</Link> : !canOperateCash ? <Link className="font-semibold underline" href="/turno">Continuar Mi turno</Link> : null}</div>
       </section>
 
       {!canOperateCash ? (

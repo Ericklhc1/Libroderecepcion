@@ -18,7 +18,8 @@ export function canResolveSimpleNovelty(user: EntryReader) {
 
 export async function simpleNoveltyAreaIds(user: EntryReader): Promise<string[] | null> {
   if (user.isSystemAdmin || user.roleKey === 'SUPERVISOR' || (user.roleKey && isReceptionDeskRole(user.roleKey))) return null;
-  const areas = await prisma.department.findMany({ where: { active: true, OR: [
+  // Deactivating a catalog destination must not hide its existing work.
+  const areas = await prisma.department.findMany({ where: { OR: [
     { users: { some: { id: user.id } } },
     { scheduleMemberships: { some: { active: true, collaborator: { active: true, userId: user.id } } } },
     ...(user.departmentId ? [{ id: user.departmentId }] : []),
@@ -49,7 +50,7 @@ export async function listSimpleNovelties(user: EntryReader, input: { area?: str
     readEntries(prisma, user).findMany({ where: internalWhere, include, orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * 40, take: 40 }),
     readEntries(prisma, user).count({ where: generalWhere }),
     readEntries(prisma, user).count({ where: internalWhere }),
-    prisma.department.findMany({ where: { active: true, ...(areaIds ? { id: { in: areaIds } } : {}) }, select: { id: true, name: true }, orderBy: { order: 'asc' } }),
+    prisma.department.findMany({ where: { ...(areaIds ? { id: { in: areaIds } } : {}) }, select: { id: true, name: true, active: true }, orderBy: { order: 'asc' } }),
   ]);
   return { general, internal, total, internalTotal, page, departments };
 }

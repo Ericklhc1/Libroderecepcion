@@ -61,6 +61,7 @@ export function entryReadWhere(user: EntryReader): Prisma.OperationalEntryWhereI
 
 /** Shared Reception handovers never inherit the supervisor/creator override. */
 export const receptionHandoverEntryWhere: Prisma.OperationalEntryWhereInput = {
+  deletedAt: null,
   includeInReceptionHandover: true,
   OR:[{receptionInternal:true},{hiddenFromDepartments:{none:{key:'RECEPCION'}}}],
 };

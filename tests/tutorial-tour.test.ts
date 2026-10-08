@@ -162,7 +162,7 @@ describe('recorrido guiado', () => {
     expect(page).toContain('shiftExperienceCount < 5');
     expect(page).toContain('assignments:');
     expect(page).toContain('activatedAt: { not: null }');
-    expect(page).toContain('Guía ampliada de turno');
+    expect(page).not.toContain('Guía ampliada de turno');
     expect(actions).toContain('Guía ampliada · turno {session} de 5');
     expect(actions).toContain('Vas a iniciar tu turno');
     expect(actions).toContain('Vas a iniciar el cierre');

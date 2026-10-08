@@ -4,7 +4,7 @@ import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
 import { inventoryDepartmentIds, listInventory } from '@/server/services/inventory';
 import { prisma } from '@/lib/prisma';
-import { Card, EmptyState } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/card';
 import { Chip } from '@/components/ui/badge';
 import { ActionForm, Field, Input, Select } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
@@ -68,11 +68,6 @@ export default async function InventoryPage({searchParams}:{searchParams:Promise
         : null}
     </header>
 
-    <section className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm">
-      <p className="font-semibold text-petrol-900">Qué necesita atención</p>
-      <p className="mt-1 text-slate-600">Revisa saldos por ubicación y registra sólo el hecho físico ocurrido. Las discrepancias no se convierten automáticamente en pérdidas.</p>
-      <p className="mt-2 text-petrol-800"><strong>Siguiente acción:</strong> {canMove?'seleccionar artículo, operación y ubicaciones para registrar el movimiento.':'consultar disponibilidad y avisar al responsable autorizado si necesitas un movimiento.'}</p>
-    </section>
 
     <form className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-3">
       <label className="min-w-0 flex-1 text-xs font-medium text-slate-600">Buscar
@@ -86,25 +81,17 @@ export default async function InventoryPage({searchParams}:{searchParams:Promise
     </form>
 
     {!items.length?<EmptyState message="No hay artículos que coincidan con esta vista." hint={canManage?'Configura una categoría y un artículo para empezar sin inventar stock.':'Tu acceso no tiene artículos configurados todavía.'}/>:
-      <div className="grid gap-3 md:grid-cols-2">
-        {items.map(item=><Card key={item.id}>
-          <div className="p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><p className="font-semibold text-petrol-900">#{item.humanId} · {item.code} · {item.name}</p>
-                <p className="mt-1 text-xs text-slate-500">{item.category.department.name} · {item.category.name} · {item.presentation??item.unit}</p>
-              </div>
-              <div className="text-right"><p className="text-xl font-semibold tabular text-petrol-900">{item.total.toLocaleString('es-CL')} {item.unit}</p><Chip>{BEHAVIOR_LABEL[item.behavior]??item.behavior}</Chip></div>
-            </div>
-            <dl className="mt-3 space-y-2 text-sm">
-              {item.balances.length?item.balances.map(row=><div key={row.locationId} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
-                <dt className="text-slate-600">{row.location.name} · {LOCATION_LABEL[row.location.kind]??row.location.kind}</dt>
-                <dd className="font-semibold tabular text-petrol-900">{row.quantity.toLocaleString('es-CL')} {item.unit}</dd>
-              </div>):<p className="text-sm text-slate-500">Sin existencias registradas. Un catálogo no implica stock.</p>}
-            </dl>
-            {item.replacementEstimate!=null?<p className="mt-3 text-xs text-slate-600">Reposición estimada: {item.replacementCurrency??''} {Number(item.replacementEstimate).toLocaleString('es-CL')} · fuente {item.replacementSource??'sin fuente documentada'}{item.replacementDate?` · ${item.replacementDate.toISOString().slice(0,10)}`:''}</p>:null}
-            {item.accountingValue!=null?<p className="mt-1 text-xs text-slate-600">Valor contable aportado: {item.accountingCurrency??''} {Number(item.accountingValue).toLocaleString('es-CL')}</p>:null}
-          </div>
-        </Card>)}
+      <div className="overflow-x-auto border border-slate-300 bg-white">
+        <table className="w-full text-sm"><thead><tr><th>Artículo</th><th>Área / categoría</th><th>Tipo</th><th>Ubicaciones y custodia</th><th>Total</th><th>Valorización</th></tr></thead>
+          <tbody>{items.map(item=><tr key={item.id}>
+            <td><strong>#{item.humanId} · {item.code} · {item.name}</strong><p className="text-xs text-slate-500">{item.presentation??item.unit}</p></td>
+            <td>{item.category.department.name} · {item.category.name}</td>
+            <td><Chip>{BEHAVIOR_LABEL[item.behavior]??item.behavior}</Chip></td>
+            <td>{item.balances.length?item.balances.map(row=><p key={row.locationId}>{row.location.name} · {LOCATION_LABEL[row.location.kind]??row.location.kind}: <strong>{row.quantity.toLocaleString('es-CL')} {item.unit}</strong></p>):'Sin existencias registradas'}</td>
+            <td className="whitespace-nowrap font-semibold tabular">{item.total.toLocaleString('es-CL')} {item.unit}</td>
+            <td>{item.replacementEstimate!=null&&<p>Reposición: {item.replacementCurrency??''} {Number(item.replacementEstimate).toLocaleString('es-CL')} · {item.replacementSource??'sin fuente documentada'}{item.replacementDate?` · ${item.replacementDate.toISOString().slice(0,10)}`:''}</p>}{item.accountingValue!=null&&<p>Contable: {item.accountingCurrency??''} {Number(item.accountingValue).toLocaleString('es-CL')}</p>}</td>
+          </tr>)}</tbody>
+        </table>
       </div>}
 
     {canManage?<details className="rounded-xl border border-slate-200 bg-white">

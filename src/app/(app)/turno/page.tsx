@@ -310,17 +310,6 @@ export default async function ShiftPage({
         ) : null}
       </header>
 
-      {guidedShiftExperience ? (
-        <div className="rounded-xl bg-petrol-50 px-4 py-3 ring-1 ring-petrol-100">
-          <p className="text-sm font-semibold text-petrol-900">
-            Guía ampliada de turno · {guidanceSession} de 5
-          </p>
-          <p className="mt-1 text-xs leading-5 text-slate-600">
-            Durante tus primeros cinco turnos, el Libro explica con más detalle qué ocurre al
-            recibir, iniciar y cerrar. Después conservarás exactamente el mismo flujo, pero con menos texto.
-          </p>
-        </div>
-      ) : null}
 
       {pendingClosure && pendingClosure.id !== shift?.id ? (
         <Card>

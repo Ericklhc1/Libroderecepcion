@@ -124,11 +124,7 @@ function RoomTile({
         </p>
       ) : null}
 
-      {activity === 0 ? (
-        <p className="mt-auto pt-4 text-center text-xs font-medium text-slate-400">
-          Sin contexto abierto
-        </p>
-      ) : (
+      {activity === 0 ? <span className="sr-only">Sin pendientes</span> : (
         <div className="mt-auto grid grid-cols-2 gap-1.5 pt-3 text-[0.68rem]">
           {metrics.map((metric, index) => (
             <span

@@ -1,3 +1,4 @@
+import {boundedPage,pageHref as listPageHref} from '@/lib/search-params';
 import { taskFollowUpReadWhere } from '@/server/services/followup-access';
 import Link from 'next/link';
 import { TaskStatus } from '@prisma/client';
@@ -33,6 +34,8 @@ export default async function TasksPage({
 }) {
   const user = await requirePageUser();
   const params = await searchParams;
+  const page=boundedPage(params.pagina);
+  const pageHref=(number:number)=>listPageHref('/tareas',params,number);
   const values = filterValues(params);
   const onlyMine = params.mias === '1';
 
@@ -60,7 +63,7 @@ export default async function TasksPage({
       : {}),
   };
 
-  const [tasks, options, counts] = await Promise.all([
+  const [tasks, options, counts, total] = await Promise.all([
     prisma.task.findMany({
       where,
       include: {
@@ -70,8 +73,8 @@ export default async function TasksPage({
         entry: { select: { id: true, humanId: true } },
         _count: { select: { checklist: true, comments: true } },
       },
-      orderBy: [{ status: 'asc' }, { startsAt: 'asc' }, { dueAt: 'asc' }, { priority: 'desc' }],
-      take: 200,
+      orderBy: [{ status: 'asc' }, { startsAt: 'asc' }, { dueAt: 'asc' }, { priority: 'desc' },{id:'asc'}],
+      skip:(page-1)*200, take: 200,
     }),
     getFormOptions(user),
     prisma.task.groupBy({
@@ -79,6 +82,7 @@ export default async function TasksPage({
       where: { deletedAt: null, AND:[taskFollowUpReadWhere(user)], ...(onlyMine ? { assigneeId: user.id } : {}) },
       _count: { _all: true },
     }),
+    prisma.task.count({where}),
   ]);
 
   const countByStatus = new Map(counts.map((row) => [row.status, row._count._all]));
@@ -214,6 +218,7 @@ export default async function TasksPage({
           )}
         </Card>
       </ListNavigation>
+      <nav aria-label="Páginas de tareas" className="flex items-center justify-between gap-2 text-sm">{page>1?<Link href={pageHref(page-1)}>← Anterior</Link>:<span/>}<span>Página {page} · {total} registros</span>{page*200<total&&<Link href={pageHref(page+1)}>Siguiente →</Link>}</nav>
     </div>
   );
 }

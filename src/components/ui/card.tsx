@@ -158,23 +158,19 @@ export function StatTile({
   return (
     <div
       className={cn(
-        'rounded-lg border bg-white px-4 py-3 shadow-card',
+        'rounded-none border bg-white px-3 py-2',
         tone === 'alert'
           ? 'border-red-200'
-          : tone === 'good'
-            ? 'border-emerald-200'
-            : 'border-slate-200',
+          : 'border-slate-300',
       )}
     >
-      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}</p>
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.06em] text-slate-500">{label}{tone==='good'&&<span className="ml-1" aria-label="Estado correcto">✓</span>}</p>
       <p
         className={cn(
           'mt-1 text-2xl font-semibold tabular',
           tone === 'alert'
             ? 'text-red-700'
-            : tone === 'good'
-              ? 'text-emerald-700'
-              : 'text-petrol-800',
+            : 'text-petrol-800',
         )}
       >
         {value}

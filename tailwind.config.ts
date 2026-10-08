@@ -14,13 +14,13 @@ const config: Config = {
   theme: {
     borderRadius: {
       none: '0px',
-      sm: '3px',
-      DEFAULT: '4px',
-      md: '6px',
-      lg: '8px',
-      xl: '10px',
-      '2xl': '12px',
-      '3xl': '16px',
+      sm: '0px',
+      DEFAULT: '0px',
+      md: '0px',
+      lg: '0px',
+      xl: '0px',
+      '2xl': '0px',
+      '3xl': '0px',
       full: '9999px',
     },
     extend: {

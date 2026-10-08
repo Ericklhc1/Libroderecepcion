@@ -209,10 +209,11 @@ export default async function AdminPage() {
           <DisclosureCard
             key={group.id}
             title={group.title}
+            defaultOpen
             description={group.description}
             count={sections.length}
           >
-            <div className="grid gap-3 p-4 sm:grid-cols-2">
+            <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-4">
               {sections.map((section) => {
                 const Icon = section.icon;
                 return (

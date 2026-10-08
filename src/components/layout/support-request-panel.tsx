@@ -308,7 +308,7 @@ export function SupportRequestPanel({
         aria-label="Reportar error o solicitar función"
       >
         <MessageSquareWarning className="h-4 w-4 text-petrol-600" aria-hidden="true" />
-        <span className="hidden xl:inline">Reportar / solicitar</span>
+        <span className="text-xs">Reportar / solicitar</span>
       </button>
 
       {open && mounted ? createPortal(

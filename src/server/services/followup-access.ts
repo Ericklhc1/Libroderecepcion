@@ -48,7 +48,7 @@ export function directFollowUpReadSql(user: Pick<CurrentUser, 'id' | 'permission
 }
 
 export function followUpReadSql(user: Pick<CurrentUser, 'id' | 'permissions'>, includeDeleted=false) {
-  return Prisma.sql`(${directFollowUpReadSql(user,includeDeleted)}) AND NOT EXISTS (
+  return Prisma.sql`(${directFollowUpReadSql(user,includeDeleted)}) AND NOT EXISTS (SELECT 1 FROM "Task" t WHERE t.id=f."taskId" AND NOT (${taskFollowUpReadSql(user)})) AND NOT EXISTS (
     SELECT 1 FROM "FollowUpSourceFollowUp" inherited WHERE inherited."descendantId"=f.id
     AND inherited."followUpId" IN (SELECT f.id FROM "FollowUp" f WHERE NOT (${directFollowUpReadSql(user,true)}))
   )`;

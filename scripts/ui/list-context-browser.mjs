@@ -141,7 +141,7 @@ async function checkJourney(page, list, expectedDetailRoot) {
   const detailBeforeCancel = page.url();
   progress.step = 'cancel-native-edit';
   const actions = page.locator('[aria-label="Acciones del asunto"]');
-  await actions.getByText('Más ···', { exact: true }).click();
+  if (page.viewportSize().width < 1024) await actions.getByText('Más ···', { exact: true }).click();
   await actions.getByRole('button', { name: 'Editar', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('input[name=title]').fill('Synthetic unsaved edit');

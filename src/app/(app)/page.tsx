@@ -1,3 +1,4 @@
+import { groupDisplayRows } from '@/domain/display-groups';
 import Link from 'next/link';
 import {redirect} from 'next/navigation';
 import {prisma} from '@/lib/prisma';
@@ -36,6 +37,7 @@ export default async function DashboardPage() {
   const landing=operationalLanding(user,area?.key);
   if(landing)redirect(landing);
   const data = await getDashboardData(user);
+  const attentionGroups = groupDisplayRows(data.attention, item => JSON.stringify([item.kind, item.tone, item.title, item.reason, item.action]));
   const shift = data.myShift;
   const immediate = data.attention.filter((item) => item.tone === 'critico').length;
   const myOverdue = data.myTasks.filter(
@@ -232,8 +234,7 @@ export default async function DashboardPage() {
         <Link href="/libro" className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-petrol-500">
           <StatTile
             label="Atención ahora"
-            value={data.attention.length}
-            hint={immediate > 0 ? `${immediate} prioridad(es) inmediata(s)` : 'Sin críticos'}
+            value={data.attentionTotal}
             tone={immediate > 0 ? 'alert' : data.attention.length === 0 ? 'good' : 'neutral'}
           />
         </Link>
@@ -281,7 +282,7 @@ export default async function DashboardPage() {
       <Card>
         <CardHeader
           title="Atención ahora"
-          count={data.attention.length}
+          count={data.attentionTotal}
           action={<OperationalBriefButton />}
         />
         {data.attention.length === 0 ? (
@@ -292,7 +293,7 @@ export default async function DashboardPage() {
         ) : (
           <>
             <ul className="divide-y divide-slate-100">
-              {data.attention.slice(0, 8).map((item) => (
+              {attentionGroups.slice(0, 8).map(({row: item, items}) => { const total=Math.max(items.length,item.duplicateCount??0); return (
                 <li key={item.id}>
                   <Link href={item.href} className="block px-4 py-3 hover:bg-slate-50">
                     <div className="flex flex-wrap items-center gap-2">
@@ -304,7 +305,7 @@ export default async function DashboardPage() {
                             : 'Pendiente'}
                       </Badge>
                       <span className="text-sm font-semibold text-petrol-900">
-                        {item.title}
+                        {item.title}{total > 1 && <span className="ml-2 tabular">×{total}</span>}
                       </span>
                     </div>
                     <p className="mt-1 text-xs text-slate-600">{item.reason}</p>
@@ -312,10 +313,11 @@ export default async function DashboardPage() {
                       Siguiente acción: {item.action}
                     </p>
                   </Link>
+                  {total>1&&<details className="px-4 pb-2"><summary className="cursor-pointer text-xs">Ver {items.length} de {total} registros</summary><ul>{items.map(original=><li key={original.id}><Link className="text-xs underline" href={original.href}>{original.title}{original.folio ? ` · #${original.folio}` : ` · ${original.kind} ${original.id.split(':').at(-1)}`}</Link></li>)}</ul>{total>items.length&&<Link className="text-xs underline" href={item.kind==='task'?`/tareas?q=${encodeURIComponent(item.title)}`:`/seguimientos?q=${encodeURIComponent(item.title)}&estado=todos`}>Ver todos en su bandeja</Link>}</details>}
                 </li>
-              ))}
+              ); })}
             </ul>
-            {data.attention.length > 8 ? (
+            {attentionGroups.length > 8 || data.attentionTotal>data.attention.length ? (
               <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
                 Se muestran las 8 prioridades más altas. El resto queda disponible en el Libro.
               </p>

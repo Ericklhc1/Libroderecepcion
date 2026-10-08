@@ -1,3 +1,5 @@
+import {boundedPage,pageHref} from '@/lib/search-params';
+import { groupNotificationItems } from '@/domain/notification-summary';
 import {NoticeNavigation} from '@/components/operational/notice-navigation';
 import Link from 'next/link';
 import { Bell, Search } from 'lucide-react';
@@ -24,6 +26,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 export default async function NotificationsPage({ searchParams }: { searchParams: SearchParams }) {
   const user = await requirePageUser({ allowAreaOperation:true });
   const params = await searchParams;
+  const page=boundedPage(params.pagina);
   const query = typeof params.q === 'string' ? params.q.trim() : '';
   const estado = typeof params.estado === 'string' ? params.estado : '';
 
@@ -44,11 +47,12 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       : {}),
   };
 
-  const notifications = await prisma.notification.findMany({
+  const [notifications,total] = await Promise.all([prisma.notification.findMany({
     where: notificationWhere,
-    orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' }],
-    take: 150,
-  });
+    orderBy: [{ readAt: 'asc' }, { createdAt: 'desc' },{id:'asc'}],
+    skip:(page-1)*150,take: 150,
+  }),prisma.notification.count({where:notificationWhere})]);
+  const groups = groupNotificationItems(notifications.map(item => ({...item, createdAt:item.createdAt.toISOString(), readAt:item.readAt?.toISOString()??null})));
   const unread = notifications.filter((item) => item.readAt === null);
 
   return (
@@ -97,7 +101,7 @@ export default async function NotificationsPage({ searchParams }: { searchParams
       </form>
 
       <Card>
-        <CardHeader title="Avisos recibidos" count={notifications.length} />
+        <CardHeader title={`Avisos recibidos · página ${page}`} count={total} />
         {notifications.length === 0 ? (
           <EmptyState
             message={query ? 'No hay notificaciones que coincidan con el filtro.' : 'No tienes notificaciones.'}
@@ -106,11 +110,11 @@ export default async function NotificationsPage({ searchParams }: { searchParams
         ) : (
           <CardScroll>
             <ul className="divide-y divide-slate-100">
-              {notifications.map((notification) => (
+              {groups.map(({items, title, body}) => { const notification = items[0]!; const unreadCount = items.filter(item=>item.readAt===null).length; return (
                 <li
                   key={notification.id}
                   className={`flex flex-wrap items-start gap-3 px-4 py-3 ${
-                    notification.readAt === null ? 'bg-gold-50/40' : ''
+                    unreadCount > 0 ? 'bg-gold-50/40' : ''
                   }`}
                 >
                   <div className="min-w-0 flex-1">
@@ -119,14 +123,15 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                       <time className="text-xs tabular text-slate-400">
                         {formatDateTime(notification.createdAt)}
                       </time>
-                      {notification.readAt === null ? (
+                      {unreadCount > 0 ? (
                         <span className="rounded bg-gold-500 px-1.5 py-0.5 text-[0.6rem] font-semibold text-petrol-950">
-                          Nueva
+                          {unreadCount} sin leer
                         </span>
                       ) : null}
                     </div>
-                    <NotificationMessage notification={notification} />
-                    {notification.link ? (
+                    <NotificationMessage notification={{...notification,title:title??notification.title,body:body??notification.body}} />
+                    {items.length>1&&<details className="mt-1"><summary className="cursor-pointer text-xs font-semibold">×{items.length} avisos · ver originales</summary><ul>{items.map(original=><li key={original.id} data-notification-id={original.id} className="flex flex-wrap items-center gap-2 py-1 text-xs"><NotificationMessage notification={original}/><time>{formatDateTime(original.createdAt)}</time>{original.link?<OpenNotificationButton id={original.id} href={original.link} unread={original.readAt===null}/>:original.readAt===null?<MarkOneReadForm id={original.id}/>:<span>Leído</span>}</li>)}</ul></details>}
+                    {items.length===1&&notification.link ? (
                       <OpenNotificationButton
                         id={notification.id}
                         href={notification.link}
@@ -134,15 +139,16 @@ export default async function NotificationsPage({ searchParams }: { searchParams
                       />
                     ) : null}
                   </div>
-                  {notification.readAt === null && !notification.link ? (
+                  {items.length===1&&notification.readAt === null && !notification.link ? (
                     <MarkOneReadForm id={notification.id} />
                   ) : null}
                 </li>
-              ))}
+              ); })}
             </ul>
           </CardScroll>
         )}
       </Card>
+      <nav aria-label="Páginas de avisos" className="flex items-center justify-between gap-2 text-sm">{page>1?<Link href={pageHref('/notificaciones',params,page-1)}>← Anterior</Link>:<span/>}<span>Página {page} · {total} avisos</span>{page*150<total&&<Link href={pageHref('/notificaciones',params,page+1)}>Siguiente →</Link>}</nav>
     </div>
   );
 }

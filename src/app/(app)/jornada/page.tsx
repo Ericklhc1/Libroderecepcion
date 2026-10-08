@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getManagementWorkday } from '@/server/services/management-workday';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
@@ -27,14 +26,6 @@ export default async function ManagementWorkdayPage() {
       </p>
     </header>
 
-    <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
-      <p className="font-semibold">Tres conceptos separados</p>
-      <p className="mt-1">Horario publicado = planificación. Mi jornada = ejercicio de jefatura. Mi turno = relevo operativo de Recepción y Caja.</p>
-      <div className="mt-2 flex flex-wrap gap-3">
-        <Link href="/equipo" className="underline">Consultar Equipo y horarios</Link>
-        {user.permissions.some(permission => permission.startsWith('shift.')) ? <Link href="/turno" className="underline">Ir a Mi turno</Link> : null}
-      </div>
-    </section>
 
     {data.active.length > 0 ? <section className="space-y-3">
       <h2 className="font-semibold text-petrol-900">Jornadas abiertas</h2>

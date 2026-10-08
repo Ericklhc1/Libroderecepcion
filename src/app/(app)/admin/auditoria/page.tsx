@@ -176,6 +176,7 @@ export default async function AuditPage({
                   {log.isDemo ? <Chip>Demo</Chip> : null}
                 </div>
                 <p className="mt-1 text-sm text-petrol-900">{log.summary}</p>
+                <details className="mt-1"><summary className="cursor-pointer text-xs font-medium">Detalle del cambio</summary>
                 {log.reason ? (
                   <p className="mt-0.5 text-xs text-slate-500">Motivo: {log.reason}</p>
                 ) : null}
@@ -190,6 +191,7 @@ export default async function AuditPage({
                   {log.ip ? ` · IP ${log.ip}` : ''}
                   {log.sessionId ? ` · sesión ${log.sessionId.slice(0, 8)}…` : ''}
                 </p>
+                </details>
               </li>
             ))}
             </ul>

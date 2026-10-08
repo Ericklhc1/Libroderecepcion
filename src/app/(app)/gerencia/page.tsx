@@ -100,7 +100,7 @@ function Metric({
       <p className={`mt-1 text-2xl font-semibold tabular ${emphasis ? 'text-red-700' : 'text-petrol-950'}`}>
         {value}
       </p>
-      {hint ? <p className="mt-0.5 text-xs text-slate-500">{hint}</p> : null}
+      {hint ? <details className="metric-note"><summary aria-label={`Notas de ${label}`} title={hint} className="cursor-help text-xs text-slate-500">ⓘ</summary><p role="tooltip">{hint}</p></details> : null}
     </div>
   );
 }

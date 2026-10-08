@@ -49,9 +49,9 @@ try{
     await admin.page.locator('[aria-label="Estado actual de Caja"]').waitFor();
     const actions=admin.page.locator('[aria-label="Acciones de Caja"]');
     const visible=await actions.locator('button,a,summary').evaluateAll(elements=>elements.filter(element=>element.checkVisibility()).length);
-    assert.ok(visible<=3,'Dinero, garantía y Más; no cinco procedimientos simultáneos');
-    assert.equal(await actions.getByRole('button',{name:'Regularizar diferencia',exact:true}).isVisible(),false);
-    await actions.getByText('Más ···',{exact:true}).click();
+    assert.equal(visible, width>=1024 ? 5 : 3, 'Cinco acciones visibles en escritorio; dinero, garantía y Más en móvil');
+    assert.equal(await actions.getByRole('button',{name:'Regularizar diferencia',exact:true}).isVisible(),width>=1024);
+    if(width<1024) await actions.getByText('Más ···',{exact:true}).click();
     await actions.getByRole('button',{name:'Regularizar diferencia',exact:true}).click();
     await admin.page.getByRole('dialog').waitFor();await admin.page.keyboard.press('Escape');await admin.page.getByRole('dialog').waitFor({state:'hidden'});
     assert.equal(await db.cashMovement.count(),moneyBefore,'Abrir y salir no registra dinero');

@@ -1,4 +1,4 @@
-import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup-access';
+import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere,auditFollowUpReadWhere} from './followup-access';
 import 'server-only';
 import {
   AuditAction,
@@ -37,6 +37,7 @@ import {
 } from '@/server/services/key-inventory';
 import { getSupervisionData } from '@/server/services/supervision';
 import { resolveOperationalBusinessDate } from '@/server/services/shifts';
+import { assertNewOperationalWorkdayAllowed } from '@/server/services/closure-access';
 
 const OPEN_SUPERVISION_STATUSES = [
   SupervisionShiftStatus.PREPARACION,
@@ -77,6 +78,7 @@ export async function startSupervisionShift(
   const priorities = input.priorities.map((item) => item.trim()).filter(Boolean).slice(0, 12);
 
   return prisma.$transaction(async (tx) => {
+    await assertNewOperationalWorkdayAllowed(tx);
     const existing = await tx.supervisionShift.findFirst({
       where: { supervisorId: user.id, status: { in: [...OPEN_SUPERVISION_STATUSES] } },
       select: { id: true },
@@ -117,6 +119,7 @@ export async function beginSupervisionOpening(user: CurrentUser) {
   assertSupervisor(user);
 
   return prisma.$transaction(async (tx) => {
+    await assertNewOperationalWorkdayAllowed(tx);
     const existing = await tx.supervisionShift.findFirst({
       where: { supervisorId: user.id, status: { in: [...OPEN_SUPERVISION_STATUSES] } },
       select: { id: true, status: true },
@@ -775,6 +778,7 @@ export async function completeSupervisionOpening(
   ) as Prisma.InputJsonObject;
 
   return prisma.$transaction(async (tx) => {
+    await assertNewOperationalWorkdayAllowed(tx);
     await tx.$queryRaw`SELECT "id" FROM "SupervisionShift" WHERE "id"=${input.shiftId} FOR UPDATE`;
     const current = await tx.supervisionShift.findUnique({
       where: { id: input.shiftId },
@@ -986,6 +990,7 @@ export async function deliverSupervisionShift(
 ) {
   assertSupervisor(user);
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "SupervisionShift" WHERE "id"=${input.shiftId} FOR UPDATE`;
     const shift = await tx.supervisionShift.findUnique({ where: { id: input.shiftId } });
     if (!shift) throw new NotFoundError('El turno de Supervisión no existe.');
     if (shift.supervisorId !== user.id) throw new RuleError('Ese turno pertenece a otro supervisor.');
@@ -1024,6 +1029,7 @@ export async function deliverSupervisionShift(
 export async function finishSupervisionShift(user: CurrentUser, shiftId: string) {
   assertSupervisor(user);
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "SupervisionShift" WHERE "id"=${shiftId} FOR UPDATE`;
     const shift = await tx.supervisionShift.findUnique({ where: { id: shiftId } });
     if (!shift) throw new NotFoundError('El turno de Supervisión no existe.');
     if (shift.supervisorId !== user.id) throw new RuleError('Ese turno pertenece a otro supervisor.');
@@ -1082,6 +1088,7 @@ export async function finishSupervisionShift(user: CurrentUser, shiftId: string)
 export async function receiveSupervisionHandover(user: CurrentUser, handoverId: string) {
   assertSupervisor(user);
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "SupervisionShiftHandover" WHERE "id"=${handoverId} FOR UPDATE`;
     const handover = await tx.supervisionShiftHandover.findUnique({
       where: { id: handoverId },
       include: { issuedBy: { select: { name: true } } },
@@ -1108,6 +1115,90 @@ export async function receiveSupervisionHandover(user: CurrentUser, handoverId: 
       tx,
     );
     return received;
+  });
+}
+
+/** Existing shifts and native receipts only; this reader never opens a new workday. */
+export async function getSupervisionClosureState(user: CurrentUser) {
+  assertSupervisor(user);
+  if (!user.permissions.includes('supervision.shift.manage')) throw new RuleError('No tienes permiso para gestionar entregas de Supervisión.');
+  const [currentShift, lastClosedShift, handovers] = await Promise.all([
+    prisma.supervisionShift.findFirst({
+      where: { supervisorId: user.id, departmentId: null, status: { in: [...OPEN_SUPERVISION_STATUSES] } },
+      include: { handover: true },
+      orderBy: { startedAt: 'desc' },
+    }),
+    prisma.supervisionShift.findFirst({
+      where: { supervisorId: user.id, departmentId: null, status: 'CERRADO' },
+      orderBy: { finishedAt: 'desc' },
+    }),
+    prisma.supervisionShiftHandover.findMany({
+      where: { OR: [{ receivedAt: null }, { receivedById: null }] },
+      include: { issuedBy: { select: { name: true } } },
+      orderBy: [{ issuedAt: 'asc' }, { id: 'asc' }],
+    }),
+  ]);
+  const rawSnapshot = currentShift && currentShift.status !== 'PREPARACION'
+    ? await buildSupervisionSnapshot(currentShift.id, prisma)
+    : null;
+  const snapshots = await visibleSupervisionClosureSnapshots(user, [...(rawSnapshot ? [rawSnapshot] : []), ...handovers.map(handover => handover.snapshot)]);
+  return {
+    currentShift, lastClosedShift,
+    snapshot: rawSnapshot ? snapshots[0]! : null,
+    handovers: handovers.map((handover, index) => ({ ...handover, snapshot: snapshots[index + (rawSnapshot ? 1 : 0)]! })),
+  };
+}
+
+/** A receipt never grants access to another person's reserved sources. Keep the stored copy intact. */
+async function visibleSupervisionClosureSnapshots(user: CurrentUser, snapshots: Array<Prisma.JsonValue | Prisma.InputJsonObject>): Promise<Prisma.JsonObject[]> {
+  if (!snapshots.length) return [];
+  const values = JSON.parse(JSON.stringify(snapshots)) as Prisma.JsonValue[];
+  const object = (value: Prisma.JsonValue | undefined): Prisma.JsonObject => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const rows = (value: Prisma.JsonValue, key: string) => {
+    const list = object(value)[key];
+    return (Array.isArray(list) ? list : []).filter((row): row is Prisma.JsonObject => !!row && typeof row === 'object' && !Array.isArray(row));
+  };
+  const ids = (key: string) => [...new Set(values.flatMap(value => rows(value, key).flatMap(row => typeof row.id === 'string' ? [row.id] : [])))];
+  const decisionSources = (entity: string) => values.flatMap(value => rows(value, 'decisions').flatMap(row => row.entity === entity && typeof row.entityId === 'string' ? [row.entityId] : []));
+  const [tasks, followUps, alerts, decisions, measures] = await Promise.all([
+    prisma.task.findMany({ where: { id: { in: [...ids('tasks'), ...decisionSources('Task')] }, AND: [taskFollowUpReadWhere(user)] }, select: { id: true } }),
+    prisma.followUp.findMany({ where: { id: { in: [...ids('followUps'), ...decisionSources('FollowUp')] }, AND: [followUpReadWhere(user, true)] }, select: { id: true } }),
+    prisma.alert.findMany({ where: { id: { in: decisionSources('Alert') }, AND: [alertReadWhere(user)] }, select: { id: true } }),
+    prisma.auditLog.findMany({ where: { id: { in: ids('decisions') }, AND: [auditFollowUpReadWhere(user)] }, select: { id: true } }),
+    prisma.correctiveMeasure.findMany({ where: { id: { in: ids('correctiveMeasures') }, OR: [{ taskId: null }, { task: taskFollowUpReadWhere(user) }] }, select: { id: true } }),
+  ]);
+  const sources = { Task: new Set(tasks.map(row => row.id)), FollowUp: new Set(followUps.map(row => row.id)), Alert: new Set(alerts.map(row => row.id)) };
+  const allowedDecisions = new Set(decisions.map(row => row.id));
+  const allowedMeasures = new Set(measures.map(row => row.id));
+  return values.map(value => {
+    const data = object(value);
+    const permitted = (key: string, allowed: Set<string>) => rows(value, key).filter(row => typeof row.id === 'string' && allowed.has(row.id));
+    const visibleTasks = permitted('tasks', sources.Task);
+    const visibleFollowUps = permitted('followUps', sources.FollowUp);
+    const shift = object(data.shift);
+    const supervisor = object(shift.supervisor);
+    return {
+      version: typeof data.version === 'number' ? data.version : 2,
+      capturedAt: typeof data.capturedAt === 'string' ? data.capturedAt : null,
+      shift: { ...shift, ...(supervisor.id !== user.id ? { priorities: [], openingState: null } : {}) },
+      tasks: visibleTasks, followUps: visibleFollowUps,
+      audits: rows(value, 'audits'), auditImports: rows(value, 'auditImports'),
+      correctiveMeasures: permitted('correctiveMeasures', allowedMeasures),
+      decisions: permitted('decisions', allowedDecisions).filter(row => {
+        const scope = row.entity === 'Task' ? sources.Task : row.entity === 'FollowUp' ? sources.FollowUp : row.entity === 'Alert' ? sources.Alert : undefined;
+        return !scope || typeof row.entityId === 'string' && scope.has(row.entityId);
+      }),
+      summary: {
+        tasksPending: visibleTasks.filter(row => TASK_OPEN_STATUSES.includes(row.status as TaskStatus)).length,
+        followUpsOpen: visibleFollowUps.filter(row => ['PENDIENTE', 'VENCIDO'].includes(String(row.status))).length,
+        dailyAuditPending: rows(value, 'auditImports').reduce((sum, row) => sum + auditOperationalPendingCount({
+          metrics: row.metrics ?? null,
+          checks: Array.isArray(row.checks) ? row.checks as Array<{ key: string; done: boolean | null }> : [],
+          findings: Array.isArray(row.findings) ? row.findings as Array<{ key: string }> : [],
+          reviewState: row.reviewState ?? null,
+        }), 0),
+      },
+    };
   });
 }
 

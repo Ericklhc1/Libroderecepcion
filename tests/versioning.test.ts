@@ -23,18 +23,10 @@ describe('versionado de Production', () => {
     expect(config.git?.deploymentEnabled).toEqual({ '**': false, main: true });
   });
 
-  it('los crons operativos aprovechan Vercel Pro y Web Push rescata cada minuto', () => {
+  it('conserva desactivados los cuatro cron operativos autorizados sin registrarlos al publicar', () => {
     const config = JSON.parse(readFileSync('vercel.json', 'utf-8')) as {
       crons?: Array<{ path: string; schedule: string }>;
     };
-    expect(
-      config.crons?.find((cron) => cron.path === '/api/cron/operational-mail')?.schedule,
-    ).toBe('5,20,35,50 * * * *');
-    expect(
-      config.crons?.find((cron) => cron.path === '/api/cron/fronti-proactive')?.schedule,
-    ).toBe('2,17,32,47 * * * *');
-    expect(
-      config.crons?.find((cron) => cron.path === '/api/cron/web-push')?.schedule,
-    ).toBe('* * * * *');
+    expect(config.crons).toEqual([]);
   });
 });

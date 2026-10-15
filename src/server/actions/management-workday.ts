@@ -34,7 +34,7 @@ export async function finishManagementWorkdayAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('workday.manage');
+    const user = await requirePermission('workday.manage', { allowClosure: true });
     const input = parseOrThrow(
       z.object({
         shiftId: z.string().min(1),

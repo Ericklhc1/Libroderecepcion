@@ -1,5 +1,6 @@
 import { requirePagePermission } from '@/server/auth/guard';
 import { getManagementWorkday } from '@/server/services/management-workday';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 import { ActionForm, Field, Select, Textarea } from '@/components/ui/form';
 import { SubmitButton } from '@/components/ui/button';
 import { Card, EmptyState } from '@/components/ui/card';
@@ -13,8 +14,8 @@ export const metadata = { title: 'Mi jornada' };
 export const dynamic = 'force-dynamic';
 
 export default async function ManagementWorkdayPage() {
-  const user = await requirePagePermission('workday.manage');
-  const data = await getManagementWorkday(user);
+  const user = await requirePagePermission('workday.manage', { allowClosure: true });
+  const [data, maintenance] = await Promise.all([getManagementWorkday(user), getMaintenanceState()]);
   const openIds = new Set(data.active.map(row => row.departmentId).filter(Boolean));
   const available = data.departments.filter(row => !openIds.has(row.id));
 
@@ -22,7 +23,7 @@ export default async function ManagementWorkdayPage() {
     <header>
       <h1 className="text-xl font-semibold text-petrol-900">Mi jornada</h1>
       <p className="mt-1 text-sm text-slate-600">
-        Identifica cuándo ejerces una jefatura y da continuidad a tus decisiones. No abre Caja, no inicia un turno de Recepción y no acredita asistencia.
+        {maintenance.closure ? 'Gracias por el trabajo compartido. Finaliza tus jornadas abiertas para completar el cierre de la operación.' : 'Identifica cuándo ejerces una jefatura y da continuidad a tus decisiones. No abre Caja, no inicia un turno de Recepción y no acredita asistencia.'}
       </p>
     </header>
 
@@ -47,7 +48,7 @@ export default async function ManagementWorkdayPage() {
       </div>
     </section> : null}
 
-    <Card>
+    {maintenance.closure ? <Card><div className="p-4 text-sm text-slate-600">{data.active.length ? 'Las demás personas conservan acceso para finalizar su propio trabajo.' : 'No tienes jornadas pendientes de cierre.'} No se iniciarán jornadas nuevas.</div></Card> : <Card>
       <div className="p-4">
         <h2 className="font-semibold text-petrol-900">Iniciar jornada de jefatura</h2>
         <p className="mt-1 text-sm text-slate-600">Sólo aparecen áreas que pertenecen a tu alcance vigente. Las coberturas temporales conservan su vigencia y trazabilidad.</p>
@@ -58,7 +59,7 @@ export default async function ManagementWorkdayPage() {
           <SubmitButton pendingLabel="Iniciando…">Iniciar mi jornada</SubmitButton>
         </ActionForm> : <EmptyState message={data.active.length ? 'Ya tienes abiertas todas las áreas disponibles para tu alcance.' : 'No tienes un área habilitada para iniciar jornada.'} hint="Administración puede revisar tu área principal, pertenencias y coberturas temporales sin duplicar tu usuario." />}
       </div>
-    </Card>
+    </Card>}
 
     {data.recent.length > 0 ? <section className="space-y-2">
       <h2 className="font-semibold text-petrol-900">Jornadas recientes</h2>

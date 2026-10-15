@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { RuleError, NotFoundError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
+import { assertNewOperationalWorkdayAllowed } from '@/server/services/closure-access';
 
 const OPEN = [SupervisionShiftStatus.ACTIVO, SupervisionShiftStatus.ENTREGADO] as const;
 
@@ -90,6 +91,7 @@ export async function startManagementWorkday(
   }
 
   return prisma.$transaction(async tx => {
+    await assertNewOperationalWorkdayAllowed(tx);
     await tx.$queryRaw`SELECT "id" FROM "Department" WHERE "id" = ${input.departmentId} FOR UPDATE`;
     const department = await tx.department.findFirst({
       where: { id: input.departmentId, active: true },

@@ -100,7 +100,10 @@ describe('mantenimiento temporal · inventario de todas las puertas API', () => 
           expect(implementation && ts.isCallExpression(implementation), `${relative} ${method} no tiene wrapper`).toBe(true);
           if (!implementation || !ts.isCallExpression(implementation)) continue;
           expect(implementation.expression.getText(ast), `${relative} ${method}`).toBe('withMaintenance');
-          expect(implementation.arguments.length).toBe(1);
+          if (relative === 'api/session/heartbeat/route.ts') {
+            expect(implementation.arguments.length).toBe(2);
+            expect(implementation.arguments[1]?.getText(ast)).toBe('{ allowClosure: true }');
+          } else expect(implementation.arguments.length).toBe(1);
         }
       });
     }
@@ -114,7 +117,8 @@ describe('mantenimiento temporal · guards, control y presentación', () => {
     expect(authenticated.indexOf('assertMaintenanceAccess(user)')).toBeLessThan(authenticated.indexOf('return user'));
     expect(functionBody('src/server/auth/guard.ts', 'requireUser')).toContain('await requireAuthenticatedUser()');
     for (const name of ['requirePermission', 'requirePermissionOrOwner']) {
-      expect(functionBody('src/server/auth/guard.ts', name)).toContain('await requireUser()');
+      expect(functionBody('src/server/auth/guard.ts', name)).toContain('await requireUser({ allowClosure:');
+      expect(functionBody('src/server/auth/guard.ts', name)).toContain('CLOSURE_PERMISSIONS.has(permission)');
     }
     const page = functionBody('src/server/auth/guard.ts', 'requirePageUser');
     expect(page).toContain('await assertMaintenanceAccess(user)');
@@ -202,7 +206,8 @@ describe('mantenimiento temporal · guards, control y presentación', () => {
 
   it('el control no depende de una variable de despliegue, cookie, caché de proceso ni temporizador de reapertura', () => {
     const service = source('src/server/services/system-maintenance.ts');
-    expect(service).toContain('prisma.systemSetting.findUnique');
+    expect(functionBody('src/server/services/system-maintenance.ts', 'getMaintenanceState')).toContain('client.systemSetting.findUnique');
+    expect(service).toContain('client: Prisma.TransactionClient | typeof prisma = prisma');
     expect(service).toContain('prisma.$transaction');
     expect(service).toContain('pg_advisory_xact_lock');
     expect(service).toContain('await tx.auditLog.create');

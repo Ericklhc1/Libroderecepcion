@@ -59,7 +59,7 @@ export default async function CashAuditPrintPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requirePagePermission('cash.view');
+  await requirePagePermission('cash.view', { allowClosure: true });
   const { id } = await params;
 
   const audit = await prisma.cashAudit.findUnique({

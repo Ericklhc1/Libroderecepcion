@@ -26,6 +26,12 @@ describe('informes documentales imprimibles', () => {
     expect(route).toContain("url.searchParams.get('modo') === 'inline'");
   });
 
+  it('conserva el final de palabras largas al paginar texto completo', () => {
+    const pdf = createTextPdf({ title: 'Prueba íntegra', lines: ['prefijo ' + 'x'.repeat(250) + 'MARCADOR_FINAL'] }).toString('latin1');
+    expect(pdf).toContain('MARCADOR_FINAL');
+    expect((pdf.match(/x/g) ?? []).length).toBeGreaterThanOrEqual(250);
+  });
+
   it('genera PDFs Carta con densidad compacta y legible', () => {
     const source = readFileSync('src/server/reports/simple-pdf.ts', 'utf8');
     expect(source).toContain('const pageSize = 56');

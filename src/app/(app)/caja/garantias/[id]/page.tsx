@@ -4,13 +4,15 @@ import { randomUUID } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { requirePagePermission } from '@/server/auth/guard';
 import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 import { outstandingAmount,OPEN_GUARANTEE_STATES,CASH_SETTLEMENT_GUARANTEE_STATES } from '@/domain/guarantees';
 import { Card, CardHeader } from '@/components/ui/card';
 import { EditCashGuaranteeForm, ChargeCashGuaranteeForm, ReturnCashGuaranteeForm } from '@/components/cash/live-cash-forms';
 import { formatDateTime, toDateTimeInput } from '@/lib/format';
 export const dynamic = 'force-dynamic';
 export default async function GuaranteePage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requirePagePermission('cash.view');
+  const user = await requirePagePermission('cash.view', { allowClosure: true });
+  const closing = Boolean((await getMaintenanceState()).closure) && !user.isSystemAdmin;
   const { id } = await params;
   const [g, gate] = await Promise.all([
     prisma.guarantee.findFirst({ where: { id, deletedAt:null, ...(user.isSystemAdmin ? {} : {isDemo:false}) }, include: {settlements:{include:{createdBy:{select:{name:true}}},orderBy:{createdAt:'desc'}}} }),
@@ -29,7 +31,7 @@ export default async function GuaranteePage({ params }: { params: Promise<{ id: 
         <p>Fecha objetivo: {formatDateTime(g.dueAt)} · Creada: {formatDateTime(g.createdAt)}</p>
         {g.notes ? <p>{g.notes}</p> : null}
         {g.kind === 'EFECTIVO' && open && gate.mode === 'ACTIVE' ? <div className="flex flex-wrap gap-2">
-          {user.permissions.includes('cash.guarantee_in') ? <EditCashGuaranteeForm guaranteeId={g.id} humanId={g.humanId} currency={g.currency} amount={Number(g.amount)} guestName={g.guestName} roomNumber={g.roomNumber} reference={g.reference} dueAt={g.dueAt?toDateTimeInput(g.dueAt):''} notes={g.notes} /> : null}
+          {!closing && user.permissions.includes('cash.guarantee_in') ? <EditCashGuaranteeForm guaranteeId={g.id} humanId={g.humanId} currency={g.currency} amount={Number(g.amount)} guestName={g.guestName} roomNumber={g.roomNumber} reference={g.reference} dueAt={g.dueAt?toDateTimeInput(g.dueAt):''} notes={g.notes} /> : null}
           {canSettle && user.permissions.includes('cash.guarantee_out') ? <><ChargeCashGuaranteeForm guaranteeId={g.id} requestKey={randomUUID()} humanId={g.humanId} reference={g.reference??g.guestName} currency={g.currency} amount={balance} guestName={g.guestName} roomNumber={g.roomNumber} /><ReturnCashGuaranteeForm guaranteeId={g.id} requestKey={randomUUID()} reference={g.reference??g.guestName} currency={g.currency} amount={balance} guestName={g.guestName} roomNumber={g.roomNumber} /></> : null}
         </div> : null}
       </div>

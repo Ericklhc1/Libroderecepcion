@@ -5,12 +5,14 @@ import { ClosureReviewLink } from '@/components/supervision/closure-review-form'
 import { ClearHandoverDrafts } from '@/components/operational/form-draft-session';
 import {canReadReceptionHandover,visibleHandover} from '@/server/services/handover-snapshot';
 import { handoverElementPending } from '@/domain/handover-custody';
+import { canStartFinalReception } from '@/server/services/handover-elements';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CashCountKind, HandoverLevel, HandoverStatus, ShiftStatus } from '@prisma/client';
 import { ArrowLeft, CheckCircle2, Clock, User } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 import { getHistory } from '@/server/services/history';
 import { Badge, Chip } from '@/components/ui/badge';
 import { Card, CardHeader, EmptyState } from '@/components/ui/card';
@@ -25,6 +27,7 @@ import {
   ConfirmHandoverReviewStepForm,
   ConfirmReceptionReviewStepForm,
   ReceiveHandoverForm,
+  StartReceptionShiftForm,
   SendHandoverForm,
 } from '@/components/operational/shift-actions';
 import {
@@ -60,7 +63,8 @@ export default async function HandoverPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ paso?: string }>;
 }) {
-  const user = await requirePageUser();
+  const closing = (await getMaintenanceState()).closure?.phase === 'CLOSING';
+  const user = await requirePageUser({ allowClosure: true, allowAreaOperation: closing });
   if (!canReadReceptionHandover(user)) notFound();
   const { id } = await params;
   const query = await searchParams;
@@ -84,7 +88,7 @@ export default async function HandoverPage({
   Object.assign(handover,await visibleHandover(user,handover));
 
   const [history, cashState, denominations, formalCashClosure, legacyValidation, closureReviewer] = await Promise.all([
-    getHistory({ entity: 'ShiftHandover', entityId: handover.id },user),
+    getHistory({ entity: 'ShiftHandover', entityId: handover.id },user,true),
     getHandoverCashState(handover.id),
     listDenominations(),
     getShiftCashClosure(handover.fromShiftId),
@@ -102,17 +106,19 @@ export default async function HandoverPage({
 
   const isIssuer = handover.fromShift.assignments.some((a) => a.userId === user.id);
   const linkedReceiver = handover.toShift?.assignments.some((a) => a.userId === user.id) ?? false;
+  const finalReceptionAvailable = canStartFinalReception(user, handover, closing);
+  const finalReception = finalReceptionAvailable && handover.receivedById === user.id;
+  const canClaimFinalReception = finalReceptionAvailable && !finalReception && (!handover.receivedById || user.isSystemAdmin);
   const receptionInProgress = Boolean(
     handover.status === HandoverStatus.ENVIADA &&
       handover.fromShift.status === ShiftStatus.CERRADO &&
-      handover.toShift &&
-      linkedReceiver &&
+      (linkedReceiver || finalReception) &&
       user.permissions.includes('shift.receive') &&
-      (handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO),
+      (finalReception || handover.toShift && (handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO)),
   );
   const canReceive = receptionInProgress;
   const isReceiver =
-    linkedReceiver ||
+    linkedReceiver || finalReception ||
     handover.receivedBy?.id === user.id;
   const isDraft = handover.status === HandoverStatus.BORRADOR;
   const canPrint = handover.status === HandoverStatus.ENVIADA || handover.status === HandoverStatus.RECIBIDA;
@@ -149,7 +155,7 @@ export default async function HandoverPage({
           : receptionStep === 4
             ? 'Revisión final'
             : receptionStep === 5
-              ? 'Confirmar recepción y activar turno'
+              ? finalReception ? 'Confirmar recepción final' : 'Confirmar recepción y activar turno'
               : null;
   const receptionStepBody =
     receptionStep === 1
@@ -161,7 +167,7 @@ export default async function HandoverPage({
           : receptionStep === 4
             ? 'Compara lo declarado con lo recibido y confirma que comprendes los puntos que continúan vigentes.'
             : receptionStep === 5
-              ? 'Este último paso registra la recepción y cambia tu turno de INICIADO a ACTIVO. En emergencia, regulariza el relevo sin crear otro turno.'
+              ? finalReception ? 'Este último paso registra tu recepción real de la entrega, sin abrir ni activar una nueva jornada.' : 'Este último paso registra la recepción y cambia tu turno de INICIADO a ACTIVO. En emergencia, regulariza el relevo sin crear otro turno.'
               : null;
 
   const cashRole: 'emisor' | 'receptor' | 'lector' = canEdit || canFinalizeClose
@@ -254,9 +260,9 @@ export default async function HandoverPage({
     <>
       {canPrint && <HandoverPrint handoverStatus={handover.status} title={`Entrega de turno ${shiftTypeTitle} · ${shiftPeriod}`} participants={shiftParticipants} issuer={handover.issuedBy.name}
         issuedAt={handover.issuedAt ? formatDateTime(handover.issuedAt) : 'Sin enviar'} status={HANDOVER_STATUS_LABEL[handover.status]}
-        receiver={handover.receivedBy?.name ?? null} receivedAt={handover.receivedAt ? formatDateTime(handover.receivedAt) : null}
+        receiver={handover.receivedAt ? handover.receivedBy?.name ?? null : null} receivedAt={handover.receivedAt ? formatDateTime(handover.receivedAt) : null}
         supervisor={closureValidation?.resolvedBy?.name ?? null} items={handover.items} cash={cashState}
-        notes={handover.notes} receiverObservations={handover.receiverObservations} />}
+        notes={handover.notes} receiverObservations={handover.receiverObservations} history={history} />}
       <div className="print-report handover-screen mx-auto max-w-5xl space-y-4">
       {handover.status !== HandoverStatus.BORRADOR && !receptionInProgress && <ClearHandoverDrafts handoverId={handover.id} />}
       <div className="flex flex-wrap items-center justify-between gap-2 no-print">
@@ -291,7 +297,7 @@ export default async function HandoverPage({
                     {formatCalendarDate(handover.toShift.date)}
                   </Chip>
                 ) : handover.status === HandoverStatus.RECIBIDA ? (
-                  <Chip>Recibida · pendiente de enlazar al siguiente turno</Chip>
+                  <Chip>{closing ? 'Recepción final completada · sin nueva jornada' : 'Recibida · sin turno receptor enlazado'}</Chip>
                 ) : (
                   <Chip>En bandeja · sin receptor confirmado</Chip>
                 )}
@@ -308,7 +314,7 @@ export default async function HandoverPage({
                     {handover.issuedAt ? ` · ${formatDateTime(handover.issuedAt)}` : ' · sin enviar'}
                   </dd>
                 </div>
-                {handover.receivedBy ? (
+                {handover.receivedBy && handover.receivedAt ? (
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
                     <dt className="sr-only">Recibida por</dt>
@@ -321,7 +327,7 @@ export default async function HandoverPage({
                   <div className="flex items-center gap-2 text-orange-700">
                     <Clock className="h-3.5 w-3.5" aria-hidden="true" />
                     <dd>
-                      Pendiente de confirmación
+                      {handover.receivedBy ? `Recepción en curso por ${handover.receivedBy.name}; todavía sin confirmar` : 'Pendiente de confirmación'}
                       {handover.issuedAt ? ` desde ${relativeTime(handover.issuedAt)}` : ''}
                     </dd>
                   </div>
@@ -519,6 +525,12 @@ export default async function HandoverPage({
         </Card>
       ) : null}
 
+      {canClaimFinalReception ? <Card><div className="space-y-3 p-4">
+        <h2 className="font-semibold text-petrol-900">Recepción final sin nueva jornada</h2>
+        <p className="text-sm text-slate-600">Inicia sólo si recibirás físicamente esta entrega. Revisarás pendientes, Caja, garantías y custodia antes de confirmar. La recepción se confirma al terminar los pasos.</p>
+        {handover.receivedById ? <p className="text-sm text-amber-800">La recuperación requiere motivo y sólo se admite antes de confirmar Caja o custodia. Si ya existe evidencia del receptor, debe continuar esa persona.</p> : null}
+        <StartReceptionShiftForm handoverId={handover.id} suggestedType={handover.fromShift.type} finalReception recovery={Boolean(handover.receivedById)} />
+      </div></Card> : null}
       {receptionStep && receptionStepTitle && receptionStepBody ? (
         <Card className="no-print">
           <CardHeader title={`Recepción de turno · paso ${receptionStep} de 5`} />
@@ -529,7 +541,7 @@ export default async function HandoverPage({
                 ['2', 'Caja'],
                 ['3', 'Custodia'],
                 ['4', 'Revisión'],
-                ['5', 'Activar'],
+                ['5', finalReception ? 'Confirmar' : 'Activar'],
               ].map(([step, label]) => {
                 const numericStep = Number(step);
                 const done = numericStep < receptionStep;
@@ -778,7 +790,7 @@ export default async function HandoverPage({
           <CardHeader title="Confirmar entrega revisada" />
           <div className="space-y-3 px-4 py-4">
             <p className="text-sm text-slate-600">
-              Confirma sólo después de leer los puntos que continúan al turno entrante.
+              {finalReception ? 'Confirma sólo después de leer los puntos pendientes de la entrega final.' : 'Confirma sólo después de leer los puntos que continúan al turno entrante.'}
             </p>
             <ConfirmReceptionReviewStepForm handoverId={handover.id} step="BRIEFING" />
           </div>
@@ -818,6 +830,7 @@ export default async function HandoverPage({
           </div>
           <div className="border-t border-slate-100 px-4 py-4">
             <ConfirmReceptionReviewStepForm
+              finalReception={finalReception}
               handoverId={handover.id}
               step="FINAL"
               urgentCount={counts.urgente}
@@ -831,7 +844,7 @@ export default async function HandoverPage({
           <Card className="no-print">
             <CardHeader title="Agregar nota manual" />
             <div className="px-4 py-4">
-              <AddHandoverNoteForm handoverId={handover.id} actorId={user.id} revision={handover.items.find(item => item.manual)?.id ?? 'new'}
+              <AddHandoverNoteForm finalClosure={closing} handoverId={handover.id} actorId={user.id} revision={handover.items.find(item => item.manual)?.id ?? 'new'}
                 observation={handover.items.find(item => item.manual)?.title.replace(/^Observación:\s*/, '') ?? ''}
                 nextAction={handover.items.find(item => item.manual)?.detail?.replace(/^Siguiente acción:\s*/, '').replace(/^Sin acción adicional indicada\.$/, '') ?? ''} />
             </div>
@@ -840,7 +853,7 @@ export default async function HandoverPage({
             <CardHeader title="Confirmar revisión de pendientes" />
             <div className="space-y-3 px-4 py-4">
               <p className="text-sm text-slate-600">
-                Confirma sólo después de revisar los asuntos que continuarán al siguiente turno.
+                {closing ? 'Confirma sólo después de revisar los asuntos pendientes de la entrega final.' : 'Confirma sólo después de revisar los asuntos que continuarán al siguiente turno.'}
                 Esta confirmación queda registrada y se invalida si actualizas el resumen o cambias
                 la nota de entrega.
               </p>
@@ -903,7 +916,7 @@ export default async function HandoverPage({
               Al enviarla queda registrada de forma permanente y disponible para quien reciba el relevo.
               {handover.toShift
                 ? ` Destinatario: turno ${SHIFT_TYPE_LABEL[handover.toShift.type]} (${handover.toShift.assignments.map((a) => a.user.name).join(', ') || 'sin personal asignado'}).`
-                : ' Quedará en la bandeja para que el próximo turno la revise y la reciba.'}
+                : closing ? ' Quedará pendiente de recepción final por la persona que reciba físicamente, sin abrir otra jornada.' : ' Quedará en la bandeja para que el próximo turno la revise y la reciba.'}
             </p>
             <SendHandoverForm shiftId={handover.fromShiftId} />
           </div>
@@ -913,13 +926,13 @@ export default async function HandoverPage({
       {receptionStep === 5 && canReceive ? (
         <div id="confirmar-recepcion" className="scroll-mt-32">
           <Card className="no-print">
-            <CardHeader title="Paso 5 de 5 · confirmar y activar" />
+            <CardHeader title={finalReception ? 'Paso 5 de 5 · confirmar recepción final' : 'Paso 5 de 5 · confirmar y activar'} />
             <div className="px-4 py-4">
               <p className="mb-3 text-sm leading-5 text-slate-700">
                 Ya completaste entrega, Caja, garantías, custodia y revisión final. Al confirmar,
-                el relevo quedará recibido a tu nombre y tu turno quedará ACTIVO.
+                {finalReception ? 'el relevo quedará recibido a tu nombre, sin abrir ni activar otra jornada.' : 'el relevo quedará recibido a tu nombre y tu turno quedará ACTIVO.'}
               </p>
-              <ReceiveHandoverForm handoverId={handover.id} />
+              <ReceiveHandoverForm finalReception={finalReception} handoverId={handover.id} />
             </div>
           </Card>
         </div>
@@ -954,7 +967,7 @@ export default async function HandoverPage({
               <div className="border-t border-slate-500 pt-2">
                 <p className="text-xs font-semibold text-petrol-900">Receptor de la entrega</p>
                 <p className="mt-1 text-xs text-slate-600">
-                  {handover.receivedBy?.name ?? 'Pendiente de recepción'}
+                  {handover.receivedAt ? handover.receivedBy?.name ?? 'Recepción confirmada' : handover.receivedBy ? `Recepción en curso: ${handover.receivedBy.name}; sin confirmar` : 'Pendiente de recepción'}
                 </p>
                 <p className="mt-4 text-[0.7rem] text-slate-500">Firma</p>
               </div>
@@ -989,7 +1002,8 @@ export default async function HandoverPage({
           <CardHeader title="Comentarios" count={handover._count.comments} />
           <Comments
             target={{ handoverId: handover.id }}
-            readOnly={isReceptionDeskRole(user.roleKey)}
+            readOnly={closing || isReceptionDeskRole(user.roleKey)}
+            allowClosure={closing}
           />
         </Card>
         <Card>

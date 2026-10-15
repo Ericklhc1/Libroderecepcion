@@ -1,3 +1,5 @@
+import { HistoryTimeline } from './history-timeline';
+import type { HistoryEvent } from '@/server/services/history';
 import {HandoverStatus} from '@prisma/client';
 import type { HandoverCashState } from '@/server/services/cash';
 import { fromMinor } from '@/domain/cash';
@@ -10,6 +12,7 @@ export type HandoverPrintProps = {
   title: string; participants: string; issuer: string; issuedAt: string;
   status: string; receiver: string | null; receivedAt: string | null;
   supervisor: string | null; items: PrintItem[]; cash: HandoverCashState;
+  history?: HistoryEvent[];
   notes?: string | null; receiverObservations?: string | null;
 };
 const money = (minor: number | undefined, currency: string) => minor === undefined ? '—' : fromMinor(minor, currency).toLocaleString('es-CL');
@@ -78,6 +81,10 @@ export function HandoverPrint(props: HandoverPrintProps) {
     <ItemTable title="Alertas operativas" rows={rows.filter(r => r.refType === 'alert')} />
     {props.notes ? <p>Nota de entrega: {props.notes}</p> : null}
     {received&&props.receiverObservations ? <p>Observaciones de recepción: {props.receiverObservations}</p> : null}
+    <section className="handover-print-section" aria-label="Comentarios y trazabilidad de la entrega">
+      <h2>Comentarios y trazabilidad</h2>
+      <HistoryTimeline events={props.history ?? []} />
+    </section>
     <div className="handover-print-signatures">{[
       ['Entrega', props.issuer], ['Recibe', receiver], ['Supervisión', props.supervisor],
     ].map(([label, name]) => <section key={label}><strong>{label}</strong><p>Nombre: {name ?? '________________________'}</p><p>Firma: ______________________________</p><p>Fecha / hora: ________________________</p></section>)}</div>

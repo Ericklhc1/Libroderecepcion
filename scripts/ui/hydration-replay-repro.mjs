@@ -54,7 +54,22 @@ function findMain(node) {
 }
 findMain(layout);
 assert.ok(mainNode, 'Actual layout main is required');
-const Main = compileBoundary(`import { Fragment } from 'react'; export default function Main({children}) { return (${mainNode.getText(layout)}); }`, 'main-boundary.tsx');
+// FormDraftSession's real component renders null; isolate its JSX contract
+// without loading storage effects, auth, services, a database or the Next server.
+function compileMainBoundary(node, sourceFile, fileName) {
+  return compileBoundary(`import { Fragment } from 'react'; function FormDraftSession() { return null; } const user = { id: 'synthetic-hydration-user' }; export default function Main({children}) { return (${node.getText(sourceFile)}); }`, fileName);
+}
+const Main = compileMainBoundary(mainNode, layout, 'main-boundary.tsx');
+const closureFile = path.join(repo, 'src/components/operational/system-closure-shell.tsx');
+const closure = ts.createSourceFile(closureFile, readFileSync(closureFile, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+let closureMainNode;
+function findClosureMain(node) {
+  if (ts.isJsxElement(node) && node.openingElement.tagName.getText(closure) === 'main') closureMainNode = node;
+  ts.forEachChild(node, findClosureMain);
+}
+findClosureMain(closure);
+assert.ok(closureMainNode, 'Actual closure shell main is required');
+const ClosureMain = compileMainBoundary(closureMainNode, closure, 'closure-main-boundary.tsx');
 
 function pendingModule(value, resolution) {
   const listeners = [];
@@ -76,7 +91,8 @@ function target(child, condition) {
     // Server Components render to host JSX before Flight reaches the browser.
     // Call these functions directly so an artificial component fiber cannot
     // accidentally repair the tested host/lazy-child boundary.
-    const element = (condition.source === 'main' ? Main : Template)({ children: child });
+    const boundary = condition.source === 'main' ? Main : condition.source === 'closure' ? ClosureMain : Template;
+    const element = boundary({ children: child });
     return condition.before ? h(element.type, element.props, child) : element;
   }
   return h('div', { id: 'target' }, condition.fragment ? h(React.Fragment, condition.unkeyed ? null : { key: 'fixed-stream' }, child) : child);
@@ -93,10 +109,12 @@ const conditions = [
   { name: 'keyed-fragment', transition: true, resolution: 'microtask', fragment: true },
   { name: 'main-before', source: 'main', before: true, transition: true, resolution: 'microtask', expectedBug: true },
   { name: 'main-actual-source', source: 'main', transition: true, resolution: 'microtask' },
+  { name: 'closure-before', source: 'closure', before: true, transition: true, resolution: 'microtask', expectedBug: true },
+  { name: 'closure-actual-source', source: 'closure', transition: true, resolution: 'microtask' },
   { name: 'template-before', source: 'template', before: true, transition: true, resolution: 'microtask', expectedBug: true },
   { name: 'template-actual-source', source: 'template', transition: true, resolution: 'microtask' },
 ];
-async function checkShellIdentity() {
+async function checkShellIdentity(boundary = Main, source = 'main') {
   const container = document.createElement('div'); document.body.appendChild(container);
   let mounts = 0, unmounts = 0;
   function DraftSentinel() {
@@ -104,7 +122,7 @@ async function checkShellIdentity() {
     return h('textarea', { id: 'draft-sentinel', defaultValue: '' });
   }
   function Shell({ route }) {
-    return h(React.Fragment, null, Main({ children: h('section', { id: 'current-route' }, route) }), h(DraftSentinel));
+    return h(React.Fragment, null, boundary({ children: h('section', { id: 'current-route' }, route) }), h(DraftSentinel));
   }
   container.innerHTML = ReactDOMServer.renderToString(h(Shell, { route: 'first' }));
   const errors = [];
@@ -120,7 +138,7 @@ async function checkShellIdentity() {
   assert.equal(draft.value, 'Unsent local draft');
   assert.equal(mounts, 1); assert.equal(unmounts, 0); assert.deepEqual(errors, []);
   root.unmount(); container.remove();
-  return { actualMainSource: true, mainDOMReused: true, siblingDraftPreserved: true, siblingMounts: mounts, scope: 'shell-sibling sentinel; not full Fronti E2E' };
+  return { source, actualMainSource: true, mainDOMReused: true, siblingDraftPreserved: true, siblingMounts: mounts, scope: 'shell-sibling sentinel; not full Fronti E2E' };
 }
 (async () => {
   assert.equal(React.version, mode === 'bundled' ? '19.2.0-canary-0bdb9206-20250818' : '19.3.0', 'Reassess expected regression when the runtime changes');
@@ -154,6 +172,7 @@ async function checkShellIdentity() {
     results.push({ condition: condition.name, trials: 5, identicalServerHTML: true, hydrationErrors: failures, serverDOMReplaced: replaced, firstErrorStack: firstStack });
   }
   const identity = await checkShellIdentity();
-  console.log(JSON.stringify({ runtime: mode, react: React.version, reactDOM: ReactDOMServer.version, dom: 'jsdom27.0.1', probePatchesRenderer: false, results, identity }, null, 2));
+  const closureIdentity = await checkShellIdentity(ClosureMain, 'closure');
+  console.log(JSON.stringify({ runtime: mode, react: React.version, reactDOM: ReactDOMServer.version, dom: 'jsdom27.0.1', probePatchesRenderer: false, results, identity, closureIdentity }, null, 2));
   dom.window.close();
 })().catch(error => { console.error(error); process.exitCode = 1; dom.window.close(); });

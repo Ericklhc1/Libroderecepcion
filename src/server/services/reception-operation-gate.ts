@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { isReceptionDeskRole } from '@/lib/permissions';
 import { RuleError } from '@/server/errors';
 import type { CurrentUser } from '@/server/auth/current-user';
+import { getMaintenanceState } from './system-maintenance';
 
 export type ReceptionOperationMode =
   | 'NO_SHIFT'
@@ -209,6 +210,11 @@ export async function assertReceptionOperationPermission(
 
   const gate = await getReceptionOperationGate(user, client);
   if (gate.mode === 'ACTIVE') return;
+
+  // The final recipient has no new shift. Native receipt/custody services still
+  // require the real claimed actor and every review, recount and permission.
+  if ((permission === 'shift.receive' || permission === 'cash.count_receive') &&
+      (await getMaintenanceState(client)).closure?.phase === 'CLOSING') return;
 
   if (gate.mode === 'NO_SHIFT') {
     if (permission === 'shift.start') return;

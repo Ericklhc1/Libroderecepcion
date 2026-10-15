@@ -438,8 +438,12 @@ export function StartReceptionShiftForm({
   suggestedType,
   guided = false,
   guidanceSession = 1,
+  finalReception = false,
+  recovery = false,
 }: {
   handoverId: string;
+  finalReception?: boolean;
+  recovery?: boolean;
   suggestedType: 'DIA' | 'NOCHE';
   guided?: boolean;
   guidanceSession?: number;
@@ -454,18 +458,19 @@ export function StartReceptionShiftForm({
     >
       <input type="hidden" name="handoverId" value={handoverId} />
       <input type="hidden" name="type" value={suggestedType} />
+      {recovery ? <Field label="Motivo de recuperación" name="recoveryReason"><Textarea name="recoveryReason" minLength={5} maxLength={500} required rows={2} /></Field> : null}
       <GuidedShiftSubmit
         guided={guided}
         session={guidanceSession}
-        buttonLabel="INICIAR RECEPCIÓN DE TURNO"
+        buttonLabel={finalReception ? (recovery ? 'Recuperar recepción final' : 'Recibir entrega final') : 'INICIAR RECEPCIÓN DE TURNO'}
         title="Vas a recibir el turno anterior"
-        description="La Central abrirá tu turno en modo RECEPCIÓN. La operación seguirá bloqueada hasta completar el relevo."
+        description={finalReception ? 'Revisa la entrega y confirma físicamente Caja y custodia. Esta recepción no abre una nueva jornada.' : 'La Central abrirá tu turno en modo RECEPCIÓN. La operación seguirá bloqueada hasta completar el relevo.'}
         steps={[
           'Revisar entrega: lee los pendientes, prioridades y puntos urgentes.',
           'Recontar Caja: cuenta CLP/USD y valida físicamente las garantías.',
           'Recibir custodia: confirma llaves, teléfono y demás elementos declarados.',
           'Revisión final: compara lo declarado con lo que realmente recibiste.',
-          'Confirmar y abrir: la entrega queda recibida y tu turno pasa a ACTIVO.',
+          finalReception ? 'Confirmar recepción final: registra lo que realmente recibiste, sin abrir otra jornada.' : 'Confirmar y abrir: la entrega queda recibida y tu turno pasa a ACTIVO.',
         ]}
         confirmLabel="SÍ, INICIAR RECEPCIÓN"
         pendingLabel="Iniciando recepción…"
@@ -510,10 +515,12 @@ export function ConfirmReceptionReviewStepForm({
   handoverId,
   step,
   urgentCount = 0,
+  finalReception = false,
 }: {
   handoverId: string;
   step: 'BRIEFING' | 'CUSTODY' | 'FINAL';
   urgentCount?: number;
+  finalReception?: boolean;
 }) {
   return (
     <ActionForm
@@ -536,7 +543,7 @@ export function ConfirmReceptionReviewStepForm({
           />
           <span>
             Revisé expresamente {urgentCount} punto(s) urgente(s) y comprendo que quedan bajo
-            responsabilidad del turno que estoy recibiendo.
+            {finalReception ? 'responsabilidad de la recepción final que estoy confirmando.' : 'responsabilidad del turno que estoy recibiendo.'}
           </span>
         </label>
       ) : null}
@@ -554,19 +561,20 @@ export function ConfirmReceptionReviewStepForm({
 
 export function ReceiveHandoverForm({
   handoverId,
+  finalReception = false,
 }: {
+  finalReception?: boolean;
   shiftId?: string;
   handoverId?: string | null;
   hasHandover?: boolean;
 }) {
-  const router = useRouter();
+  const receiveAndReturn = useShiftReturnNavigation(receiveHandoverAction, handoverId ?? '');
   if (!handoverId) return null;
 
   return (
     <ActionForm
-      action={receiveHandoverAction}
+      action={receiveAndReturn}
       hideSuccess
-      onSuccess={() => router.push('/turno')}
     >
       <input type="hidden" name="handoverId" value={handoverId} />
       <Field
@@ -576,8 +584,8 @@ export function ReceiveHandoverForm({
       >
         <Textarea name="observations" rows={2} placeholder="Recibido conforme…" />
       </Field>
-      <SubmitButton variant="gold" pendingLabel="Activando turno…">
-        CONFIRMAR RECEPCIÓN Y ABRIR MI TURNO
+      <SubmitButton variant="gold" pendingLabel={finalReception ? 'Confirmando recepción…' : 'Activando turno…'}>
+        {finalReception ? 'Confirmar recepción final' : 'CONFIRMAR RECEPCIÓN Y ABRIR MI TURNO'}
       </SubmitButton>
     </ActionForm>
   );
@@ -587,8 +595,10 @@ export function PrepareHandoverForm({
   shiftId,
   guided = false,
   guidanceSession = 1,
+  finalClosure = false,
 }: {
   shiftId: string;
+  finalClosure?: boolean;
   guided?: boolean;
   guidanceSession?: number;
 }) {
@@ -604,7 +614,7 @@ export function PrepareHandoverForm({
       <GuidedShiftSubmit
         guided={guided}
         session={guidanceSession}
-        buttonLabel="INICIAR CIERRE DE TURNO"
+        buttonLabel={finalClosure ? 'Cerrar y enviar turno' : 'INICIAR CIERRE DE TURNO'}
         title="Vas a iniciar el cierre"
         description="Desde este punto el sistema cambia de operación a cierre. La Central te llevará por una pantalla a la vez."
         steps={[

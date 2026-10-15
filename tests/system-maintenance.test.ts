@@ -138,7 +138,7 @@ describe('mantenimiento temporal · estado duradero y control exclusivo', () => 
   it('activa y desactiva de forma persistida, con revisión nueva y fecha sólo mientras está activo', async () => {
     const initial = await getMaintenanceState();
     const enabled = await setEnabled(true);
-    expect(enabled).toEqual({ enabled: true, message: MAINTENANCE_MESSAGE, startedAt: expect.any(String), valid: true, revision: expect.any(String) });
+    expect(enabled).toEqual({ enabled: true, message: MAINTENANCE_MESSAGE, startedAt: expect.any(String), closure: null, valid: true, revision: expect.any(String) });
     expect(new Date(enabled.startedAt!).toISOString()).toBe(enabled.startedAt);
     expect(enabled.revision).not.toBe(initial.revision);
     expect(await getMaintenanceState()).toEqual(enabled);
@@ -234,7 +234,7 @@ describe('mantenimiento temporal · estado duradero y control exclusivo', () => 
     expect(setting.updatedById).toBe(admin.id);
     for (const log of logs) expect(log).toMatchObject({ entityId: setting.id, action: AuditAction.CONFIGURAR, userId: admin.id, sessionId: admin.sessionId });
     expect(logs[0]?.before).toEqual(MAINTENANCE_DEFAULT);
-    expect(logs[0]?.after).toEqual({ enabled: true, message: MAINTENANCE_MESSAGE, startedAt: active.startedAt });
+    expect(logs[0]?.after).toEqual({ enabled: true, message: MAINTENANCE_MESSAGE, startedAt: active.startedAt, closure: null });
     expect(logs[1]?.before).toEqual(logs[0]?.after);
     expect(logs[1]?.after).toEqual(MAINTENANCE_DEFAULT);
   });
@@ -396,16 +396,16 @@ describe('mantenimiento temporal · API, acciones y páginas', () => {
 
   it('la consulta pública sólo expone disponibilidad y mensaje, sin revisión ni datos de cuenta', async () => {
     const inactive = await maintenanceStatus();
-    expect(await inactive.json()).toEqual({ enabled: false, message: null });
+    expect(await inactive.json()).toEqual({ enabled: false, closing: false, message: null });
     await setEnabled(true);
     const active = await maintenanceStatus();
     expect(active.headers.get('cache-control')).toBe('no-store');
-    expect(await active.json()).toEqual({ enabled: true, message: MAINTENANCE_MESSAGE });
+    expect(await active.json()).toEqual({ enabled: true, closing: false, message: MAINTENANCE_MESSAGE });
   });
 
   it('la consulta pública indica mantenimiento si falla PostgreSQL', async () => {
     vi.spyOn(servicePrisma.systemSetting, 'findUnique').mockRejectedValueOnce(new Error('DB sintética no disponible'));
-    expect(await (await maintenanceStatus()).json()).toEqual({ enabled: true, message: MAINTENANCE_MESSAGE });
+    expect(await (await maintenanceStatus()).json()).toEqual({ enabled: true, closing: false, message: MAINTENANCE_MESSAGE });
   });
 });
 

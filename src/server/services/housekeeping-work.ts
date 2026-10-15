@@ -288,6 +288,20 @@ export async function saveHkHandover(user:CurrentUser,input:{requestKey:string;d
 export async function receiveHkHandover(user:CurrentUser,id:string){
   return prisma.$transaction(async tx=>{const row=await tx.housekeepingHandover.findUnique({where:{id}});if(!row)throw new NotFoundError();await requireCapability(user,row.departmentId,'housekeeping.assign',tx);if(row.createdById===user.id)throw new RuleError('El relevo debe recibirlo otra persona.');if(row.receivedAt)return row;const count=await tx.housekeepingHandover.updateMany({where:{id,receivedAt:null},data:{receivedById:user.id,receivedAt:new Date()}});if(!count.count)throw new RuleError('Otra persona recibió el relevo.');await record(tx,user,id,null,'RECIBIR_CONTINUIDAD','Recepción del relevo; no resuelve los trabajos pendientes.');return {id};});
 }
+
+/** All native handovers still needing receipt in the actor's existing assignment scope. */
+export async function getHkClosureHandovers(user: CurrentUser) {
+  const areas = await hkAreaIds(user);
+  const capability = await Promise.all(areas.map(async departmentId => ({ departmentId, allowed: await hkCapability(user, departmentId, 'housekeeping.assign') })));
+  return prisma.housekeepingHandover.findMany({
+    where: {
+      departmentId: { in: capability.filter(area => area.allowed).map(area => area.departmentId) },
+      OR: [{ receivedAt: null }, { receivedById: null }, { receivedById: user.id, acceptedAt: null }],
+    },
+    include: { department: { select: { name: true } }, createdBy: { select: { name: true } }, receivedBy: { select: { name: true } } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+}
 export async function delegateHk(user:CurrentUser,input:{departmentId:string;userId:string;permission:string;startsAt:Date;endsAt:Date;reason:string}){
   await requireCapability(user,input.departmentId,'housekeeping.plan');
   if(!['housekeeping.assign','housekeeping.inspect'].includes(input.permission)||input.startsAt>=input.endsAt||input.endsAt<=new Date()||input.endsAt.getTime()-input.startsAt.getTime()>31*86400000||!input.reason.trim())throw new RuleError('Define una cobertura de hasta 31 días, su función y el motivo.');

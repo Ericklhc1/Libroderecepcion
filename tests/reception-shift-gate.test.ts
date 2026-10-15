@@ -72,7 +72,7 @@ describe('Recepción · gate obligatorio de turno', () => {
     expect(handover).toContain("['2', 'Caja']");
     expect(handover).toContain("['3', 'Custodia']");
     expect(handover).toContain("['4', 'Revisión']");
-    expect(handover).toContain("['5', 'Activar']");
+    expect(handover).toContain("['5', finalReception ? 'Confirmar' : 'Activar']");
     expect(handover).toContain('id="confirmar-recepcion"');
     expect(cashBox).toContain("'recuento-caja'");
     expect(cashBox).not.toContain('ReturnCashGuaranteeForm');

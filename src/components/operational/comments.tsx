@@ -16,11 +16,13 @@ type Target = {
 export async function Comments({
   target,
   readOnly = false,
+  allowClosure = false,
 }: {
   target: Target;
   readOnly?: boolean;
+  allowClosure?: boolean;
 }) {
-  const comments = await listComments(target,await requirePageUser({allowAreaOperation:true}));
+  const comments = await listComments(target,await requirePageUser({allowAreaOperation:true,allowClosure:Boolean(allowClosure && readOnly && target.handoverId)}));
 
   return (
     <div>
@@ -50,7 +52,7 @@ export async function Comments({
       </ul>
       {readOnly ? (
         <div className="border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
-          Durante el relevo este hilo es de consulta. La coordinación operativa continúa después de iniciar el turno.
+          {allowClosure ? 'Este hilo se conserva para consulta durante el cierre del sistema.' : 'Durante el relevo este hilo es de consulta. La coordinación operativa continúa después de iniciar el turno.'}
         </div>
       ) : (
         <div className="border-t border-slate-200 px-4 py-3">

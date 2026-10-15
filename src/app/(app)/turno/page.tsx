@@ -4,6 +4,7 @@ import { ShiftStatus } from '@prisma/client';
 import { CalendarClock, Inbox, Send, Users } from 'lucide-react';
 import { prisma } from '@/lib/prisma';
 import { requirePageUser } from '@/server/auth/guard';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 import {
   getMyActiveShift,
   getMyPendingClosureShift,
@@ -60,11 +61,48 @@ export default async function ShiftPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user = await requirePageUser();
+  const closing = (await getMaintenanceState()).closure?.phase === 'CLOSING';
+  const user = await requirePageUser({ allowClosure: true, allowAreaOperation: closing });
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLowerCase() : '';
   const seccion = typeof params.seccion === 'string' ? params.seccion : '';
   const shift = await getMyActiveShift(user.id);
+
+  if (closing) {
+    const [pendingClosure, pendingReceipts, lastShift, linked] = await Promise.all([
+      getMyPendingClosureShift(user.id),
+      user.permissions.includes('shift.receive') ? prisma.shiftHandover.findMany({
+        where: { status: 'ENVIADA', receivedAt: null, OR: [{ toShiftId: null }, { toShift: { status: { in: ['CERRADO', 'ANULADO'] } } }], fromShift: { status: 'CERRADO' } },
+        include: { fromShift: true, issuedBy: { select: { name: true } }, receivedBy: { select: { name: true } } },
+        orderBy: { issuedAt: 'asc' },
+      }) : Promise.resolve([]),
+      prisma.shift.findFirst({ where: { assignments: { some: { userId: user.id } } }, orderBy: { updatedAt: 'desc' }, select: { status: true } }),
+      shift ? prisma.shiftHandover.findFirst({ where: { toShiftId: shift.id, status: 'ENVIADA', receivedAt: null }, select: { id: true } }) : Promise.resolve(null),
+    ]);
+    const current = shift ?? pendingClosure;
+    return <div className="mx-auto max-w-3xl space-y-4">
+      <Card><div className="space-y-4 p-5">
+        <h1 className="text-xl font-semibold text-petrol-900">Cierre de tu turno</h1>
+        {current ? <>
+          <p className="text-sm text-slate-600">Completa Caja, custodia y entrega siguiendo las comprobaciones habituales. No se iniciarán nuevos turnos.</p>
+          <Badge tone="pendiente">{SHIFT_STATUS_LABEL[current.status]}</Badge>
+          {linked && current.status !== 'INICIADO' ? <Link href={`/turno/entrega/${linked.id}`} className="block font-medium text-petrol-800 underline">Completar la recepción pendiente antes de cerrar</Link> : null}
+          {current.status === 'ACTIVO' ? <PrepareHandoverForm shiftId={current.id} finalClosure /> :
+            current.status === 'INICIADO' ? linked ? <Link href={`/turno/entrega/${linked.id}`} className="inline-flex rounded-lg bg-gold-500 px-4 py-2 font-semibold text-petrol-950">Completar la recepción pendiente</Link> : <p className="text-sm text-amber-800">El inicio existente requiere revisión de SysAdmin antes de continuar; no abras otra jornada.</p> :
+            current.handoverOut ? <Link href={`/turno/entrega/${current.handoverOut.id}`} className="inline-flex rounded-lg bg-gold-500 px-4 py-2 font-semibold text-petrol-950">Cerrar y enviar turno</Link> : <p className="text-sm text-amber-800">Falta la entrega de este turno. Solicita revisión de SysAdmin.</p>}
+        </> : <p className="text-sm text-slate-600">{lastShift ? 'Tu turno ya está finalizado. Gracias por completar la entrega.' : 'No tienes un turno pendiente de cierre.'} El sistema no admite nuevas jornadas.</p>}
+      </div></Card>
+      {pendingReceipts.length > 0 ? <Card><div className="space-y-3 p-5">
+        <h2 className="font-semibold text-petrol-900">Entregas pendientes de recepción final</h2>
+        <p className="text-sm text-slate-600">La persona que reciba físicamente Caja y custodia debe confirmar cada entrega. Este paso no abre una jornada nueva.</p>
+        {pendingReceipts.map(receipt => <div key={receipt.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+          <div className="text-sm"><p>Folio {receipt.humanId} · {receipt.issuedBy.name} · {formatCalendarDate(receipt.fromShift.date)}</p>{receipt.receivedBy ? <p className="text-slate-500">Recepción en curso: {receipt.receivedBy.name}; todavía sin confirmar.</p> : null}</div>
+          <Link className="font-medium text-petrol-800 underline" href={`/turno/entrega/${receipt.id}`}>Revisar entrega</Link>
+        </div>)}
+      </div></Card> : null}
+      {user.isSystemAdmin ? <Link href="/admin/mantenimiento" className="text-sm font-medium text-petrol-800 underline">Administrar cierre y recuperación</Link> : null}
+    </div>;
+  }
 
   const [desk, recentShifts, pendingClosure, blockingOutgoing, shiftExperienceCount] = await Promise.all([
     getShiftDesk(user),

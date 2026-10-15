@@ -17,6 +17,8 @@ import { Button } from '@/components/ui/button';
 import { HousekeepingChangeForm } from '@/components/admin/housekeeping-forms';
 import { ReleasePilotSourceForm, AcceptHandoverForm, NewWorkForm, WorkActionCluster, WorkActionForm, PrepareDayForm, RoutineForm, AvailabilityForm, HandoverForm, ReceiveHandoverForm, DelegationForm, RevokeDelegationForm, OrganizeLegacyForm } from '@/components/housekeeping/work-forms';
 import type { Prisma } from '@prisma/client';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
+import { HousekeepingClosurePanel } from '@/components/housekeeping/closure-panel';
 
 export const metadata = { title:'Housekeeping · Trabajo del día' };
 export const dynamic = 'force-dynamic';
@@ -27,7 +29,9 @@ function Snapshot({value}:{value:Prisma.JsonValue}){
   return <div className="space-y-2 text-xs text-slate-600"><p>{work.length} trabajos pendientes · {loans.length} entregas de llaves abiertas al guardar.</p><ul className="space-y-1">{work.map((w,i)=>w&&typeof w==='object'&&!Array.isArray(w)?<li key={i}>#{String(w.humanId)} · {String(w.location??'Sin ubicación')} · {HK_WORK_LABELS[String(w.status)]??String(w.status)} · {typeof w.assignedTo==='object'&&w.assignedTo&&!Array.isArray(w.assignedTo)?String(w.assignedTo.name):'Por asignar'}{w.blockReason?` · Impedimento: ${String(w.blockReason)}`:''}</li>:null)}</ul><ul className="space-y-1">{loans.map((l,i)=>l&&typeof l==='object'&&!Array.isArray(l)?<li key={i}>Entrega #{String(l.humanId)} · {String(l.collaboratorName??'Personal del área')} · {Array.isArray(l.items)?l.items.map(k=>k&&typeof k==='object'&&!Array.isArray(k)?`${String(k.keyCode)} (${String(k.destinationName)})`:'').join(', '):''}</li>:null)}</ul></div>;
 }
 export default async function HousekeepingPage({searchParams}:{searchParams:Promise<{vista?:string;fecha?:string;area?:string;piso?:string;responsable?:string;pagina?:string;aviso?:string;q?:string;estado?:string}>}){
-  const user=await requireHousekeepingPageUser();const params=await searchParams;
+  const user=await requireHousekeepingPageUser({allowClosure:true});
+  if ((await getMaintenanceState()).closure) return <HousekeepingClosurePanel user={user} />;
+  const params=await searchParams;
   const view=params.vista??(user.permissions.includes('housekeeping.work')&&!user.permissions.includes('housekeeping.view')?'mios':'');
   const board=await getHkWorkday(user,{date:params.fecha,departmentId:params.area,view,floor:/^[456]$/.test(params.piso??'')?params.piso:undefined,responsible:params.responsable,page:Number(params.pagina??1),q:params.vista==='vincular'?undefined:params.q,state:params.estado,focusId:params.aviso&&/^\d+$/.test(params.aviso)?Number(params.aviso):undefined});
   const legacyManage=canManageHousekeeping(user);

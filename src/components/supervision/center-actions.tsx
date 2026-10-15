@@ -66,16 +66,18 @@ export function FinishSupervisionShiftForm({
   criticalCount,
   continuityCount,
   auditPendingCount,
+  finalClosure = false,
 }: {
   shiftId: string;
   criticalCount: number;
   continuityCount: number;
   auditPendingCount: number;
+  finalClosure?: boolean;
 }) {
   return (
     <Dialog
       title="Finalizar turno de Supervisión"
-      description="Antes de cerrar, confirma que revisaste las tres fuentes que pueden dejar trabajo sin dueño. Los pendientes continúan al próximo turno; no se borran."
+      description={finalClosure ? 'Confirma que revisaste los controles y la continuidad. Se conservará la copia final; recibirla no requiere abrir otro turno.' : 'Antes de cerrar, confirma que revisaste las tres fuentes que pueden dejar trabajo sin dueño. Los pendientes continúan al próximo turno; no se borran.'}
       trigger="FINALIZAR TURNO"
       triggerVariant="gold"
       width="sm"
@@ -102,14 +104,13 @@ export function FinishSupervisionShiftForm({
         <label className="flex items-start gap-3 rounded-lg bg-slate-50 px-3 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
           <input type="checkbox" name="reviewedContinuity" required className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Revisé tareas, delegaciones y seguimientos que continuarán después de mi jornada
+            {finalClosure ? 'Revisé tareas, delegaciones y seguimientos que se conservarán con su estado al finalizar' : 'Revisé tareas, delegaciones y seguimientos que continuarán después de mi jornada'}
             {continuityCount > 0 ? ` (${continuityCount} abiertos)` : ''}.
           </span>
         </label>
 
         <p className="text-xs text-slate-500">
-          Finalizar genera automáticamente la copia inalterable del turno. Los asuntos abiertos
-          reaparecerán en tu continuidad cuando vuelvas a iniciar Supervisión.
+          {finalClosure ? 'Finalizar conserva la copia inalterable del turno. Otra persona autorizada podrá confirmar su recepción sin abrir una jornada nueva.' : 'Finalizar genera automáticamente la copia inalterable del turno. Los asuntos abiertos reaparecerán en tu continuidad cuando vuelvas a iniciar Supervisión.'}
         </p>
 
         <div className="flex justify-end">

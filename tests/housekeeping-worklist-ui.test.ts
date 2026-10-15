@@ -11,7 +11,9 @@ describe('bandeja contextual de Housekeeping sobre contratos nativos', () => {
   });
 
   it('conserva guardia y lector del área antes de proyectar filas', () => {
-    expect(page).toContain('await requireHousekeepingPageUser()');
+    expect(page).toContain('await requireHousekeepingPageUser({allowClosure:true})');
+    expect(page.indexOf('await requireHousekeepingPageUser(')).toBeLessThan(page.indexOf('await getHkWorkday(user,'));
+    expect(page).toContain("if ((await getMaintenanceState()).closure) return <HousekeepingClosurePanel user={user} />");
     expect(page).toContain('await getHkWorkday(user,');
     expect(page).toContain('board.requests.map(r =>');
     expect(page).toContain('initialOpenId={focusedRequest ? listRowAnchor(\'housekeeping\', focusedRequest.id) : undefined}');

@@ -40,6 +40,8 @@ import {followUpReadWhere,taskFollowUpReadWhere,alertReadWhere} from './followup
  */
 export type BookKind = 'entry' | 'task' | 'followup' | 'alert';
 
+export type BookComment = { id: string; body: string; authorId: string; authorName: string; createdAt: Date; parentId: string | null };
+
 export type BookItem = {
   kind: BookKind;
   id: string;
@@ -61,6 +63,8 @@ export type BookItem = {
   overdue: boolean;
   hasFollowUp: boolean;
   commentCount: number;
+  /** Textos completos sólo para el informe; misma autorización que el Libro. */
+  comments?: BookComment[];
   /** Compatibilidad de presentación; el Libro nuevo no proyecta huésped PMS. */
   guestLabel: string | null;
   href: string;
@@ -116,7 +120,7 @@ function priorityTone(priority: string): Tone {
   return 'neutro';
 }
 
-export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'id'|'permissions'|'isSystemAdmin'>): Promise<{
+export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'id'|'permissions'|'isSystemAdmin'>, complete = false): Promise<{
   items: BookItem[];
   hasMore: boolean;
   page: number;
@@ -196,8 +200,8 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
         shift: { select: { type: true, date: true } },
         _count: { select: { comments:{where:{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]}}, followUps:{where:followUpReadWhere(user)} } },
       },
-      orderBy: { occurredAt: 'desc' },
-      take: window,
+      orderBy: [{ occurredAt: 'desc' }, { id: 'asc' }],
+      take: complete ? undefined : window,
     });
 
     return rows.map((row) => {
@@ -209,7 +213,7 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
         kindLabel: row.type === EntryType.INCIDENCIA ? 'Incidencia' : 'Novedad',
         typeLabel: ENTRY_TYPE_LABEL[row.type],
         title: row.title,
-        summary: row.description.slice(0, 180),
+        summary: row.description,
         statusLabel: ENTRY_STATUS_LABEL[row.status],
         tone: isOverdue(row.dueAt, open) ? 'critico' : ENTRY_STATUS_TONE[row.status],
         priorityLabel: PRIORITY_LABEL[row.priority],
@@ -277,8 +281,8 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
         shift: { select: { type: true, date: true } },
         _count: { select: { comments:{where:{OR:[{followUpId:null},{followUp:followUpReadWhere(user)}]}}, followUps:{where:followUpReadWhere(user)} } },
       },
-      orderBy: { createdAt: 'desc' },
-      take: window,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take: complete ? undefined : window,
     });
 
     return rows.map((row) => {
@@ -290,7 +294,7 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
         kindLabel: 'Tarea',
         typeLabel: 'Tarea',
         title: row.title,
-        summary: row.description?.slice(0, 180) ?? null,
+        summary: row.description ?? null,
         statusLabel: TASK_STATUS_LABEL[row.status],
         tone: isOverdue(row.dueAt, open) ? 'critico' : TASK_STATUS_TONE[row.status],
         priorityLabel: PRIORITY_LABEL[row.priority],
@@ -358,8 +362,8 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
         entry: { select: { id: true, seq: true, title: true } },
         _count: { select: { comments: true } },
       },
-      orderBy: { createdAt: 'desc' },
-      take: window,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take: complete ? undefined : window,
     });
 
     return rows.map((row) => ({
@@ -369,7 +373,7 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
       kindLabel: 'Seguimiento',
       typeLabel: 'Seguimiento',
       title: row.action,
-      summary: row.nextAction ? `Próxima acción: ${row.nextAction}` : row.result,
+      summary: [row.result ? `Resultado: ${row.result}` : null, row.nextAction ? `Próxima acción: ${row.nextAction}` : null].filter(Boolean).join(' · ') || null,
       statusLabel: FOLLOWUP_STATUS_LABEL[row.status],
       tone: FOLLOWUP_STATUS_TONE[row.status],
       priorityLabel: null,
@@ -433,8 +437,8 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
         createdBy: { select: { name: true } },
         _count: { select: { comments: true } },
       },
-      orderBy: { createdAt: 'desc' },
-      take: window,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take: complete ? undefined : window,
     });
 
     return rows.map((row) => ({
@@ -471,14 +475,46 @@ export async function getBookItems(filters: BookFilters,user:Pick<CurrentUser,'i
     kinds.includes('alert') ? alertItems() : [],
   ]);
 
-  const items = groups.flat().sort((a, b) => b.date.getTime() - a.date.getTime());
+  const items = groups.flat().sort((a, b) => b.date.getTime() - a.date.getTime() || a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
   const offset = (page - 1) * pageSize;
-  const slice = items.slice(offset, offset + pageSize);
+  const slice = complete ? items : items.slice(offset, offset + pageSize);
 
   return {
     items: slice,
-    hasMore: items.length > offset + pageSize,
+    hasMore: !complete && items.length > offset + pageSize,
     page,
     pageSize,
   };
+}
+
+
+/** The existing report reads every matching row once, without the UI page limit. */
+export async function getBookReportItems(filters: BookFilters, user: Pick<CurrentUser, 'id' | 'permissions' | 'isSystemAdmin'>): Promise<BookItem[]> {
+  const { items } = await getBookItems(filters, user, true);
+  if (!items.length) return items;
+  const ids = (kind: BookKind) => items.filter(item => item.kind === kind).map(item => item.id);
+  const comments = await prisma.comment.findMany({
+    where: {
+      deletedAt: null,
+      OR: [
+        { entryId: { in: ids('entry') } }, { taskId: { in: ids('task') } },
+        { followUpId: { in: ids('followup') } }, { alertId: { in: ids('alert') } },
+      ],
+      AND: [
+        { OR: [{ followUpId: null }, { followUp: followUpReadWhere(user) }] },
+        { OR: [{ taskId: null }, { task: taskFollowUpReadWhere(user) }] },
+        { OR: [{ alertId: null }, { alert: alertReadWhere(user) }] },
+      ],
+    },
+    include: { author: { select: { name: true } } },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  const grouped = new Map<string, BookComment[]>();
+  for (const comment of comments) {
+    const target = comment.entryId ? `entry:${comment.entryId}` : comment.taskId ? `task:${comment.taskId}` : comment.followUpId ? `followup:${comment.followUpId}` : `alert:${comment.alertId}`;
+    const group = grouped.get(target) ?? [];
+    group.push({ id: comment.id, body: comment.body, authorId: comment.authorId, authorName: comment.author.name, createdAt: comment.createdAt, parentId: comment.parentId });
+    grouped.set(target, group);
+  }
+  return items.map(item => ({ ...item, comments: grouped.get(`${item.kind}:${item.id}`) ?? [] }));
 }

@@ -432,7 +432,7 @@ export async function createCashDifferenceRegularizationAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('cash.approve');
+    const user = await requirePermission('cash.approve', { allowClosure: true });
     const input = parseOrThrow(movementSchema, formDataToObject(formData));
     const shift = (await getMyOpenShift(user.id)) ?? (await getCurrentShift());
     const effectiveAt = input.effectiveAt ? parseHotelDateTimeLocal(input.effectiveAt) : new Date();
@@ -471,7 +471,7 @@ export async function markCashMovementAsRegularizationAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('cash.approve');
+    const user = await requirePermission('cash.approve', { allowClosure: true });
     const input = parseOrThrow(regularizeExistingSchema, formDataToObject(formData));
 
     await markCashMovementAsRegularization(user, input);
@@ -508,7 +508,7 @@ export async function returnCashGuaranteeAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireUser({ allowClosure: true });
     if (!hasPermission(user, 'cash.guarantee_out')) {
       throw new ForbiddenError('No tienes el permiso necesario (cash.guarantee_out) para esta acción.');
     }

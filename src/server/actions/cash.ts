@@ -602,7 +602,7 @@ export async function reportMissingElementAction(_state: ActionState | null, for
 
 export async function approveMissingElementAction(_state: ActionState | null, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('shift.manage');
+    const user = await requirePermission('shift.manage', { allowClosure: true });
     const input = missingElementSchema.parse(formDataToObject(formData));
     await approveHandoverElementException(user, input);
     revalidatePath('/turno'); revalidatePath(`/turno/entrega/${input.handoverId}`); revalidatePath('/notificaciones');

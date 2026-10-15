@@ -107,7 +107,7 @@ export async function deliverSupervisionShiftAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('supervision.shift.manage');
+    const user = await requirePermission('supervision.shift.manage', { allowClosure: true });
     const input = parseOrThrow(
       z.object({ shiftId: z.string().min(1), note: zOptionalString }),
       formDataToObject(formData),
@@ -123,7 +123,7 @@ export async function finishSupervisionShiftAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('supervision.shift.manage');
+    const user = await requirePermission('supervision.shift.manage', { allowClosure: true });
     const input = parseOrThrow(
       z.object({
         shiftId: z.string().min(1),
@@ -150,7 +150,7 @@ export async function receiveSupervisionHandoverAction(
   formData: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requirePermission('supervision.shift.manage');
+    const user = await requirePermission('supervision.shift.manage', { allowClosure: true });
     const input = parseOrThrow(
       z.object({ handoverId: z.string().min(1) }),
       formDataToObject(formData),
@@ -395,10 +395,10 @@ export async function addPerformanceObservationAction(
 
 export async function cancelSupervisionOpeningAction(_state: ActionState | null, formData: FormData): Promise<ActionState> {
   return runAction(async () => {
-    const user = await requireUser();
+    const user = await requireUser({ allowClosure: true });
     const input = parseOrThrow(z.object({shiftId:z.string().min(1),reason:z.string().trim().min(5).max(500),confirmation:z.literal('CANCELAR')}), formDataToObject(formData));
     await cancelSupervisionOpening(user,input);
     refresh();
-    return {ok:true as const,message:'Apertura cancelada. Se conserva toda la evidencia y puedes iniciar una nueva apertura.'};
+    return {ok:true as const,message:'Apertura cancelada. Se conserva toda la evidencia.'};
   });
 }

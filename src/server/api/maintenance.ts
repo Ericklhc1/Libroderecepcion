@@ -9,13 +9,13 @@ export function maintenanceResponse(message = MAINTENANCE_MESSAGE) {
 }
 
 /** Gate before handler parsing, writes and catch blocks, including state-changing GETs. */
-export function withMaintenance<Args extends unknown[]>(handler: (...args: Args) => Promise<Response>) {
+export function withMaintenance<Args extends unknown[]>(handler: (...args: Args) => Promise<Response>, options: { allowClosure?: boolean } = {}) {
   return async (...args: Args): Promise<Response> => {
     try {
       const state = await getMaintenanceState();
-      if (state.enabled) {
+      if (state.enabled || (state.closure && !options.allowClosure)) {
         const user = await getCurrentUserFresh();
-        if (!user?.isSystemAdmin) return maintenanceResponse(state.message);
+        if (!user?.isSystemAdmin) return maintenanceResponse(state.closure?.phase === 'CLOSING' ? 'El sistema está finalizando su operación. Continúa desde Mi turno.' : state.message);
       }
     } catch { return maintenanceResponse(); }
     return handler(...args);

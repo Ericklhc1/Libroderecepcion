@@ -68,7 +68,7 @@ async function availability(context, enabled) {
   const response = await request(context, '/api/maintenance');
   assert.equal(response.status(), 200, 'Public maintenance status stays available');
   assert.equal(response.headers()['cache-control'], 'no-store');
-  assert.deepEqual(await response.json(), { enabled, message: enabled ? MESSAGE : null });
+  assert.deepEqual(await response.json(), { enabled, closing: false, message: enabled ? MESSAGE : null });
 }
 
 async function version(context) {
@@ -80,7 +80,7 @@ async function version(context) {
 
 async function controlState(page, enabled) {
   assert.equal(new URL(page.url()).pathname, CONTROL, 'SysAdmin retains the maintenance console');
-  await page.getByRole('heading', { name: 'Modo mantenimiento', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Disponibilidad y cierre ordenado', exact: true }).waitFor();
   await page.getByText(`Estado: ${enabled ? 'Activado' : 'Desactivado'}`, { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: 'Confirmar lectura y continuar', exact: true }).count(), 0, 'Unread announcements cannot obstruct the recovery console');
   assert.equal(await page.locator('[data-tutorial-ui="true"]').count(), 0, 'Pending tutorial cannot take over the recovery console');

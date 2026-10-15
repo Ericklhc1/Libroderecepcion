@@ -5,8 +5,8 @@ import { canAccessHousekeeping } from '@/domain/housekeeping';
 import { assertHousekeepingAccess } from '@/server/services/housekeeping';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 
-export async function requireHousekeepingPageUser() {
-  const user = await requirePageUser({ allowAreaOperation:true });
+export async function requireHousekeepingPageUser(options: { allowClosure?: boolean } = {}) {
+  const user = await requirePageUser({ allowAreaOperation:true, ...options });
   if (!canAccessHousekeeping(user)) redirect('/sin-permisos');
   return user;
 }

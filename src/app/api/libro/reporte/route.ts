@@ -5,17 +5,13 @@ import { isHkFocused } from '@/domain/housekeeping-work';
 import { requireUser } from '@/server/auth/guard';
 import { isReceptionDeskRole } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/format';
-import { getBookItems, type BookFilters, type BookItem } from '@/server/services/book';
+import { getBookReportItems, type BookFilters, type BookItem } from '@/server/services/book';
 import { parseBookFilters, type RawSearchParams } from '@/lib/search-params';
 import { createTextPdf } from '@/server/reports/simple-pdf';
+import { AppError } from '@/server/errors';
+import { createClosureBackup } from '@/server/services/system-closure';
 
 export const dynamic = 'force-dynamic';
-
-function compact(value: string | null | undefined, max = 220): string {
-  if (!value) return '';
-  const normalized = value.replace(/\s+/g, ' ').trim();
-  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
-}
 
 function reportLine(item: BookItem): string {
   const context = [
@@ -33,24 +29,56 @@ function reportLine(item: BookItem): string {
     item.statusLabel,
     context,
     item.title,
-    compact(item.summary),
+    item.summary,
   ].filter(Boolean).join(' | ');
 }
 
 async function collect(filters: BookFilters,user:CurrentUser): Promise<BookItem[]> {
-  const rows: BookItem[] = [];
-  for (let page = 1; page <= 20; page += 1) {
-    const result = await getBookItems({ ...filters, page, pageSize: 100 },user);
-    rows.push(...result.items);
-    if (!result.hasMore) break;
-  }
-  return rows;
+  return getBookReportItems(filters, user);
+}
+
+function reportLines(item: BookItem): string[] {
+  return [reportLine(item), ...(item.comments ?? []).map(comment =>
+    `Comentario ${comment.id} | ${formatDateTime(comment.createdAt)} | ${comment.authorName}${comment.parentId ? ` | Respuesta a ${comment.parentId}` : ''} | ${comment.body}`,
+  )];
+}
+
+/** Stream complete report bytes through the existing route without a buffered response limit. */
+function reportStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  let offset = 0;
+  return new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (offset >= bytes.length) { controller.close(); return; }
+      const end = Math.min(offset + 64 * 1024, bytes.length);
+      controller.enqueue(bytes.subarray(offset, end));
+      offset = end;
+    },
+  });
 }
 
 async function GETHandler(request: NextRequest) {
   const user = await requireUser();
-  if (isHkFocused(user)) return Response.json({error:'Tu cuenta no tiene acceso al informe general de Recepción.'},{status:403});
   const url = new URL(request.url);
+  if (url.searchParams.get('respaldo') === 'cierre') {
+    if (!user.isSystemAdmin) return Response.json({ error: 'Sólo el Administrador de sistema puede descargar el respaldo de cierre.' }, { status: 403 });
+    let backup: Awaited<ReturnType<typeof createClosureBackup>>;
+    try { backup = await createClosureBackup(user); }
+    catch (error) {
+      if (error instanceof AppError) return Response.json({ error: error.message, code: error.code }, { status: error.code === 'FORBIDDEN' ? 403 : 409, headers: { 'Cache-Control': 'no-store' } });
+      throw error;
+    }
+    return new Response(reportStream(new TextEncoder().encode(backup.body)), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${backup.filename}"`,
+        'Cache-Control': 'no-store',
+        'X-Content-SHA256': backup.digest,
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  }
+  if (isHkFocused(user)) return Response.json({error:'Tu cuenta no tiene acceso al informe general de Recepción.'},{status:403});
   const raw = Object.fromEntries(url.searchParams.entries()) as RawSearchParams;
   const view = url.searchParams.get('vista') === 'novedades' ? 'novedades' : 'historial';
   const receptionDesk = isReceptionDeskRole(user.roleKey);
@@ -85,13 +113,13 @@ async function GETHandler(request: NextRequest) {
   const pdf = createTextPdf({
     title,
     subtitle,
-    lines: rows.length > 0 ? rows.map(reportLine) : ['Sin registros para los filtros seleccionados.'],
+    lines: rows.length > 0 ? rows.flatMap(reportLines) : ['Sin registros para los filtros seleccionados.'],
   });
 
   const filename = `${view === 'novedades' ? 'novedades' : 'historial-operativo'}-${new Date().toISOString().slice(0, 10)}.pdf`;
   const disposition = url.searchParams.get('descargar') === '1' ? 'attachment' : 'inline';
 
-  return new Response(new Uint8Array(pdf), {
+  return new Response(reportStream(new Uint8Array(pdf)), {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',

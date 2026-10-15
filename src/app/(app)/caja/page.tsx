@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Banknote, Download, PlusCircle, Printer, ShieldCheck, Ticket } from 'lucide-react';
 import { requirePagePermission } from '@/server/auth/guard';
 import { hasPermission } from '@/server/auth/current-user';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 import { getLiveCashState } from '@/server/services/live-cash';
 import { getReceptionOperationGate } from '@/server/services/reception-operation-gate';
 import { listGymPasses, listParkingPasses } from '@/server/services/gym-pass';
@@ -57,7 +58,8 @@ export default async function LiveCashPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user = await requirePagePermission('cash.view');
+  const user = await requirePagePermission('cash.view', { allowClosure: true });
+  const closing = Boolean((await getMaintenanceState()).closure) && !user.isSystemAdmin;
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().replace(/^#/, '').toLowerCase() : '';
   const moneda = typeof params.moneda === 'string' ? params.moneda : '';
@@ -88,12 +90,12 @@ export default async function LiveCashPage({
   const canOperateCash = operationGate.mode === 'ACTIVE';
   const canReturnDuringClosing = operationGate.mode === 'CLOSING' && operationGate.shiftStatus === 'PREPARANDO_ENTREGA';
 
-  const canManualIn = canOperateCash && hasPermission(user, 'cash.manual_in');
-  const canManualOut = canOperateCash && hasPermission(user, 'cash.manual_out');
+  const canManualIn = !closing && canOperateCash && hasPermission(user, 'cash.manual_in');
+  const canManualOut = !closing && canOperateCash && hasPermission(user, 'cash.manual_out');
   const canManual = canManualIn || canManualOut;
   const canAudit = canOperateCash && hasPermission(user, 'cash.audit');
-  const canCreateGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_in');
-  const canEditGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_in');
+  const canCreateGuarantee = !closing && canOperateCash && hasPermission(user, 'cash.guarantee_in');
+  const canEditGuarantee = !closing && canOperateCash && hasPermission(user, 'cash.guarantee_in');
   const canReconcileDifference = canOperateCash && hasPermission(user, 'cash.approve');
   const canChargeGuarantee = canOperateCash && hasPermission(user, 'cash.guarantee_out');
   const canReturnGuarantee = (canOperateCash || canReturnDuringClosing) && hasPermission(user, 'cash.guarantee_out');
@@ -186,7 +188,7 @@ export default async function LiveCashPage({
             </Dialog>
           ) : null);
   const extraActions = (canOperateCash || canReconcileDifference ? <>
-{canOperateCash ? (
+{canOperateCash && !closing ? (
             <Dialog
               title="Generar folio de gimnasio"
               description="Registra fecha, habitación y huésped. El recepcionista se toma automáticamente de tu sesión."
@@ -203,7 +205,7 @@ export default async function LiveCashPage({
               <CreateGymPassForm defaultServiceDate={todayKey} />
             </Dialog>
           ) : null}
-{canOperateCash ? (
+{canOperateCash && !closing ? (
             <Dialog
               title="Generar ticket de estacionamiento"
               description="Registra fecha, habitación, huésped e ID Reserva de FNSrooms. AROH no administra la reserva."

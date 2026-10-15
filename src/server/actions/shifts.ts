@@ -31,6 +31,8 @@ import {
   removeShiftMember,
   changeShiftType,
   startReceptionShift,
+  startFinalHandoverReception,
+  assertNewShiftsAllowed,
   sendHandover,
 } from '@/server/services/shifts';
 import {
@@ -53,6 +55,7 @@ import {
   startOperationalMetric,
 } from '@/server/observability/operational';
 import { tryDeliverOperationalMail } from '@/server/services/operational-mail';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
 
 function refresh(shiftId?: string) {
   revalidatePath('/');
@@ -218,6 +221,12 @@ export async function startReceptionShiftAction(
   return runAction(async () => {
     const user = await requirePermission('shift.receive');
     const input = parseOrThrow(startReceptionSchema, formDataToObject(formData));
+    if ((await getMaintenanceState()).closure?.phase === 'CLOSING') {
+      await startFinalHandoverReception(user, { handoverId: input.handoverId, recoveryReason: typeof formData.get('recoveryReason') === 'string' ? String(formData.get('recoveryReason')) : null });
+      refresh();
+      revalidatePath(`/turno/entrega/${input.handoverId}`);
+      return { ok: true as const, message: 'Recepción final iniciada, sin abrir una nueva jornada.', id: input.handoverId };
+    }
     const shift = await startReceptionShift(user, input);
     refresh(shift.id);
     revalidatePath(`/turno/entrega/${input.handoverId}`);
@@ -270,7 +279,7 @@ export async function receiveHandoverAction(
       revalidatePath(`/turno/entrega/${input.handoverId}`);
       return {
         ok: true as const,
-        message: 'Recepción confirmada. Tu turno quedó activo y la operación está habilitada.',
+        message: 'toShiftId' in handover && (!handover.toShiftId || handover.toShift?.status === ShiftStatus.CERRADO || handover.toShift?.status === ShiftStatus.ANULADO) ? 'Recepción final confirmada. No se abrió una nueva jornada.' : 'Recepción confirmada. Tu turno quedó activo y la operación está habilitada.',
       };
     } catch (error) {
       const completedAt = new Date();
@@ -637,6 +646,7 @@ export async function scheduleShiftAction(
 ): Promise<ActionState> {
   return runAction(async () => {
     const user = await requirePermission('shift.manage');
+    await assertNewShiftsAllowed();
     const input = parseOrThrow(shiftScheduleSchema, formDataToObject(formData));
 
     for (const userId of input.userIds) {
@@ -647,55 +657,59 @@ export async function scheduleShiftAction(
     const date = new Date(`${dateKey}T00:00:00.000Z`);
     const window = plannedWindow(date, input.type);
 
-    const existing = await prisma.shift.findFirst({
-      where: {
-        date,
-        type: input.type,
-        status: ShiftStatus.PROGRAMADO,
-        archivedAt: null,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    const shift = await prisma.$transaction(async tx => {
+      await assertNewShiftsAllowed(tx, true);
+      const existing = await tx.shift.findFirst({
+        where: {
+          date,
+          type: input.type,
+          status: ShiftStatus.PROGRAMADO,
+          archivedAt: null,
+        },
+        orderBy: { createdAt: 'asc' },
+      });
 
-    const shift = existing
-      ? await prisma.shift.update({
-          where: { id: existing.id },
-          data: { notes: input.notes, plannedStart: window.start, plannedEnd: window.end },
-        })
-      : await prisma.shift.create({
-          data: {
-            date,
-            type: input.type,
-            notes: input.notes,
-            plannedStart: window.start,
-            plannedEnd: window.end,
-            createdById: user.id,
-          },
+      const shift = existing
+        ? await tx.shift.update({
+            where: { id: existing.id },
+            data: { notes: input.notes, plannedStart: window.start, plannedEnd: window.end },
+          })
+        : await tx.shift.create({
+            data: {
+              date,
+              type: input.type,
+              notes: input.notes,
+              plannedStart: window.start,
+              plannedEnd: window.end,
+              createdById: user.id,
+            },
+          });
+
+      if (input.userIds.length > 0) {
+        await tx.shiftAssignment.deleteMany({
+          where: { shiftId: shift.id, userId: { notIn: input.userIds } },
         });
+        await tx.shiftAssignment.createMany({
+          data: input.userIds.map((userId, index) => ({
+            shiftId: shift.id,
+            userId,
+            role: index === 0 ? 'TITULAR' : 'APOYO',
+          })),
+          skipDuplicates: true,
+        });
+      }
 
-    if (input.userIds.length > 0) {
-      await prisma.shiftAssignment.deleteMany({
-        where: { shiftId: shift.id, userId: { notIn: input.userIds } },
-      });
-      await prisma.shiftAssignment.createMany({
-        data: input.userIds.map((userId, index) => ({
-          shiftId: shift.id,
-          userId,
-          role: index === 0 ? 'TITULAR' : 'APOYO',
-        })),
-        skipDuplicates: true,
-      });
-    }
-
-    await recordAudit({
-      entity: 'Shift',
-      entityId: shift.id,
-      action: AuditAction.EDITAR,
-      summary:
-        `Turno de ${SHIFT_TYPE_LABEL[input.type]} (${SHIFT_WINDOW_LABEL[input.type]}) ` +
-        `del ${formatCalendarDate(date)} creado con ${input.userIds.length} persona(s)`,
-      user,
-      after: { userIds: input.userIds, notes: input.notes },
+      await recordAudit({
+        entity: 'Shift',
+        entityId: shift.id,
+        action: AuditAction.EDITAR,
+        summary:
+          `Turno de ${SHIFT_TYPE_LABEL[input.type]} (${SHIFT_WINDOW_LABEL[input.type]}) ` +
+          `del ${formatCalendarDate(date)} creado con ${input.userIds.length} persona(s)`,
+        user,
+        after: { userIds: input.userIds, notes: input.notes },
+      }, tx);
+      return shift;
     });
 
     refresh(shift.id);

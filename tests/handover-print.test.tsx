@@ -13,6 +13,18 @@ describe('impresión de entrega 02-10-2026', () => {
     expect(renderToStaticMarkup(<HandoverPrint {...handover02Fixture()} handoverStatus={status} />)).toBe('');
   });
 
+  it('imprime comentarios, motivos y valores originales completos de la auditoría', () => {
+    const text = 'Texto completo '.repeat(30) + 'FINAL_VISIBLE_1733';
+    const html = renderToStaticMarkup(<HandoverPrint {...handover02Fixture()} history={[
+      { id: 'comment-full', at: new Date('2026-10-15T12:00:00Z'), kind: 'comentario', action: null, actionLabel: 'Comentario', summary: 'Autor comentó', actorName: 'Autor ficticio', detail: text, before: null, after: null, reason: null },
+      { id: 'audit-full', at: new Date('2026-10-15T12:01:00Z'), kind: 'auditoria', action: 'EDITAR', actionLabel: 'Edición', summary: text, actorName: 'Autor ficticio', detail: null, before: { texto: text }, after: { texto: text + ' DESPUES_VISIBLE' }, reason: 'MOTIVO_VISIBLE' },
+    ]} />);
+    expect(html).toContain(text);
+    expect(html).toContain('Comentarios y trazabilidad');
+    expect(html).toContain('DESPUES_VISIBLE');
+    expect(html).toContain('MOTIVO_VISIBLE');
+  });
+
   it('recuento entrante, diferencias, marcas y notas aparecen sólo tras confirmar la recepción',()=>{
     const fixture=confirmedHandover02Fixture();fixture.cash.confirmed!.statuses=fixture.cash.confirmed!.statuses.map(s=>s.currency==='USD'?{...s,countedMinor:98765,differenceMinor:83765,balanced:false}:s);fixture.cash.confirmed!.notes='INCOMING_COUNT_ONLY';fixture.receiverObservations='RECEIVER_OBSERVATIONS_ONLY';fixture.receiver='RECEIVER_NAME_ONLY';fixture.cash.elements[0]!.confirmed=true;fixture.cash.elements[0]!.notes='DECLARED_ELEMENT_NOTE';fixture.cash.elements[0]!.missingReason='INCOMING_MISSING_ONLY';
     const received=renderToStaticMarkup(<HandoverPrint {...fixture}/>);

@@ -1,5 +1,7 @@
 import {taskFollowUpReadWhere,followUpReadWhere,alertReadWhere} from './followup-access';
-import { assertElementActor, lockHandover } from './handover-elements';
+import { assertElementActor, canStartFinalReception, lockHandover } from './handover-elements';
+import { getMaintenanceState } from './system-maintenance';
+import { assertNewOperationalWorkdayAllowed } from './closure-access';
 import 'server-only';
 import {
   AlertLevel,
@@ -17,7 +19,7 @@ import type { Prisma, ShiftType } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { formatCalendarDate } from '@/lib/format';
 import { addCalendarDateDays, calendarDateKey, hotelCalendarDate } from '@/domain/time';
-import { NotFoundError, RuleError } from '@/server/errors';
+import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { assertShiftAssignable } from '@/server/services/users';
 import { notify } from '@/server/notifications';
@@ -54,6 +56,78 @@ import {
   operationalMailTimestamp,
   queueOperationalMail,
 } from './operational-mail';
+
+/** The availability lock also serializes against SysAdmin's explicit closure transition. */
+export async function assertNewShiftsAllowed(client: Prisma.TransactionClient = prisma, lock = false) {
+  if (lock) return assertNewOperationalWorkdayAllowed(client);
+  if ((await getMaintenanceState(client)).closure) {
+    throw new RuleError('El sistema está en cierre definitivo. No se pueden iniciar turnos ni cambiar su composición.');
+  }
+}
+
+/** A claim names the real recipient; receivedAt alone proves completed reception. */
+export async function startFinalHandoverReception(
+  user: CurrentUser,
+  input: { handoverId: string; recoveryReason?: string | null },
+) {
+  if (!user.roleOperational || !user.permissions.includes('shift.receive')) throw new ForbiddenError();
+  if ((input.recoveryReason?.trim().length ?? 0) > 500) throw new RuleError('El motivo de recuperación admite hasta 500 caracteres.');
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext('setting:system.maintenance'))::text`;
+    const closing = (await getMaintenanceState(tx)).closure?.phase === 'CLOSING';
+    if (!closing) {
+      throw new RuleError('La recepción final sólo está disponible durante el cierre del sistema.');
+    }
+    await lockHandover(tx, input.handoverId);
+    const handover = await tx.shiftHandover.findUnique({ where: { id: input.handoverId }, include: { fromShift: true, toShift: { include: { assignments: true } } } });
+    if (!handover) throw new NotFoundError('La entrega indicada no existe.');
+    if (!canStartFinalReception(user, handover, closing)) {
+      throw new RuleError('Esta entrega no está disponible para recepción final sin nueva jornada.');
+    }
+    if (handover.receivedById === user.id) return handover;
+    const active = await tx.shiftAssignment.findFirst({ where: { userId: user.id, activatedAt: { not: null }, leftAt: null, shift: { status: { in: [ShiftStatus.INICIADO, ShiftStatus.ACTIVO, ShiftStatus.PREPARANDO_ENTREGA, ShiftStatus.ENTREGA_ENVIADA] } } }, select: { id: true } });
+    if (active) throw new RuleError('Finaliza tu turno existente antes de iniciar la recepción final de otra entrega.');
+    if (handover.receivedById) {
+      if (!user.isSystemAdmin || !user.permissions.includes('shift.manage') || (input.recoveryReason?.trim().length ?? 0) < 5) {
+        throw new RuleError('Otra persona inició esta recepción. Puede continuar con su cuenta; SysAdmin puede recuperarla con motivo antes de confirmar Caja o custodia.');
+      }
+      const confirmedCash = await tx.cashCount.count({ where: { handoverId: handover.id, kind: 'CONFIRMADO' } });
+      const confirmedCustody = await tx.handoverElement.count({ where: { handoverId: handover.id, OR: [{ confirmed: true }, { missingReason: { not: null } }] } });
+      if (confirmedCash || confirmedCustody) throw new RuleError('La recepción ya tiene Caja o custodia declarada por su receptor. Conserva su identidad y completa con esa cuenta; no se puede reemplazar la evidencia.');
+    }
+    // Existing physical evidence must stay with its actual recipient, even after a historical successor ended.
+    const [cashEvidence, custodyEvidence] = await Promise.all([
+      tx.cashCount.findFirst({ where: { handoverId: handover.id, kind: 'CONFIRMADO' }, select: { countedById: true } }),
+      tx.handoverElement.findMany({ where: { handoverId: handover.id, OR: [{ confirmed: true }, { missingReason: { not: null } }] }, select: { id: true, confirmed: true, missingReason: true, missingReportedById: true } }),
+    ]);
+    if (cashEvidence && cashEvidence.countedById !== user.id || custodyEvidence.some(element => element.missingReason && element.missingReportedById !== user.id)) {
+      throw new RuleError('Caja o custodia ya tiene otro receptor real. Debe continuar esa persona; no se puede reasignar su evidencia.');
+    }
+    if (custodyEvidence.some(element => element.confirmed)) {
+      const evidence = await tx.auditLog.findMany({ where: { entity: 'ShiftHandover', entityId: handover.id, action: AuditAction.EDITAR, after: { path: ['field'], equals: 'confirmed' } }, select: { userId: true, after: true }, orderBy: { createdAt: 'desc' } });
+      for (const element of custodyEvidence.filter(element => element.confirmed)) {
+        const actor = evidence.find(event => {
+          const after = event.after as { marks?: Record<string, unknown> } | null;
+          return after?.marks && element.id in after.marks;
+        });
+        if (!actor || actor.userId !== user.id) throw new RuleError('No se pudo verificar tu autoría en la custodia ya confirmada. SysAdmin debe revisar la evidencia antes de continuar; no se reconstruirá automáticamente.');
+      }
+    }
+    const updated = await tx.shiftHandover.update({ where: { id: handover.id }, data: {
+      receivedById: user.id, receiverSessionId: user.sessionId,
+      receiverBriefingReviewedAt: null, receiverBriefingSummaryKey: null,
+      receiverCustodyReviewedAt: null, receiverFinalReviewAt: null, receiverFinalSummaryKey: null,
+      receiverUrgentAcknowledgedAt: null,
+    } });
+    await recordAudit({ user, entity: 'ShiftHandover', entityId: handover.id, action: AuditAction.CAMBIO_ESTADO,
+      summary: `Recepción final iniciada por ${user.name}, sin abrir una nueva jornada; recepción aún no confirmada`,
+      before: { receivedById: handover.receivedById, receivedAt: null, toShiftId: handover.toShiftId },
+      after: { receivedById: user.id, receivedAt: null, toShiftId: handover.toShiftId, finalReceptionClaim: true },
+      reason: input.recoveryReason?.trim() || null,
+    }, tx);
+    return updated;
+  });
+}
 
 /** Fecha operativa del hotel, guardada como `@db.Date` estable. */
 export function operationalDate(now = new Date()): Date {
@@ -550,6 +624,7 @@ export async function openShift(
     emergencyAccepted?: boolean;
   } = {},
 ): Promise<{ shift: ShiftWithDetail; joined: boolean }> {
+  await assertNewShiftsAllowed();
   if (!user.roleOperational || !user.permissions.includes('shift.start')) {
     throw new RuleError(
       'Tu rol no participa en la operación de turnos de Recepción. Usa una cuenta habilitada para el mesón.',
@@ -657,6 +732,7 @@ export async function openShift(
 
   const created = await prisma
     .$transaction(async (tx) => {
+      await assertNewShiftsAllowed(tx, true);
       /*
        * Serializa aperturas de turno en PostgreSQL. El precheck superior da una
        * respuesta rápida, pero dos recepcionistas podrían pulsar «Abrir» en el
@@ -1166,6 +1242,7 @@ export async function startReceptionShift(
   user: CurrentUser,
   input: { handoverId: string; type?: ShiftType | null },
 ): Promise<ShiftWithDetail> {
+  await assertNewShiftsAllowed();
   if (!user.roleOperational) {
     throw new RuleError('Tu rol no participa en la recepción operativa de turnos.');
   }
@@ -1199,6 +1276,10 @@ export async function startReceptionShift(
     throw new RuleError('El turno saliente debe quedar cerrado antes de iniciar la recepción normal.');
   }
 
+  if (handover.receivedById && handover.receivedById !== user.id) {
+    throw new RuleError('Esta recepción final ya fue iniciada por otra persona. Conserva su identidad y retoma con esa cuenta o solicita recuperación auditada de SysAdmin.');
+  }
+
   if (handover.toShiftId) {
     if (handover.toShift?.assignments.some((assignment) => assignment.userId === user.id)) {
       return getShiftById(handover.toShiftId);
@@ -1217,6 +1298,7 @@ export async function startReceptionShift(
 
   const shiftId = await prisma
     .$transaction(async (tx) => {
+      await assertNewShiftsAllowed(tx, true);
       await tx.$queryRaw<Array<{ locked: boolean }>>`
         SELECT pg_advisory_xact_lock(1279873618) IS NULL AS "locked"
       `;
@@ -1236,6 +1318,9 @@ export async function startReceptionShift(
         },
       });
       if (!fresh) throw new NotFoundError('La entrega indicada ya no existe.');
+      if (fresh.receivedById && fresh.receivedById !== user.id) {
+        throw new RuleError('Esta recepción final ya fue iniciada por otra persona. Conserva su identidad antes de continuar.');
+      }
       if (fresh.toShiftId) {
         if (fresh.toShift?.assignments.some((assignment) => assignment.userId === user.id)) {
           return fresh.toShiftId;
@@ -1418,15 +1503,7 @@ export async function confirmReceptionReviewStep(
   if (handover.fromShift.status !== ShiftStatus.CERRADO) {
     throw new RuleError('El turno saliente todavía no está cerrado formalmente.');
   }
-  if (!handover.toShiftId || !handover.toShift) {
-    throw new RuleError('Primero inicia la recepción desde Mi turno.');
-  }
-  if (!handover.toShift.assignments.some((assignment) => assignment.userId === user.id)) {
-    throw new RuleError('Esta recepción está siendo realizada por otra persona.');
-  }
-  if (!(handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO)) {
-    throw new RuleError('El turno receptor ya no admite completar esta recepción.');
-  }
+  await assertElementActor(prisma, user, handover.id, 'confirmed');
 
   if (params.step === 'BRIEFING') {
     return prisma.$transaction(async (tx) => {
@@ -1571,6 +1648,7 @@ export async function addShiftMember(
   actor: CurrentUser,
   input: { shiftId: string; userId: string },
 ): Promise<void> {
+  await assertNewShiftsAllowed();
   const shift = await getShiftById(input.shiftId);
   if (!OCCUPYING_SHIFT_STATUSES.includes(shift.status)) {
     throw new RuleError('Sólo se puede sumar gente a un turno en curso.');
@@ -1624,6 +1702,7 @@ export async function addShiftMember(
 
   await prisma
     .$transaction(async (tx) => {
+      await assertNewShiftsAllowed(tx, true);
       const now = new Date();
       await tx.shiftAssignment.upsert({
         where: { shiftId_userId: { shiftId: shift.id, userId: input.userId } },
@@ -1675,9 +1754,11 @@ export async function removeShiftMember(
   actor: CurrentUser,
   input: { shiftId: string; userId: string; adminCleanup?: boolean; reason?: string },
 ): Promise<void> {
+  await assertNewShiftsAllowed();
   if (input.adminCleanup && (!actor.isSystemAdmin || actor.roleKey !== 'ADMINISTRADOR_SISTEMA')) throw new RuleError('Sólo SysAdmin puede retirar personas desde Administración.');
   if (input.adminCleanup && (!input.reason || input.reason.trim().length < 5)) throw new RuleError('Indica el motivo de la limpieza.');
   await prisma.$transaction(async (tx) => {
+    await assertNewShiftsAllowed(tx, true);
     await tx.$queryRaw<Array<{ locked: boolean }>>`
       SELECT pg_advisory_xact_lock(1279873620) IS NULL AS "locked"
     `;
@@ -1802,11 +1883,13 @@ export async function changeShiftType(
   actor: CurrentUser,
   input: { shiftId: string; type: ShiftType },
 ): Promise<void> {
+  await assertNewShiftsAllowed();
   if (!actor.permissions.includes('shift.reassign')) {
     throw new RuleError('Tu rol no puede cambiar el tipo de un turno.');
   }
 
   await prisma.$transaction(async (tx) => {
+    await assertNewShiftsAllowed(tx, true);
     // Evita dos correcciones simultáneas sobre el mismo turno.
     await tx.$queryRaw<Array<{ locked: boolean }>>`
       SELECT pg_advisory_xact_lock(1279873619) IS NULL AS "locked"
@@ -1879,8 +1962,9 @@ export async function receiveShiftCash(
 ): Promise<{
   statuses: Awaited<ReturnType<typeof confirmHandoverCash>>['statuses'];
   discrepancies: Awaited<ReturnType<typeof confirmHandoverCash>>['discrepancies'];
-  shiftId: string;
+  shiftId: string | null;
 }> {
+  if (!user.permissions.includes('cash.count_receive')) throw new ForbiddenError();
   const handover = await prisma.shiftHandover.findUnique({
     where: { id: params.handoverId },
     select: {
@@ -1914,21 +1998,15 @@ export async function receiveShiftCash(
       'La Caja sólo puede recibirse mientras la entrega cerrada está pendiente de confirmación.',
     );
   }
-  if (!handover.toShiftId || !handover.toShift) {
-    throw new RuleError('Primero inicia la recepción de turno desde Mi turno.');
-  }
-  if (!handover.toShift.assignments.some((assignment) => assignment.userId === user.id)) {
-    throw new RuleError('Esta recepción está siendo realizada por otra persona.');
-  }
-  if (!(handover.toShift.status === ShiftStatus.INICIADO || handover.toShift.status === ShiftStatus.ACTIVO)) {
-    throw new RuleError('El turno receptor ya no admite este recuento.');
-  }
+  await assertElementActor(prisma, user, handover.id, 'confirmed', true);
 
   let statuses: Awaited<ReturnType<typeof confirmHandoverCash>>['statuses'] = [];
   let discrepancies: Awaited<ReturnType<typeof confirmHandoverCash>>['discrepancies'] = [];
 
   await prisma
     .$transaction(async (tx) => {
+      await lockHandover(tx, handover.id);
+      await assertElementActor(tx, user, handover.id, 'confirmed', true);
       const confirmed = await confirmHandoverCash(tx, user, {
         handoverId: handover.id,
         quantities: params.quantities,
@@ -2113,17 +2191,10 @@ export async function receiveHandover(
       'El turno saliente debe quedar cerrado formalmente antes de recibir la entrega.',
     );
   }
-  if (!incoming.toShiftId || !incoming.toShift) {
-    throw new RuleError('Primero inicia la recepción de turno desde Mi turno.');
-  }
+  await assertElementActor(prisma, user, incoming.id, 'confirmed');
   const toShiftId = incoming.toShiftId;
   const toShift = incoming.toShift;
-  if (!toShift.assignments.some((assignment) => assignment.userId === user.id)) {
-    throw new RuleError('Esta recepción está siendo realizada por otra persona.');
-  }
-  if (!(toShift.status === ShiftStatus.INICIADO || toShift.status === ShiftStatus.ACTIVO)) {
-    throw new RuleError('El turno receptor ya no admite completar esta recepción.');
-  }
+  const finalReception = !toShift || toShift.status === ShiftStatus.CERRADO || toShift.status === ShiftStatus.ANULADO;
   if (!incoming.receiverBriefingReviewedAt) {
     throw new RuleError('Primero revisa la entrega del turno saliente.');
   }
@@ -2190,7 +2261,7 @@ export async function receiveHandover(
      * Un turno de emergencia ya está ACTIVO y aquí sólo regulariza su relevo
      * histórico, sin crear una segunda sesión operativa.
      */
-    if (toShift.status === ShiftStatus.INICIADO) {
+    if (toShift && toShiftId && toShift.status === ShiftStatus.INICIADO) {
       const activated = await tx.shift.updateMany({
         where: { id: toShiftId, status: ShiftStatus.INICIADO },
         data: { status: ShiftStatus.ACTIVO },
@@ -2240,13 +2311,14 @@ export async function receiveHandover(
         entity: 'ShiftHandover',
         entityId: incoming.id,
         action: AuditAction.TURNO_RECIBIR,
-        summary: `Entrega operativa recibida por ${user.name}`,
+        summary: finalReception ? `Recepción final confirmada por ${user.name}, sin abrir una nueva jornada` : `Entrega operativa recibida por ${user.name}`,
         user,
         before: { status: incoming.status },
         after: {
           status: HandoverStatus.RECIBIDA,
           observations: params.observations ?? null,
           sessionId: user.sessionId,
+          finalReception,
         },
         reason: params.observations ?? null,
       },

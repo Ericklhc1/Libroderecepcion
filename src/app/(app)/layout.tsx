@@ -43,6 +43,7 @@ import {
 import { SupportRequestPanel } from '@/components/layout/support-request-panel';
 import { assertMaintenanceAccess, getMaintenanceState, MaintenanceError } from '@/server/services/system-maintenance';
 import { MaintenanceWatcher } from '@/components/operational/maintenance-watcher';
+import { SystemClosureShell } from '@/components/operational/system-closure-shell';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -55,6 +56,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   catch (error) { if (error instanceof MaintenanceError) redirect('/mantenimiento'); throw error; }
   if (user.mustChangePassword) redirect('/cambiar-contrasena');
   if (!(await hasAcceptedCurrentTerms(user.id))) redirect('/aceptar-terminos');
+  const availability = await getMaintenanceState();
+  if (availability.closure?.phase === 'CLOSING' && !user.isSystemAdmin) {
+    return <SystemClosureShell user={user}>{children}</SystemClosureShell>;
+  }
 
   const [
     hotelName,
@@ -103,6 +108,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-[var(--aroh-canvas)]">
       <a href="#contenido-principal" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-white focus:px-4 focus:py-3 focus:font-semibold focus:text-petrol-900">Ir al contenido principal</a>
       {!user.isSystemAdmin && <MaintenanceWatcher />}
+      {availability.closure && user.isSystemAdmin && <div role="status" className="bg-amber-100 px-4 py-3 text-center text-sm text-amber-950">{availability.closure.phase === 'LOCKED' ? 'Sistema fuera de servicio. Conservas acceso de administración y recuperación.' : 'Despedida activa: sólo se permite finalizar la operación.'} <Link href="/admin/mantenimiento" className="font-semibold underline">Revisar cierre y respaldo</Link></div>}
       {maintenanceActive && <div role="status" className="bg-amber-100 px-4 py-3 text-center text-sm text-amber-950">Mantenimiento activo: la operación del personal está pausada. <Link className="font-semibold underline" href="/admin/mantenimiento">Controlar / reabrir</Link></div>}
       <UxJourney/>
       <div className="flex min-h-screen min-w-0">

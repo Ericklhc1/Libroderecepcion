@@ -10,7 +10,7 @@ import {
 import { saveSingleHandoverNoteAction } from '@/server/actions/handover-note';
 
 /** Una sola nota operativa para el turno siguiente. Volver a guardar reemplaza la anterior. */
-export function AddHandoverNoteForm({ handoverId, actorId, revision, observation = '', nextAction = '' }: { handoverId: string; actorId: string; revision?: string; observation?: string; nextAction?: string }) {
+export function AddHandoverNoteForm({ handoverId, actorId, revision, observation = '', nextAction = '', finalClosure = false }: { handoverId: string; actorId: string; revision?: string; observation?: string; nextAction?: string; finalClosure?: boolean }) {
   return (
     <ActionForm key={`${actorId}:${handoverId}:${revision}`} action={saveSingleHandoverNoteAction} preserveOnSuccess draftRevision={revision} draftScope={`handover-note:${actorId}:${handoverId}`} draftFields={['observation', 'nextAction']}>
       <input type="hidden" name="handoverId" value={handoverId} />
@@ -22,10 +22,10 @@ export function AddHandoverNoteForm({ handoverId, actorId, revision, observation
           required
           minLength={3}
           maxLength={500}
-          placeholder="Qué debe saber el turno entrante."
+          placeholder={finalClosure ? 'Qué debe saber la persona que recibirá la entrega final.' : 'Qué debe saber el turno entrante.'}
         />
       </Field>
-      <Field label="Siguiente acción (turno entrante)" name="nextAction">
+      <Field label={finalClosure ? 'Acción pendiente para la entrega final' : 'Siguiente acción (turno entrante)'} name="nextAction">
         <Textarea
           name="nextAction"
           defaultValue={nextAction}
@@ -39,7 +39,7 @@ export function AddHandoverNoteForm({ handoverId, actorId, revision, observation
       </p>
       <div className="flex justify-end">
         <SubmitButton size="sm" pendingLabel="Guardando…">
-          Guardar nota para el turno siguiente
+          {finalClosure ? 'Guardar nota para la entrega final' : 'Guardar nota para el turno siguiente'}
         </SubmitButton>
       </div>
     </ActionForm>

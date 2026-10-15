@@ -7,6 +7,7 @@ import { getCurrentUserFresh, hasPermission, type CurrentUser } from './current-
 import { hasAcceptedCurrentTerms } from '@/server/services/legal-acceptance';
 import { assertReceptionOperationPermission } from '@/server/services/reception-operation-gate';
 import { assertMaintenanceAccess, MaintenanceError } from '@/server/services/system-maintenance';
+import { assertClosureOperation, CLOSURE_PERMISSIONS } from '@/server/services/closure-access';
 
 /** Autenticación pura para los flujos previos al acceso: contraseña y términos. */
 export async function requireAuthenticatedUser(): Promise<CurrentUser> {
@@ -21,8 +22,9 @@ export async function requireAuthenticatedUser(): Promise<CurrentUser> {
  * requisitos de primer acceso. Esto evita saltarse la pantalla llamando una
  * Server Action directamente.
  */
-export async function requireUser(): Promise<CurrentUser> {
+export async function requireUser(options: { allowClosure?: boolean } = {}): Promise<CurrentUser> {
   const user = await requireAuthenticatedUser();
+  await assertClosureOperation(user, options.allowClosure);
   if (user.mustChangePassword) {
     throw new ForbiddenError('Debes definir tu contraseña personal antes de continuar.');
   }
@@ -35,8 +37,9 @@ export async function requireUser(): Promise<CurrentUser> {
 /** Para acciones de servidor: lanza si falta el permiso. */
 export async function requirePermission(
   permission: PermissionKey,
+  options: { allowClosure?: boolean } = {},
 ): Promise<CurrentUser> {
-  const user = await requireUser();
+  const user = await requireUser({ allowClosure: options.allowClosure || CLOSURE_PERMISSIONS.has(permission) });
   if (!hasPermission(user, permission)) {
     throw new ForbiddenError(
       `No tienes el permiso necesario (${permission}) para esta acción.`,
@@ -67,7 +70,7 @@ export async function requirePermissionOrOwner(
   permission: PermissionKey,
   loadOwnerIds: () => Promise<Array<string | null | undefined>>,
 ): Promise<CurrentUser> {
-  const user = await requireUser();
+  const user = await requireUser({ allowClosure: CLOSURE_PERMISSIONS.has(permission) });
   if (hasPermission(user, permission)) {
     await assertReceptionOperationPermission(user, permission);
     return user;
@@ -93,12 +96,16 @@ export async function requirePermissionOrOwner(
  * al acceso operativo: cambiar contraseña y aceptar términos.
  */
 export async function requirePageUser(
-  options: { allowIncompleteAccess?: boolean; allowAreaOperation?: boolean } = {},
+  options: { allowIncompleteAccess?: boolean; allowAreaOperation?: boolean; allowClosure?: boolean } = {},
 ): Promise<CurrentUser> {
   const user = await getCurrentUserFresh();
   if (!user) redirect('/login');
   try { await assertMaintenanceAccess(user); }
   catch (error) { if (error instanceof MaintenanceError) redirect('/mantenimiento'); throw error; }
+  if (!user.isSystemAdmin && !options.allowClosure && !options.allowIncompleteAccess) {
+    try { await assertClosureOperation(user); }
+    catch { redirect('/turno'); }
+  }
 
   if (!options.allowIncompleteAccess) {
     if (user.mustChangePassword) redirect('/cambiar-contrasena');
@@ -111,8 +118,9 @@ export async function requirePageUser(
 
 export async function requirePagePermission(
   permission: PermissionKey,
+  options: { allowClosure?: boolean } = {},
 ): Promise<CurrentUser> {
-  const user = await requirePageUser({ allowAreaOperation:true });
+  const user = await requirePageUser({ allowAreaOperation:true, ...options });
   if (!hasPermission(user, permission)) redirect('/sin-permisos');
   return user;
 }

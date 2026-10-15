@@ -30,7 +30,7 @@ type HistoryTarget = {
  * reasignaciones, seguimientos, cambios de estado y cierre, en orden
  * cronológico. Se alimenta del AuditLog más los objetos asociados.
  */
-export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id'|'permissions'>): Promise<HistoryEvent[]> {
+export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id'|'permissions'>, complete = false): Promise<HistoryEvent[]> {
   const visible=target.entity==='Task'?await prisma.task.count({where:{id:target.entityId,AND:[taskFollowUpReadWhere(user)]}})
     :target.entity==='FollowUp'?await prisma.followUp.count({where:{id:target.entityId,AND:[followUpReadWhere(user,true)]}})
     :target.entity==='Alert'?await prisma.alert.count({where:{id:target.entityId,AND:[alertReadWhere(user)]}}):1;
@@ -40,7 +40,7 @@ export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id
       where: { entity: target.entity, entityId: target.entityId,AND:[auditFollowUpReadWhere(user)] },
       include: { user: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
-      take: 300,
+      take: complete ? undefined : 300,
     }),
     prisma.comment.findMany({
       where: {
@@ -55,7 +55,7 @@ export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id
       },
       include: { author: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
-      take: 200,
+      take: complete ? undefined : 200,
     }),
     target.entity === 'OperationalEntry' || target.entity === 'Task'
       ? prisma.followUp.findMany({
@@ -68,7 +68,7 @@ export async function getHistory(target: HistoryTarget,user:Pick<CurrentUser,'id
           },
           include: { owner: { select: { name: true } }, createdBy: { select: { name: true } } },
           orderBy: { createdAt: 'asc' },
-          take: 100,
+          take: complete ? undefined : 100,
         })
       : Promise.resolve([]),
   ]);

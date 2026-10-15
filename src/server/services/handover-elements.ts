@@ -6,31 +6,51 @@ import type { CurrentUser } from '@/server/auth/current-user';
 import { ForbiddenError, NotFoundError, RuleError } from '@/server/errors';
 import { recordAudit } from '@/server/audit';
 import { notify } from '@/server/notifications';
+import { getMaintenanceState } from './system-maintenance';
+
+type FinalReceptionHandover = {
+  status: HandoverStatus;
+  receivedAt: Date | null;
+  fromShift: { status: ShiftStatus };
+  toShiftId: string | null;
+  toShift?: { status: ShiftStatus; assignments: Array<{ userId: string; activatedAt: Date | null; removedExplicitly: boolean }> } | null;
+};
+
+/** A completed historical successor retains its link and its real participants. */
+export function canStartFinalReception(user: CurrentUser, handover: FinalReceptionHandover, closing: boolean): boolean {
+  if (!closing || !user.roleOperational || !user.permissions.includes('shift.receive') ||
+    handover.status !== HandoverStatus.ENVIADA || handover.receivedAt || handover.fromShift.status !== ShiftStatus.CERRADO) return false;
+  if (!handover.toShiftId) return true;
+  return Boolean(handover.toShift && [ShiftStatus.CERRADO, ShiftStatus.ANULADO].includes(handover.toShift.status as 'CERRADO' | 'ANULADO') &&
+    handover.toShift.assignments.some(assignment => assignment.userId === user.id && assignment.activatedAt && !assignment.removedExplicitly));
+}
 
 export async function lockHandover(tx: Prisma.TransactionClient, handoverId: string) {
   await tx.$queryRaw`SELECT id FROM "ShiftHandover" WHERE id = ${handoverId} FOR UPDATE`;
 }
 
-export async function assertElementActor(tx: Prisma.TransactionClient, user: CurrentUser, handoverId: string, field: 'declared' | 'confirmed') {
+export async function assertElementActor(tx: Prisma.TransactionClient, user: CurrentUser, handoverId: string, field: 'declared' | 'confirmed', cashReception = false) {
   const handover = await tx.shiftHandover.findUnique({
     where: { id: handoverId },
-    include: { fromShift: true, toShift: true },
+    include: { fromShift: true, toShift: { include: { assignments: true } } },
   });
   if (!handover) throw new NotFoundError('La entrega indicada no existe.');
-  const permission = field === 'declared' ? 'shift.handover' : 'shift.receive';
+  const permission = field === 'declared' ? 'shift.handover' : cashReception ? 'cash.count_receive' : 'shift.receive';
   if (!user.permissions.includes(permission)) throw new ForbiddenError();
   const shiftId = field === 'declared' ? handover.fromShiftId : handover.toShiftId;
   const assignment = shiftId ? await tx.shiftAssignment.findFirst({
     where: { shiftId, userId: user.id, activatedAt: { not: null }, leftAt: null },
   }) : null;
-  if (!assignment) throw new ForbiddenError('Sólo quien entrega o recibe este turno puede declarar su custodia.');
+  const finalReception = field === 'confirmed' && handover.receivedById === user.id &&
+    canStartFinalReception(user, handover, (await getMaintenanceState(tx)).closure?.phase === 'CLOSING');
+  if (!assignment && !finalReception) throw new ForbiddenError('Sólo quien entrega o recibe este turno puede declarar su custodia.');
   if (field === 'declared') {
     if (handover.status !== HandoverStatus.BORRADOR || handover.fromShift.status !== ShiftStatus.PREPARANDO_ENTREGA) {
       throw new RuleError('La entrega ya no admite cambiar los elementos declarados.');
     }
   } else if (handover.status !== HandoverStatus.ENVIADA || handover.receivedAt ||
     handover.fromShift.status !== ShiftStatus.CERRADO ||
-    !handover.toShift || ![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(handover.toShift.status as 'INICIADO' | 'ACTIVO')) {
+    (!finalReception && (!handover.toShift || ![ShiftStatus.INICIADO, ShiftStatus.ACTIVO].includes(handover.toShift.status as 'INICIADO' | 'ACTIVO')))) {
     throw new RuleError('Esta entrega ya no admite cambios en la recepción.');
   }
   return handover;

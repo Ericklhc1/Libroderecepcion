@@ -19,7 +19,8 @@ function escapePdf(value: string): string {
 }
 
 function wrapLine(value: string, width = 112): string[] {
-  const words = value.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const words = value.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean)
+    .flatMap(word => word.match(new RegExp(`.{1,${width}}`, 'gu')) ?? []);
   if (words.length === 0) return [''];
   const lines: string[] = [];
   let current = '';
@@ -28,7 +29,7 @@ function wrapLine(value: string, width = 112): string[] {
     else if (`${current} ${word}`.length <= width) current += ` ${word}`;
     else {
       lines.push(current);
-      current = word.length > width ? word.slice(0, width) : word;
+      current = word;
     }
   }
   if (current) lines.push(current);

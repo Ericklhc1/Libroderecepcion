@@ -32,4 +32,4 @@ async function GETHandler() {
   return NextResponse.json({ ok: true }, { headers });
 }
 
-export const GET = withMaintenance(GETHandler);
+export const GET = withMaintenance(GETHandler, { allowClosure: true });

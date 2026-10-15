@@ -52,6 +52,8 @@ import {
 import { CancelSupervisionOpeningDialog } from '@/components/supervision/cancel-opening';
 import { supervisionOpeningExpired } from '@/domain/supervision-opening';
 import { auditOperationalPendingCount } from '@/domain/supervision-audit-review';
+import { getMaintenanceState } from '@/server/services/system-maintenance';
+import { SupervisionClosurePanel } from '@/components/supervision/closure-panel';
 
 export const metadata = { title: 'Centro de Supervisión' };
 export const dynamic = 'force-dynamic';
@@ -138,8 +140,9 @@ export default async function SupervisionCenterPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user = await requirePageUser();
+  const user = await requirePageUser({ allowClosure: true });
   if (!hasPermission(user, 'supervision.center.view')) redirect('/sin-permisos');
+  if ((await getMaintenanceState()).closure) return <SupervisionClosurePanel user={user} />;
   const params = await searchParams;
   const q = typeof params.q === 'string' ? params.q.trim().toLocaleLowerCase('es-CL') : '';
   const priority = typeof params.prioridad === 'string' ? params.prioridad : '';

@@ -3,24 +3,7 @@
   "regions": [
     "gru1"
   ],
-  "crons": [
-    {
-      "path": "/api/cron/ai-memory",
-      "schedule": "17 6 * * *"
-    },
-    {
-      "path": "/api/cron/operational-mail",
-      "schedule": "5,20,35,50 * * * *"
-    },
-    {
-      "path": "/api/cron/fronti-proactive",
-      "schedule": "2,17,32,47 * * * *"
-    },
-    {
-      "path": "/api/cron/web-push",
-      "schedule": "* * * * *"
-    }
-  ],
+  "crons": [],
   "git": {
     "deploymentEnabled": {
       "**": false,

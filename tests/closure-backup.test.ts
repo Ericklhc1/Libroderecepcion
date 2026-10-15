@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Prisma, EntryType, ShiftStatus, ShiftType } from '@prisma/client';
 import { prisma as applicationPrisma } from '@/lib/prisma';
-import { collectClosureBackup, closureBackupFingerprint } from '@/server/services/closure-backup';
+import { collectClosureBackup, closureBackupFingerprint, getClosureBinaryInventory } from '@/server/services/closure-backup';
 import { getBookReportItems } from '@/server/services/book';
 import { getHistory } from '@/server/services/history';
 import type { CurrentUser } from '@/server/auth/current-user';
@@ -18,6 +18,76 @@ describe('respaldo íntegro y verificable de cierre', () => {
   });
 
   const collect = () => applicationPrisma.$transaction(tx => collectClosureBackup(tx), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+
+  it('informa expresamente que el JSON no incluye ni verifica binarios, incluso con inventario vacío', async () => {
+    const backup = await collect();
+    expect(backup.binaryBackup).toMatchObject({ included: false, verified: false, total: 0 });
+    expect(backup.binaryBackup.sources).toEqual([
+      { source: 'Attachment', count: 0, ids: [] },
+      { source: 'SupportRequestAttachment', count: 0, ids: [] },
+      { source: 'ChatSticker', count: 0, ids: [] },
+    ]);
+    expect(backup.binaryBackup.notice).toContain('referencias y metadatos no sustituyen los archivos');
+  });
+
+  it('inventaría adjuntos de Libro, tareas, chat, huérfanos y los eliminados o de prueba sin asumir respaldo', async () => {
+    const deletedAt = new Date('2026-10-15T12:00:00Z');
+    const entry = await prisma.operationalEntry.create({ data: { type: 'NOVEDAD', title: 'Adjunto sintético', description: fullText, createdById: admin.id } });
+    const task = await prisma.task.create({ data: { title: 'Tarea sintética', createdById: admin.id } });
+    const conversation = await prisma.chatConversation.create({ data: { type: 'GRUPO', title: 'CONTENIDO_CHAT_PRIVADO_NO_EXPORTAR', createdById: admin.id } });
+    const message = await prisma.chatMessage.create({ data: { conversationId: conversation.id, senderId: admin.id, body: 'CONTENIDO_CHAT_PRIVADO_NO_EXPORTAR' } });
+    await prisma.attachment.createMany({ data: [
+      { id: 'binary-entry', entryId: entry.id, fileName: 'libro.txt', mimeType: 'text/plain', size: 4, storageKey: 'synthetic/entry.txt', uploadedById: admin.id },
+      { id: 'binary-task-deleted', taskId: task.id, deletedAt, fileName: 'tarea.txt', mimeType: 'text/plain', size: 4, storageKey: 'synthetic/task.txt', uploadedById: admin.id },
+      { id: 'binary-chat', chatMessageId: message.id, fileName: 'NOMBRE_CHAT_PRIVADO_NO_EXPORTAR.txt', mimeType: 'text/plain', size: 4, storageKey: 'synthetic/chat.txt', uploadedById: admin.id },
+      { id: 'binary-orphan-demo-deleted', isDemo: true, deletedAt, fileName: 'NOMBRE_HUERFANO_NO_EXPORTAR.txt', mimeType: 'text/plain', size: 4, storageKey: 'synthetic/orphan.txt', uploadedById: admin.id },
+    ] });
+    await prisma.supportRequest.create({ data: {
+      id: 'support-with-binary', correlationId: 'synthetic-binary-support', kind: 'ERROR', subject: 'CONTENIDO_SOPORTE_PRIVADO_NO_EXPORTAR', description: 'CONTENIDO_SOPORTE_PRIVADO_NO_EXPORTAR',
+      requestedById: admin.id, requesterName: admin.name, requesterUser: 'synthetic', requesterRole: admin.roleKey, context: {},
+      attachments: { create: { id: 'binary-support', kind: 'ARCHIVO', fileName: 'NOMBRE_SOPORTE_PRIVADO_NO_EXPORTAR.txt', mimeType: 'text/plain', size: 4, storageKey: 'synthetic/support.txt' } },
+    } });
+    await prisma.chatSticker.create({ data: { id: 'binary-sticker-deleted', ownerId: admin.id, deletedAt, fileName: 'NOMBRE_STICKER_PRIVADO_NO_EXPORTAR.png', mimeType: 'image/png', size: 4, storageKey: 'synthetic/sticker.png' } });
+    const inventory = await applicationPrisma.$transaction(tx => getClosureBinaryInventory(tx));
+    expect(inventory).toEqual({ total: 6, sources: [
+      { source: 'Attachment', count: 4, ids: ['binary-chat', 'binary-entry', 'binary-orphan-demo-deleted', 'binary-task-deleted'] },
+      { source: 'SupportRequestAttachment', count: 1, ids: ['binary-support'] },
+      { source: 'ChatSticker', count: 1, ids: ['binary-sticker-deleted'] },
+    ] });
+    const backup = await collect();
+    expect(backup.binaryBackup).toMatchObject({ ...inventory, included: false, verified: false });
+    expect(backup.tables.attachments).toHaveLength(2);
+    const json = JSON.stringify(backup);
+    expect(json).toContain('no incluye ni verifica los archivos binarios');
+    expect(json).not.toContain('PRIVADO_NO_EXPORTAR');
+    expect(json).not.toContain('synthetic/chat.txt');
+    expect(json).not.toContain('synthetic/support.txt');
+    expect(json).not.toContain('synthetic/sticker.png');
+    const fingerprint = closureBackupFingerprint(backup);
+    await prisma.attachment.create({ data: { id: 'binary-new-orphan', fileName: 'otro.txt', mimeType: 'text/plain', size: 4, storageKey: 'synthetic/new-orphan.txt', uploadedById: admin.id } });
+    expect(closureBackupFingerprint(await collect())).not.toBe(fingerprint);
+  });
+
+  it('conserva quién participó en una auditoría, quién lo incorporó y sus identidades y roles trazables', async () => {
+    const participant = await createUser({ roleKey: ROLE_KEYS.RECEPTIONIST, name: 'Participante sintético' });
+    const template = await prisma.checklistTemplate.create({ data: { name: 'Auditoría sintética', createdById: admin.id } });
+    const audit = await prisma.checklistRun.create({ data: { templateId: template.id, templateName: template.name, runById: admin.id, deletedAt: new Date('2026-10-15T12:00:00Z') } });
+    const addedAt = new Date('2026-10-15T11:00:00Z');
+    await prisma.auditParticipant.create({ data: { id: 'audit-participant-synthetic', auditId: audit.id, userId: participant.id, addedById: admin.id, createdAt: addedAt } });
+    await prisma.auditLog.create({ data: { entity: 'ChecklistRun', entityId: audit.id, action: 'CREAR', userId: admin.id, summary: 'Auditoría con participante sintético', after: { participantIds: [participant.id] } } });
+    const backup = await collect();
+    expect(backup.tables.auditParticipants).toEqual([{
+      id: 'audit-participant-synthetic', auditId: audit.id, userId: participant.id, addedById: admin.id, createdAt: addedAt.toISOString(),
+    }]);
+    expect(backup.tables.checklistRuns).toEqual(expect.arrayContaining([expect.objectContaining({ id: audit.id, runById: admin.id })]));
+    expect(backup.tables.users).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: participant.id, name: participant.name, roleId: participant.roleId }),
+      expect.objectContaining({ id: admin.id, name: admin.name, roleId: admin.roleId }),
+    ]));
+    expect(backup.tables.roles).toEqual(expect.arrayContaining([expect.objectContaining({ id: participant.roleId, key: ROLE_KEYS.RECEPTIONIST })]));
+    expect(backup.tables.auditLogs).toEqual(expect.arrayContaining([expect.objectContaining({ entityId: audit.id, after: { participantIds: [participant.id] } })]));
+    expect(JSON.stringify(backup)).not.toContain('passwordHash');
+  });
 
   it('exporta más de 2000 novedades con su texto y comentarios completos', async () => {
     await prisma.operationalEntry.createMany({

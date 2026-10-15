@@ -89,6 +89,41 @@ async function verificationInput(backup: { body: string; digest: string }) {
   };
 }
 
+type BinaryFixtureKind = 'entry-active' | 'entry-deleted' | 'entry-demo' | 'task' | 'chat' | 'orphan' | 'support' | 'sticker-deleted';
+
+/** Only storage references are created; no fixture pretends a binary was backed up. */
+async function binaryFixture(kind: BinaryFixtureKind): Promise<{ source: string; id: string }> {
+  const file = { fileName: 'evidencia-sintetica.pdf', mimeType: 'application/pdf', size: 123, storageKey: `synthetic/reference-only/${randomUUID()}.pdf` };
+  if (kind === 'support') {
+    const request = await prisma.supportRequest.create({ data: {
+      correlationId: randomUUID(), kind: 'ERROR', subject: 'Soporte sintético con archivo', description: 'Referencia sin copia binaria verificada.',
+      requestedById: outgoing.id, requesterName: outgoing.name, requesterUser: 'synthetic', requesterRole: outgoing.roleKey, context: {},
+      attachments: { create: { ...file, kind: 'ARCHIVO' } },
+    }, include: { attachments: true } });
+    return { source: 'SupportRequestAttachment', id: request.attachments[0]!.id };
+  }
+  if (kind === 'sticker-deleted') {
+    const sticker = await prisma.chatSticker.create({ data: { ...file, ownerId: outgoing.id, deletedAt: new Date() } });
+    return { source: 'ChatSticker', id: sticker.id };
+  }
+  const data: Prisma.AttachmentUncheckedCreateInput = { ...file, uploadedById: outgoing.id };
+  if (kind.startsWith('entry-')) {
+    const entry = await prisma.operationalEntry.create({ data: { type: 'NOVEDAD', title: 'Novedad sintética con referencia de archivo', description: 'El JSON conserva la referencia, no los bytes del archivo.', createdById: outgoing.id } });
+    data.entryId = entry.id;
+    if (kind === 'entry-deleted') data.deletedAt = new Date();
+    if (kind === 'entry-demo') data.isDemo = true;
+  } else if (kind === 'task') {
+    const task = await prisma.task.create({ data: { title: 'Tarea sintética con archivo', createdById: outgoing.id } });
+    data.taskId = task.id;
+  } else if (kind === 'chat') {
+    const conversation = await prisma.chatConversation.create({ data: { type: 'GRUPO', createdById: outgoing.id } });
+    const message = await prisma.chatMessage.create({ data: { conversationId: conversation.id, senderId: outgoing.id, kind: 'ARCHIVO' } });
+    data.chatMessageId = message.id;
+  }
+  const attachment = await prisma.attachment.create({ data });
+  return { source: 'Attachment', id: attachment.id };
+}
+
 describe('cierre ordenado · transiciones explícitas', () => {
   it('mantiene compatible el mantenimiento anterior y comienza sin despedida', async () => {
     expect(await getMaintenanceState()).toMatchObject({ ...MAINTENANCE_DEFAULT, closure: null, valid: true });
@@ -300,6 +335,28 @@ describe('cierre ordenado · precondiciones y respaldo', () => {
     expect(await getMaintenanceState()).toEqual(state);
   });
 
+  it.each<BinaryFixtureKind>(['entry-active', 'entry-deleted', 'entry-demo', 'task', 'chat', 'orphan', 'support', 'sticker-deleted'])('exporta y verifica registros pero impide bloquear con archivo binario sin verificar: %s', async kind => {
+    const binary = await binaryFixture(kind);
+    const backup = await readyBackup();
+    const checklist = await getSystemClosureChecklist();
+    expect(checklist).toMatchObject({ ready: true, blockers: [], lockReady: false, lockBlockers: [{ code: 'BINARY_BACKUP_UNVERIFIED', count: 1, ids: [`${binary.source}:${binary.id}`] }] });
+    const verified = await verifyClosureBackup(sysadmin, await verificationInput(backup));
+    expect(verified.closure?.backup?.verifiedAt).not.toBeNull();
+    expect((await getSystemClosureChecklist()).lockReady).toBe(false);
+    await expect(lockSystemClosure(sysadmin, { expectedRevision: verified.revision, confirmation: SYSTEM_CLOSURE_CONFIRMATION })).rejects.toMatchObject({ code: 'RULE_VIOLATION', message: expect.stringContaining('archivos binarios') });
+    expect(await getMaintenanceState()).toEqual(verified);
+    expect(verified.enabled).toBe(false);
+  });
+
+  it('recomprueba el inventario bajo el bloqueo final aunque el adjunto aparezca después de verificar el JSON', async () => {
+    const { verified } = await verifiedBackup();
+    expect(await getSystemClosureChecklist()).toMatchObject({ ready: true, lockReady: true, lockBlockers: [] });
+    const binary = await binaryFixture('orphan');
+    expect((await getSystemClosureChecklist()).lockBlockers).toEqual([expect.objectContaining({ code: 'BINARY_BACKUP_UNVERIFIED', count: 1, ids: [`${binary.source}:${binary.id}`] })]);
+    await expect(lockSystemClosure(sysadmin, { expectedRevision: verified.revision, confirmation: SYSTEM_CLOSURE_CONFIRMATION })).rejects.toMatchObject({ code: 'RULE_VIOLATION', message: expect.stringContaining('archivos binarios') });
+    expect(await getMaintenanceState()).toEqual(verified);
+  });
+
   it('rechaza cambios operativos posteriores al archivo durante verificación y bloqueo', async () => {
     const backup = await readyBackup();
     const state = await getMaintenanceState();
@@ -332,6 +389,7 @@ describe('cierre ordenado · precondiciones y respaldo', () => {
     expect(data.tables.shifts.some(row => row.id === shift.id)).toBe(true);
     expect(data.tables.handovers.find(row => row.id === draft.id)?.receivedById).toBe(incoming.id);
     const verified = await verifyClosureBackup(sysadmin, await verificationInput(backup));
+    expect(await getSystemClosureChecklist()).toMatchObject({ ready: true, lockReady: true, lockBlockers: [] });
     await expect(lockSystemClosure(sysadmin, { expectedRevision: verified.revision, confirmation: 'bloquear' })).rejects.toMatchObject({ code: 'RULE_VIOLATION' });
     const users = await prisma.user.findMany({ orderBy: { id: 'asc' } });
     const locked = await lockSystemClosure(sysadmin, { expectedRevision: verified.revision, confirmation: SYSTEM_CLOSURE_CONFIRMATION });

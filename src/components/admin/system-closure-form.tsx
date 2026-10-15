@@ -64,7 +64,7 @@ function VerifyLocalBackup({ state }: { state: MaintenanceState }) {
   }
   return <div className="space-y-3">
     <label className="block text-sm font-medium">Seleccionar el respaldo guardado<input type="file" accept=".json,application/json" className="mt-2 block w-full text-sm" onChange={event => void inspect(event.target.files?.[0])} /></label>
-    <p className="text-xs text-slate-600">El archivo se lee en este navegador. Sólo se envía su huella SHA256 para compararla con el respaldo y la información vigente.</p>
+    <p className="text-xs text-slate-600">El archivo se lee en este navegador. Se envían su huella SHA256 y una prueba de sus bytes para comprobarlo en servidor. Esto verifica el JSON de registros y referencias; no respalda archivos binarios externos.</p>
     {message && <p role="status" className="text-sm">{message}</p>}
     <ActionForm action={verifyClosureBackupAction} refreshOnSuccess>
       <input type="hidden" name="revision" value={state.revision} /><input type="hidden" name="digest" value={digest} /><input type="hidden" name="fileProof" value={fileProof} />
@@ -74,7 +74,7 @@ function VerifyLocalBackup({ state }: { state: MaintenanceState }) {
   </div>;
 }
 
-export function SystemClosureForm({ state, ready }: { state: MaintenanceState; ready: boolean }) {
+export function SystemClosureForm({ state, ready, lockReady }: { state: MaintenanceState; ready: boolean; lockReady: boolean }) {
   if (!state.closure) return <ActionForm action={beginSystemClosureAction} refreshOnSuccess>
     <input type="hidden" name="revision" value={state.revision} />
     <Checkbox name="confirm" required label="Confirmo que se mostrará la despedida, no se iniciarán turnos nuevos y sólo se permitirá finalizar la operación pendiente." />
@@ -87,7 +87,7 @@ export function SystemClosureForm({ state, ready }: { state: MaintenanceState; r
         <p className="break-all text-sm">Último respaldo: {state.closure.backup.filename}</p>
         <p className="break-all font-mono text-xs">SHA256: {state.closure.backup.digest}</p>
         <VerifyLocalBackup key={state.revision} state={state} />
-        {state.closure.backup.verifiedAt && <p role="status" className="text-sm font-semibold">Respaldo verificado. El bloqueo volverá a comprobar que no hay pendientes ni cambios.</p>}
+        {state.closure.backup.verifiedAt && <p role="status" className="text-sm font-semibold">JSON de registros verificado. El bloqueo volverá a comprobar que no hay pendientes, cambios ni binarios sin respaldo verificable.</p>}
       </div>}
       <div className="space-y-3 rounded border border-red-200 bg-red-50 p-4">
         <p className="font-semibold text-red-900">Acción final: acceso exclusivo de sysadmin</p>
@@ -96,7 +96,7 @@ export function SystemClosureForm({ state, ready }: { state: MaintenanceState; r
           <input type="hidden" name="revision" value={state.revision} />
           <Field label={`Escribe ${SYSTEM_CLOSURE_CONFIRMATION}`} name="confirmation"><Input name="confirmation" required autoComplete="off" /></Field>
           <Checkbox name="confirm" required label="Autorizo específicamente el bloqueo final del personal, después de revisar y verificar el respaldo actualizado." />
-          <SubmitButton variant="danger" disabled={!ready || !state.closure.backup?.verifiedAt} pendingLabel="Comprobando y restringiendo acceso…">Dejar acceso exclusivo a sysadmin</SubmitButton>
+          <SubmitButton variant="danger" disabled={!lockReady || !state.closure.backup?.verifiedAt} pendingLabel="Comprobando y restringiendo acceso…">Dejar acceso exclusivo a sysadmin</SubmitButton>
         </ActionForm>
       </div>
     </>}

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import type { CurrentUser } from '@/server/auth/current-user';
 import { canAccessHousekeeping } from '@/domain/housekeeping';
@@ -24,6 +25,6 @@ export function SystemClosureShell({ user, children }: { user: CurrentUser; chil
           </nav>
         </div>
       </header>
-      <main id="contenido-principal" className="mx-auto max-w-5xl px-4 py-6"><FormDraftSession userId={user.id} />{children}</main>
+      <main id="contenido-principal" className="mx-auto max-w-5xl px-4 py-6"><Fragment key="aroh-route-content"><FormDraftSession userId={user.id} />{children}</Fragment></main>
     </div>;
 }

@@ -3,11 +3,41 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 export type BackupValue = null | string | number | boolean | BackupValue[] | { [key: string]: BackupValue };
+export type ClosureBinaryInventory = {
+  total: number;
+  sources: Array<{
+    source: 'Attachment' | 'SupportRequestAttachment' | 'ChatSticker';
+    count: number;
+    ids: string[];
+  }>;
+};
 export type ClosureBackupData = {
   schemaVersion: 1;
   scope: 'cierres-libro-caja-custodia';
+  binaryBackup: ClosureBinaryInventory & {
+    included: false;
+    verified: false;
+    notice: string;
+  };
   tables: Record<string, BackupValue[]>;
 };
+
+/**
+ * Canonical inventory of database references to stored binaries. Include chat,
+ * orphan, demo and logically deleted rows: none proves its file was backed up.
+ * Reads IDs only; no private chat/support contents or storage credentials.
+ */
+export async function getClosureBinaryInventory(tx: Prisma.TransactionClient): Promise<ClosureBinaryInventory> {
+  const selection = { select: { id: true }, orderBy: { id: 'asc' as const } };
+  const attachmentIds = await tx.attachment.findMany(selection);
+  const supportIds = await tx.supportRequestAttachment.findMany(selection);
+  const stickerIds = await tx.chatSticker.findMany(selection);
+  const source = (name: ClosureBinaryInventory['sources'][number]['source'], rows: Array<{ id: string }>) => ({
+    source: name, count: rows.length, ids: rows.map(row => row.id),
+  });
+  const sources = [source('Attachment', attachmentIds), source('SupportRequestAttachment', supportIds), source('ChatSticker', stickerIds)];
+  return { total: sources.reduce((total, item) => total + item.count, 0), sources };
+}
 
 // Only operational entities are eligible: authentication, mail credentials,
 // assistant memory and the backup's own control records are never exported.
@@ -128,6 +158,7 @@ export async function collectClosureBackup(tx: Prisma.TransactionClient): Promis
   tables.checklistTemplateItems = await tx.checklistTemplateItem.findMany({ orderBy: byId });
   tables.checklistRuns = await tx.checklistRun.findMany({ orderBy: byId });
   tables.checklistRunItems = await tx.checklistRunItem.findMany({ orderBy: byId });
+  tables.auditParticipants = await tx.auditParticipant.findMany({ orderBy: byId });
   tables.auditFindings = await tx.auditFinding.findMany({ orderBy: byId });
   tables.correctiveMeasures = await tx.correctiveMeasure.findMany({ orderBy: byId });
   tables.guestReferences = await tx.guestReference.findMany({ orderBy: byId });
@@ -142,5 +173,11 @@ export async function collectClosureBackup(tx: Prisma.TransactionClient): Promis
   tables.alertSourceFollowUps = await tx.alertSourceFollowUp.findMany({ orderBy: [{ alertId: 'asc' }, { followUpId: 'asc' }] });
   tables.followUpSourceFollowUps = await tx.followUpSourceFollowUp.findMany({ orderBy: [{ descendantId: 'asc' }, { followUpId: 'asc' }] });
   tables.auditSourceFollowUps = await tx.auditSourceFollowUp.findMany({ orderBy: [{ auditLogId: 'asc' }, { followUpId: 'asc' }] });
-  return plain({ schemaVersion: 1, scope: 'cierres-libro-caja-custodia', tables }) as ClosureBackupData;
+  const binaryBackup = {
+    ...await getClosureBinaryInventory(tx),
+    included: false,
+    verified: false,
+    notice: 'Este archivo no incluye ni verifica los archivos binarios del almacenamiento. Sus referencias y metadatos no sustituyen los archivos ni acreditan su respaldo. Si existen referencias a binarios, el bloqueo final requiere un respaldo de almacenamiento verificable; este formato no lo acredita.',
+  };
+  return plain({ schemaVersion: 1, scope: 'cierres-libro-caja-custodia', binaryBackup, tables }) as ClosureBackupData;
 }

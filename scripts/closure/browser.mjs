@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 import { assertClosureQaEnvironment } from './guard.mjs';
 import { waitForNativeShiftReceipt } from '../ui/shift-action-observation.mjs';
@@ -15,6 +15,8 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright-c
 const db = new PrismaClient();
 const contexts = [];
 const results = [];
+const runtimeTrace = [];
+const startedAt = Date.now();
 let browser;
 let admin;
 let activePage;
@@ -24,6 +26,16 @@ mkdirSync(OUTPUT, { recursive: true });
 
 function evidence(data) { console.log(JSON.stringify({ suite: 'ordered-closure', ...data })); }
 function mark(value) { phase = value; evidence({ phase }); }
+function safeErrorText(value) {
+  let text = String(value ?? '');
+  for (const user of Object.values(fixture.users)) text = text.replaceAll(user.token, '[redacted-synthetic-session]');
+  return text.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[redacted-session]');
+}
+function trace(actor, type, details = {}) {
+  const event = { elapsedMs: Date.now() - startedAt, phase, actor, type, ...details };
+  runtimeTrace.push(event);
+  return event;
+}
 async function state() { return (await db.systemSetting.findUnique({ where: { key: SETTING }, select: { value: true } }))?.value; }
 async function accountSnapshot() {
   return {
@@ -52,7 +64,26 @@ async function actor(key) {
     });
   });
   const errors = [];
-  page.on('pageerror', error => errors.push(error.name));
+  page.on('pageerror', error => {
+    const event = trace(key, 'pageerror', { path: new URL(page.url()).pathname, name: error.name,
+      message: safeErrorText(error.message), stack: safeErrorText(error.stack) });
+    errors.push(event);
+    evidence({ phase: 'browser-runtime-error', ...event });
+  });
+  page.on('console', message => {
+    if (message.type() === 'error') trace(key, 'console-error', { path: new URL(page.url()).pathname });
+  });
+  page.on('request', request => {
+    if (request.method() === 'POST' && request.headers()['next-action']) trace(key, 'native-action-request', { path: new URL(request.url()).pathname });
+  });
+  page.on('response', response => {
+    const request = response.request();
+    if (request.method() === 'POST' && request.headers()['next-action']) trace(key, 'native-action-response', { path: new URL(response.url()).pathname, status: response.status() });
+  });
+  page.on('requestfailed', request => {
+    if (request.method() === 'POST' && request.headers()['next-action']) trace(key, 'native-action-request-failed', { path: new URL(request.url()).pathname,
+      error: safeErrorText(request.failure()?.errorText) });
+  });
   return { key, context, page, errors };
 }
 async function visit(who, path) {
@@ -65,8 +96,10 @@ async function submit(who, button, expectedOk = true) {
   const formId = await button.evaluate(element => element.form?.id);
   assert.ok(formId, 'Submission uses the real native ActionForm');
   const offset = await who.page.evaluate(() => window.__shiftUxActionResults.length);
+  trace(who.key, 'native-action-submit', { path: new URL(who.page.url()).pathname, formId, expectedOk });
   await button.click();
-  await waitForNativeShiftReceipt(who.page, { formId, offset }, expectedOk);
+  const receipt = await waitForNativeShiftReceipt(who.page, { formId, offset }, expectedOk);
+  trace(who.key, 'native-action-state', { path: new URL(who.page.url()).pathname, ...receipt });
 }
 async function byLabel(who, name, expectedOk = true) {
   await submit(who, who.page.getByRole('button', { name, exact: true }), expectedOk);
@@ -208,6 +241,67 @@ async function recover() {
   assert.equal((await state()).closure, null); assert.equal((await state()).enabled, false);
 }
 
+async function exerciseBinaryBackupBlocker() {
+  mark('binary-reference-prevents-final-lock');
+  assertClosureQaEnvironment();
+  const id = `closure-qa-binary-${randomUUID()}`;
+  const filePath = `${OUTPUT}/${id}.bin`;
+  const content = Buffer.from([0, 17, 34, 51, 68, 85, 255]);
+  const verifiedBefore = (await state()).closure.backup;
+  assert.ok(verifiedBefore.verifiedAt, 'The JSON has already passed saved-file verification');
+  writeFileSync(filePath, content, { mode: 0o600 });
+  try {
+    // A QA-only concurrent source change after JSON verification. This tiny
+    // file is merely a local fixture, never evidence of a storage backup.
+    // No product upload, deletion route or storage-verification bypass exists.
+    await db.$transaction(async tx => {
+      await tx.attachment.create({ data: { id, fileName: 'SYNTHETIC CLOSURE · unresolved binary.bin',
+        mimeType: 'application/octet-stream', size: content.byteLength, storageKey: filePath,
+        entryId: fixture.source.entryId, uploadedById: fixture.users.admin.id } });
+    });
+    await visit(admin, CONTROL);
+    const warning = admin.page.getByRole('heading', { name: 'Respaldo binario pendiente: bloqueo final impedido', exact: true });
+    await warning.waitFor();
+    await admin.page.getByText('Puedes descargar y verificar los registros operativos. Sus referencias no respaldan los archivos. Esta versión no dispone de verificación del respaldo de almacenamiento; mientras existan estos binarios, el servidor impedirá el bloqueo final. Una confirmación manual no elimina este pendiente.', { exact: true }).waitFor();
+    const lock = admin.page.getByRole('button', { name: 'Dejar acceso exclusivo a sysadmin', exact: true });
+    assert.equal(await lock.isDisabled(), true, 'Unverified binary storage prevents the final lock in the UI');
+    assert.equal(await admin.page.getByRole('button', { name: 'Descargar respaldo actualizado', exact: true }).isEnabled(), true, 'The records export remains available');
+    assert.deepEqual((await state()).closure.backup, verifiedBefore, 'Verified JSON never silently becomes a verified storage backup');
+    await screenshot(admin, 'binary-backup-pending');
+    await screenshot(admin, 'binary-backup-pending', 390);
+    await admin.page.getByLabel('Escribe DEJAR ACCESO SOLO A SYSADMIN', { exact: true }).fill('DEJAR ACCESO SOLO A SYSADMIN');
+    await admin.page.getByRole('checkbox', { name: 'Autorizo específicamente el bloqueo final del personal, después de revisar y verificar el respaldo actualizado.', exact: true }).check();
+    const lockForm = lock.locator('xpath=ancestor::form');
+    // Defeat only the presentation guard and submit the real authenticated
+    // Server Action. The expected rejection must come from the server itself.
+    await lock.evaluate(button => { button.disabled = false; });
+    await submit(admin, lock, false);
+    await lockForm.getByRole('alert').filter({ hasText: /binari|almacenamiento|archivos/i }).waitFor();
+    const blocked = await state();
+    assert.equal(blocked.closure.phase, 'CLOSING'); assert.equal(blocked.enabled, false);
+    assert.deepEqual(blocked.closure.backup, verifiedBefore);
+    await screenshot(admin, 'binary-forged-lock-rejected', 390);
+    results.push({ verifiedJsonIsNotStorageBackup: true, binaryWarningVisible: true,
+      binaryReferenceDisablesFinalLock: true, forgedNativeLockRejectedByServer: true,
+      localBinaryFixtureOnly: true });
+  } finally {
+    // Remove only this explicitly owned disposable fixture in libro_dev. The
+    // product's accounts and operational deletion paths are never exercised.
+    await db.$transaction(async tx => {
+      const row = await tx.attachment.findUnique({ where: { id } });
+      if (row) {
+        assert.equal(row.entryId, fixture.source.entryId); assert.equal(row.uploadedById, fixture.users.admin.id);
+        assert.equal(row.storageKey, filePath);
+        await tx.attachment.delete({ where: { id } });
+      }
+    });
+    rmSync(filePath, { force: true });
+  }
+  await visit(admin, CONTROL);
+  assert.equal(await admin.page.getByRole('heading', { name: 'Respaldo binario pendiente: bloqueo final impedido', exact: true }).count(), 0);
+  assert.equal(await admin.page.getByRole('button', { name: 'Dejar acceso exclusivo a sysadmin', exact: true }).isEnabled(), true, 'After restoring the exact synthetic source snapshot, the native final flow remains usable');
+}
+
 try {
   browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_EXECUTABLE_PATH || '/usr/bin/chromium', args: ['--no-sandbox'] });
   admin = await actor('admin');
@@ -263,6 +357,11 @@ try {
   assert.equal(await download.failure(), null, 'Actual browser download finishes before verification');
   const bytes = readFileSync(savedPath), exported = JSON.parse(bytes.toString('utf8'));
   assert.equal(exported.format, 'AROH_SYSTEM_CLOSURE_BACKUP');
+  assert.equal(exported.data.binaryBackup.included, false, 'The JSON manifest never claims to contain binary files');
+  assert.equal(exported.data.binaryBackup.verified, false, 'Saved JSON verification is not storage-backup verification');
+  assert.equal(exported.data.binaryBackup.total, 0, 'The original synthetic snapshot has no binary references');
+  assert.deepEqual(exported.data.binaryBackup.sources.map(source => source.source), ['Attachment', 'SupportRequestAttachment', 'ChatSticker']);
+  assert.ok(exported.data.binaryBackup.notice, 'The binary limitation is explicit in the downloaded manifest');
   for (const user of Object.values(fixture.users)) assert.equal(bytes.includes(Buffer.from(user.token)), false, 'Session credentials never enter the operational backup');
   const tables = exported.data.tables;
   assert.equal(tables.entries.length, fixture.expectedEntries, 'More than 2,000 source records are exported');
@@ -288,10 +387,11 @@ try {
   await admin.page.getByText('Archivo local leído: coincide con el respaldo generado. Confirma su revisión para verificar vigencia en servidor.', { exact: true }).waitFor();
   await admin.page.getByRole('checkbox', { name: 'Abrí y revisé el respaldo guardado: contiene los cierres y novedades completos, incluido el turno final.', exact: true }).check();
   await byLabel(admin, 'Verificar respaldo guardado');
-  await admin.page.getByText('Respaldo verificado. El bloqueo volverá a comprobar que no hay pendientes ni cambios.', { exact: true }).waitFor();
+  await admin.page.getByText('JSON de registros verificado. El bloqueo volverá a comprobar que no hay pendientes, cambios ni binarios sin respaldo verificable.', { exact: true }).waitFor();
   assert.ok((await state()).closure.backup.verifiedAt);
   await screenshot(admin, 'verified-backup', 390);
-  results.push({ actualSavedDownload: true, fullSourceDescriptions: true, fullComments: true, traceability: true, recordsBeyond2000: fixture.expectedEntries, requiredHistoricalClosures: true, finalClosuresIncluded: true, corruptFileRejected: true, digest });
+  results.push({ actualSavedDownload: true, fullSourceDescriptions: true, fullComments: true, traceability: true, recordsBeyond2000: fixture.expectedEntries, requiredHistoricalClosures: true, finalClosuresIncluded: true, corruptFileRejected: true, manifestDoesNotClaimBinaryBackup: true, digest });
+  await exerciseBinaryBackupBlocker();
   mark('specific-explicit-lock');
   await admin.page.getByLabel('Escribe DEJAR ACCESO SOLO A SYSADMIN', { exact: true }).fill('CONFIRMACION INCORRECTA');
   await admin.page.getByRole('checkbox', { name: 'Autorizo específicamente el bloqueo final del personal, después de revisar y verificar el respaldo actualizado.', exact: true }).check();
@@ -321,10 +421,14 @@ try {
   assert.equal((await api(receiver, '/api/chat/saved')).status(), 200);
   assert.deepEqual(await accountSnapshot(), accountsBefore);
   assert.equal(await db.shift.count(), fixture.shifts.length + fixture.requiredClosureHumanIds.length, 'The full flow never opens a new workday');
-  for (const who of [admin, worker, coworker, receiver]) assert.deepEqual(who.errors, [], 'No browser runtime exceptions');
+  for (const who of [admin, worker, coworker, receiver]) assert.deepEqual(who.errors, [], `No browser runtime exceptions (${who.key})`);
   results.push({ explicitLockRequired: true, wrongConfirmationRejected: true, existingSessionsBlocked: true, sysadminAdminAndApiPreserved: true, accountsRolesSessionsConserved: true, explicitRecovery: true });
 } catch (error) {
   failure = error;
+  const control = await state().catch(() => null);
+  trace('harness', 'failure-state', { path: activePage ? new URL(activePage.url()).pathname : null,
+    enabled: control?.enabled, closurePhase: control?.closure?.phase,
+    backupGenerated: Boolean(control?.closure?.backup), backupVerified: Boolean(control?.closure?.backup?.verifiedAt) });
   evidence({ phase: 'failed', at: phase, error: error instanceof Error ? error.name : 'Unknown error',
     ...(error instanceof assert.AssertionError ? { assertion: error.message } : {}),
     location: error instanceof Error ? error.stack?.split('\n').find(line => line.includes('/scripts/closure/browser.mjs:'))?.trim() : undefined });
@@ -335,6 +439,7 @@ try {
   await browser?.close(); await db.$disconnect();
   const report = { suite: 'ordered-closure', passed: !failure, lastPhase: phase, results, output: OUTPUT, productionRequests: 0 };
   writeFileSync(`${OUTPUT}/results.json`, JSON.stringify(report, null, 2) + '\n');
+  writeFileSync(`${OUTPUT}/runtime-trace.json`, JSON.stringify(runtimeTrace, null, 2) + '\n', { mode: 0o600 });
   evidence({ phase: 'finished', passed: !failure, assertionsGroups: results.length, evidenceDirectory: OUTPUT });
 }
 if (failure) process.exitCode = 1;

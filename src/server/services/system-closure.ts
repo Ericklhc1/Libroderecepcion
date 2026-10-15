@@ -13,7 +13,7 @@ import { requestMeta } from '@/server/auth/session';
 import { ForbiddenError, RuleError } from '@/server/errors';
 import { isCashEnabled } from './cash';
 import { getMaintenanceState, maintenanceStateFromRow } from './system-maintenance';
-import { collectClosureBackup, closureBackupFingerprint, type ClosureBackupData } from './closure-backup';
+import { collectClosureBackup, closureBackupFingerprint, getClosureBinaryInventory, type ClosureBackupData } from './closure-backup';
 
 type Tx = Prisma.TransactionClient;
 type SettingRow = { id?: string; value: Prisma.JsonValue; updatedAt: Date } | null;
@@ -22,7 +22,9 @@ type RequestMeta = Awaited<ReturnType<typeof requestMeta>>;
 export type SystemClosureBlocker = { code: string; message: string; count: number; ids: string[] };
 export type SystemClosureChecklist = {
   ready: boolean;
+  lockReady: boolean;
   blockers: SystemClosureBlocker[];
+  lockBlockers: SystemClosureBlocker[];
   warnings: SystemClosureBlocker[];
   requiredClosureHumanIds: readonly number[];
   counts: {
@@ -92,7 +94,7 @@ async function writeClosureState(tx: Tx, user: CurrentUser, previous: SettingRow
 
 async function collectChecklist(tx: Tx): Promise<SystemClosureChecklist> {
   const control = await getMaintenanceState(tx);
-  const [shifts, participants, handovers, cashEnabled, cashClosures, supervision, supervisionHandovers, housekeepingHandovers] = await Promise.all([
+  const [shifts, participants, handovers, cashEnabled, cashClosures, supervision, supervisionHandovers, housekeepingHandovers, binaryInventory] = await Promise.all([
     tx.shift.findMany({ where: { isDemo: false }, select: { id: true, humanId: true, status: true, actualStart: true, actualEnd: true, handoverOut: { select: { id: true, status: true } } }, orderBy: { id: 'asc' } }),
     tx.shiftAssignment.findMany({ where: { shift: { isDemo: false }, activatedAt: { not: null }, leftAt: null }, select: { id: true, shiftId: true }, orderBy: { id: 'asc' } }),
     tx.shiftHandover.findMany({ where: { isDemo: false, fromShift: { isDemo: false }, status: { in: ['ENVIADA', 'RECIBIDA'] } }, select: { id: true, fromShiftId: true, status: true, receivedAt: true, receivedById: true, elements: { select: { id: true, declared: true, confirmed: true, missingReason: true, missingApprovedAt: true } }, cashCounts: { select: { kind: true } } }, orderBy: { id: 'asc' } }),
@@ -101,6 +103,7 @@ async function collectChecklist(tx: Tx): Promise<SystemClosureChecklist> {
     tx.supervisionShift.findMany({ where: { status: { in: ['PREPARACION', 'ACTIVO', 'ENTREGADO'] } }, select: { id: true }, orderBy: { id: 'asc' } }),
     tx.supervisionShiftHandover.findMany({ where: { OR: [{ receivedAt: null }, { receivedById: null }] }, select: { id: true }, orderBy: { id: 'asc' } }),
     tx.housekeepingHandover.findMany({ where: { OR: [{ receivedAt: null }, { receivedById: null }, { acceptedAt: null }, { acceptedById: null }] }, select: { id: true }, orderBy: { id: 'asc' } }),
+    getClosureBinaryInventory(tx),
   ]);
   const started = shifts.filter(shift => shift.actualStart !== null || !['PROGRAMADO', 'ANULADO'].includes(shift.status));
   const open = started.filter(shift => !['CERRADO', 'ANULADO'].includes(shift.status));
@@ -131,8 +134,17 @@ async function collectChecklist(tx: Tx): Promise<SystemClosureChecklist> {
   add('OPEN_SUPERVISION_SHIFTS', 'Quedan jornadas de Supervisión o de área sin finalizar o cancelar.', supervision.map(shift => shift.id));
   add('PENDING_SUPERVISION_HANDOVERS', 'Quedan entregas de Supervisión o de área sin recepción real.', supervisionHandovers.map(handover => handover.id));
   add('PENDING_HOUSEKEEPING_HANDOVERS', 'Quedan relevos de Housekeeping sin recepción real o aceptación de pendientes y custodia.', housekeepingHandovers.map(handover => handover.id));
+  // A metadata export never proves that storage objects were downloaded or
+  // preserved. This candidate has no binary verification path or override.
+  const lockBlockers: SystemClosureBlocker[] = binaryInventory.total ? [{
+    code: 'BINARY_BACKUP_UNVERIFIED',
+    message: 'El JSON contiene registros y referencias, no los archivos binarios. Hay archivos sin respaldo binario verificable; el bloqueo final no está disponible en este candidato.',
+    count: binaryInventory.total,
+    ids: binaryInventory.sources.flatMap(source => source.ids.map(id => `${source.source}:${id}`)),
+  }] : [];
   return {
-    ready: blockers.length === 0, blockers, warnings, requiredClosureHumanIds: [...REQUIRED_CLOSURE_HUMAN_IDS],
+    ready: blockers.length === 0, lockReady: blockers.length === 0 && lockBlockers.length === 0,
+    blockers, lockBlockers, warnings, requiredClosureHumanIds: [...REQUIRED_CLOSURE_HUMAN_IDS],
     counts: { startedShifts: started.length, closedShifts: closed.length, cancelledShifts: shifts.filter(shift => shift.status === 'ANULADO').length,
       pendingHandovers: pendingHandovers.length, activeParticipants: participants.length,
       openSupervisionShifts: supervision.length, pendingSupervisionHandovers: supervisionHandovers.length, pendingHousekeepingHandovers: housekeepingHandovers.length },
@@ -146,6 +158,11 @@ export async function getSystemClosureChecklist(tx?: Tx): Promise<SystemClosureC
 
 function assertReady(checklist: SystemClosureChecklist) {
   if (!checklist.ready) throw new RuleError(`No se puede avanzar: ${checklist.blockers.map(blocker => `${blocker.message} (${blocker.count})`).join(' ')}`);
+}
+
+function assertLockReady(checklist: SystemClosureChecklist) {
+  assertReady(checklist);
+  if (!checklist.lockReady) throw new RuleError(`No se puede bloquear: ${checklist.lockBlockers.map(blocker => `${blocker.message} (${blocker.count})`).join(' ')}`);
 }
 
 // READ COMMITTED is intentional: lockedSetting can run before in-flight writes
@@ -200,7 +217,7 @@ export async function createClosureBackup(user: CurrentUser): Promise<{ body: st
     const digest = createHash('sha256').update(body, 'utf8').digest('hex');
     const filename = `aroh-respaldo-cierre-${createdAt.replaceAll(':', '-').replaceAll('.', '-')}.json`;
     await writeClosureState(tx, user, row, { ...closure, backup: { filename, digest, fingerprint, verificationNonce: randomBytes(32).toString('hex'), createdAt, createdById: user.id, verifiedAt: null, verifiedById: null } },
-      'Respaldo íntegro de cierre generado. Requiere descargar y seleccionar el archivo local para comprobar su SHA-256; aún no autoriza el bloqueo.', meta);
+      'Respaldo JSON de registros y referencias generado; no incluye archivos binarios. Requiere descargar y seleccionar el archivo local para comprobar su SHA-256; aún no autoriza el bloqueo.', meta);
     return { body, filename, digest };
   }, transactionOptions);
 }
@@ -224,7 +241,7 @@ export async function verifyClosureBackup(user: CurrentUser, input: { expectedRe
     const expectedProof = createHash('sha256').update(closure.backup.verificationNonce, 'utf8').update(expectedBody, 'utf8').digest();
     if (!timingSafeEqual(expectedProof, Buffer.from(input.fileProof, 'hex'))) throw new RuleError('No se pudo comprobar el contenido del archivo local. Selecciona el respaldo guardado correcto.');
     return writeClosureState(tx, user, row, { ...closure, backup: { ...closure.backup, verifiedAt: new Date().toISOString(), verifiedById: user.id } },
-      'Archivo local de respaldo comprobado por SHA-256; fuentes operativas vigentes verificadas. El bloqueo final sigue pendiente de confirmación explícita.', meta);
+      'Archivo JSON local comprobado por SHA-256; registros y referencias vigentes verificados. Esto no acredita respaldo de archivos binarios. El bloqueo final sigue sujeto a precondiciones y confirmación explícita.', meta);
   }, transactionOptions);
 }
 
@@ -236,11 +253,11 @@ export async function lockSystemClosure(user: CurrentUser, input: { expectedRevi
     const { row, state } = await lockedSetting(tx);
     assertRevision(state, input.expectedRevision);
     const closure = assertClosing(state);
-    if (!closure.backup?.verifiedAt || !closure.backup.verifiedById) throw new RuleError('El respaldo completo debe estar descargado y verificado seleccionando el archivo local antes de bloquear.');
+    if (!closure.backup?.verifiedAt || !closure.backup.verifiedById) throw new RuleError('El JSON de registros y referencias debe estar descargado y verificado seleccionando el archivo local antes de bloquear. Esto no acredita respaldo de archivos binarios.');
     await lockBackupSources(tx);
-    assertReady(await collectChecklist(tx));
+    assertLockReady(await collectChecklist(tx));
     if (closureBackupFingerprint(await collectClosureBackup(tx)) !== closure.backup.fingerprint) throw new RuleError('La operación cambió después de verificar el respaldo. Genera, descarga y verifica un respaldo nuevo.');
     return writeClosureState(tx, user, row, { ...closure, phase: 'LOCKED', lockedAt: new Date().toISOString(), lockedById: user.id },
-      'Acceso exclusivo de sysadmin activado por confirmación explícita, con turnos finalizados y respaldo íntegro verificado. Cuentas, roles y datos conservados.', meta);
+      'Acceso exclusivo de sysadmin activado por confirmación explícita, con turnos finalizados, JSON de registros y referencias verificado e inventario de archivos binarios vacío. Cuentas, roles y datos conservados.', meta);
   }, transactionOptions);
 }

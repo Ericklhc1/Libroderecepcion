@@ -27,9 +27,14 @@ export default async function SystemMaintenancePage() {
         <h3 className="font-semibold">Comprobación de pendientes</h3>
         {checklist.ready ? <p role="status" className="text-sm">Los controles operativos están completos. Puedes generar el respaldo actualizado.</p> : <ul className="list-disc space-y-2 pl-5 text-sm">{checklist.blockers.map(item => <li key={item.code}>{item.message} ({item.count}){item.ids.length > 0 && <span className="block break-all text-xs text-slate-500">{item.ids.join(', ')}</span>}</li>)}</ul>}
         {checklist.warnings.length > 0 && <details><summary className="cursor-pointer text-sm">Observaciones del historial</summary><ul className="mt-2 list-disc space-y-2 pl-5 text-sm">{checklist.warnings.map(item => <li key={item.code}>{item.message} ({item.count})</li>)}</ul></details>}
-        <p className="text-xs text-slate-600">El respaldo incluye el historial completo de cierres y Libro, con textos, comentarios y auditoría. Comprobación adicional de cierres anteriores: {checklist.requiredClosureHumanIds.join(', ')}. Los adjuntos conservan sus referencias; los archivos binarios requieren su respaldo de almacenamiento.</p>
+        {checklist.lockBlockers.length > 0 && <div role="alert" className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+          <h3 className="font-semibold">Respaldo binario pendiente: bloqueo final impedido</h3>
+          <ul className="list-disc space-y-2 pl-5">{checklist.lockBlockers.map(item => <li key={item.code}>{item.message} ({item.count})</li>)}</ul>
+          <p>Puedes descargar y verificar los registros operativos. Sus referencias no respaldan los archivos. Esta versión no dispone de verificación del respaldo de almacenamiento; mientras existan estos binarios, el servidor impedirá el bloqueo final. Una confirmación manual no elimina este pendiente.</p>
+        </div>}
+        <p className="text-xs text-slate-600">El JSON incluye el historial de cierres y Libro, con textos, comentarios y auditoría. Comprobación adicional de cierres anteriores: {checklist.requiredClosureHumanIds.join(', ')}. Conserva referencias de adjuntos de Libro y tareas, sin archivos binarios. No es un respaldo íntegro del almacenamiento ni de todo el sistema.</p>
       </div>}
-      <SystemClosureForm key={state.revision} state={state} ready={checklist?.ready ?? false} />
+      <SystemClosureForm key={state.revision} state={state} ready={checklist?.ready ?? false} lockReady={checklist?.lockReady ?? false} />
     </section>
     {!state.closure && <>
     <section className="rounded-lg border border-slate-200 bg-white p-5 space-y-4">

@@ -1,3 +1,7 @@
+## 2026-10-28 · Cadencia económica para demo (1.64.2, pendiente de publicación)
+
+El usuario pidió optimizar el consumo antes de reactivar Central como demo. `vercel.json` agrupa push/automatizaciones, correo y Fronti cada quince minutos; la retención diaria coincide a las 06:00 UTC. Programación: 1.633 → 289 invocaciones/día; no equivale a un ahorro medido de CU-horas. Push/escalaciones/automatizaciones de fondo pueden demorarse unos quince minutos. Correo inmediato, alarmas de usuario conectado, servicios, permisos y mantenimiento no cambian. Ver `docs/DEMO_CONSUMO.md` para activación y reversión. No hay cambios de esquema ni datos. Validación completa pendiente de Compuerta sobre PostgreSQL desechable; no usar Neon Production para pruebas. No afirmar activación hasta desplegar el commit.
+
 ## 2026-10-05 · Revisión focal Equipo del candidato b76e807
 
 Se reprodujo una pérdida de identidad al reutilizar el `@usuario` de la plantilla CSV en una malla con fechas en columnas: el prefijo literal de seguridad quedaba en el lector de cuadrícula y el identificador resultaba nulo. Se aplica la misma normalización ya usada para filas por asignación, conservando la protección del archivo descargado y la revisión exacta por cuenta.
